@@ -1,0 +1,90 @@
+[
+  {
+    "name": "three_moons",
+    "action": "update",
+    "entry_id": "ent_0007",
+    "draft": {
+      "title": "Sky of Velmar",
+      "type": "place",
+      "body": "The night sky over Velmar holds three moons that rise together over the Grey River. Evening sea fog rolls in on most nights.",
+      "status": "canon",
+      "aliases": [],
+      "facts": [
+        {
+          "key": "Moons",
+          "value": "Three"
+        },
+        {
+          "key": "Weather",
+          "value": "Evening sea fog"
+        }
+      ]
+    },
+    "expect": {
+      "conflict_ids": [
+        "ent_0012"
+      ],
+      "retcon_keys": [
+        "Moons"
+      ]
+    }
+  },
+  {
+    "name": "founding_date",
+    "action": "create",
+    "draft": {
+      "title": "The Founders' Landing",
+      "type": "event",
+      "body": "The first settlers of Velmar landed at the mouth of the Grey River in 290 AF and raised the first lantern.",
+      "status": "canon",
+      "aliases": [],
+      "facts": [
+        {
+          "key": "Founded",
+          "value": "290 AF"
+        },
+        {
+          "key": "Site",
+          "value": "Mouth of the Grey River"
+        }
+      ]
+    },
+    "expect": {
+      "conflict_ids": [
+        "ent_0005"
+      ],
+      "retcon_keys": []
+    }
+  },
+  {
+    "name": "captain_sorn",
+    "action": "create",
+    "draft": {
+      "title": "Captain Sorn",
+      "type": "character",
+      "body": "Captain Sorn is the harbourmaster of Lantern Quay. She refuses to sail while Ister is full, and no one in the Salt Guild has ever talked her out of it.",
+      "status": "canon",
+      "aliases": [
+        "Sorn"
+      ],
+      "facts": [
+        {
+          "key": "Role",
+          "value": "Harbourmaster of Lantern Quay"
+        },
+        {
+          "key": "Refuses to sail",
+          "value": "While Ister is full"
+        },
+        {
+          "key": "Works at",
+          "value": "Lantern Quay"
+        }
+      ]
+    },
+    "expect": {
+      "conflict_ids": [],
+      "retcon_keys": []
+    }
+  }
+]

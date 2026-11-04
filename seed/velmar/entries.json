@@ -1,0 +1,594 @@
+[
+  {
+    "id": "ent_0001",
+    "title": "The City of Velmar",
+    "type": "place",
+    "body": "Velmar is a fog-bound harbour city on the northern coast, built where the Grey River meets the sea. It is governed by the Harbour Council, which sits in the Tidehall. Its people fish, trade salt and light lanterns along Lantern Quay when the Sky of Velmar fills with evening sea fog. Founded by Ilsa Corran, the city has watched Ister, the red moon, rise over its roofs ever since.",
+    "status": "canon",
+    "aliases": [],
+    "facts": [
+      {
+        "key": "Location",
+        "value": "Northern coast, mouth of the Grey River",
+        "refs": [
+          "ent_0008"
+        ]
+      },
+      {
+        "key": "Population",
+        "value": "About 40,000"
+      },
+      {
+        "key": "Government",
+        "value": "Harbour Council",
+        "refs": [
+          "ent_0002"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0002",
+        "relation": "governed by"
+      },
+      {
+        "target_id": "ent_0005",
+        "relation": "founded in"
+      }
+    ]
+  },
+  {
+    "id": "ent_0002",
+    "title": "The Harbour Council",
+    "type": "faction",
+    "body": "The Harbour Council runs Velmar. Seven seats are held by elected harbour-wardens, and it meets in the Tidehall. Mayor Elsbeth Varr chairs it. The Salt Guild holds two of the seven seats and enforces the Law of Lanterns on its behalf.",
+    "status": "canon",
+    "aliases": [
+      "the Council"
+    ],
+    "facts": [
+      {
+        "key": "Seats",
+        "value": "Seven"
+      },
+      {
+        "key": "Meets at",
+        "value": "The Tidehall",
+        "refs": [
+          "ent_0009"
+        ]
+      },
+      {
+        "key": "Chaired by",
+        "value": "Mayor Elsbeth Varr",
+        "refs": [
+          "ent_0003"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0003",
+        "relation": "chaired by"
+      },
+      {
+        "target_id": "ent_0009",
+        "relation": "meets at"
+      }
+    ]
+  },
+  {
+    "id": "ent_0003",
+    "title": "Mayor Elsbeth Varr",
+    "type": "character",
+    "body": "Elsbeth Varr, aged fifty-four, has been mayor of Velmar for eleven years and chairs the Harbour Council. She is calm, careful and rarely seen on the quay after dark. In truth she sings with the Ashen Choir at every full Ister.",
+    "status": "canon",
+    "aliases": [
+      "Elsbeth Varr",
+      "the Mayor"
+    ],
+    "facts": [
+      {
+        "key": "Role",
+        "value": "Mayor of Velmar and chair of the Harbour Council"
+      },
+      {
+        "key": "Age",
+        "value": "54"
+      },
+      {
+        "key": "Sings with the Ashen Choir",
+        "value": "Yes, at every full Ister",
+        "refs": [
+          "ent_0004"
+        ],
+        "status": "secret"
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0002",
+        "relation": "chairs"
+      },
+      {
+        "target_id": "ent_0004",
+        "relation": "secret member of"
+      }
+    ]
+  },
+  {
+    "id": "ent_0004",
+    "title": "The Ashen Choir",
+    "type": "faction",
+    "body": "The Ashen Choir is a society of about sixty singers who gather on the Cinder Steps beneath the Tidehall at every full Ister and sing to the red moon. They keep the Song of Three Moons alive, though they do not claim it is history. Their grey robes give the Choir its name. The Salt Guild distrusts them.",
+    "status": "canon",
+    "aliases": [
+      "the Choir"
+    ],
+    "facts": [
+      {
+        "key": "Members",
+        "value": "About sixty"
+      },
+      {
+        "key": "Sings",
+        "value": "At every full Ister",
+        "refs": [
+          "ent_0012"
+        ]
+      },
+      {
+        "key": "Meets at",
+        "value": "The Cinder Steps beneath the Tidehall",
+        "refs": [
+          "ent_0009"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0012",
+        "relation": "sings to"
+      },
+      {
+        "target_id": "ent_0015",
+        "relation": "keeps"
+      }
+    ]
+  },
+  {
+    "id": "ent_0005",
+    "title": "Founding of Velmar",
+    "type": "event",
+    "body": "Ilsa Corran led the first settlers up the Grey River in the year 312 AF and raised the first lantern on the headland where Lantern Quay now stands. The date is carved on the lintel of the Tidehall. Ister, the red moon, was full on the night of the landing, and settlers took it as a good omen.",
+    "status": "canon",
+    "aliases": [
+      "the Founding"
+    ],
+    "facts": [
+      {
+        "key": "Founded",
+        "value": "312 AF"
+      },
+      {
+        "key": "Founder",
+        "value": "Ilsa Corran",
+        "refs": [
+          "ent_0006"
+        ]
+      },
+      {
+        "key": "Site",
+        "value": "Mouth of the Grey River",
+        "refs": [
+          "ent_0008"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0006",
+        "relation": "led by"
+      }
+    ]
+  },
+  {
+    "id": "ent_0006",
+    "title": "Ilsa Corran",
+    "type": "character",
+    "body": "Ilsa Corran, a river-pilot from the south, founded Velmar. She wrote the first Law of Lanterns after losing two boats in the fog. She died in 340 AF and is buried beneath the Tidehall.",
+    "status": "canon",
+    "aliases": [],
+    "facts": [
+      {
+        "key": "Role",
+        "value": "Founder of Velmar"
+      },
+      {
+        "key": "Died",
+        "value": "340 AF"
+      },
+      {
+        "key": "Buried",
+        "value": "Beneath the Tidehall",
+        "refs": [
+          "ent_0009"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0005",
+        "relation": "led"
+      },
+      {
+        "target_id": "ent_0013",
+        "relation": "wrote"
+      }
+    ]
+  },
+  {
+    "id": "ent_0007",
+    "title": "Sky of Velmar",
+    "type": "place",
+    "body": "The night sky over Velmar holds a single moon, Ister, and little else is visible through the fog. At the solstice Ister rises red over the Grey River. Evening sea fog rolls in on most nights, and the Ashen Choir says it thins when they sing. Sailors steer by the lanterns of Lantern Quay, not the stars.",
+    "status": "canon",
+    "aliases": [],
+    "facts": [
+      {
+        "key": "Moons",
+        "value": "One (Ister)",
+        "refs": [
+          "ent_0012"
+        ]
+      },
+      {
+        "key": "At the solstice",
+        "value": "Ister rises red"
+      },
+      {
+        "key": "Weather",
+        "value": "Evening sea fog"
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0012",
+        "relation": "features"
+      }
+    ]
+  },
+  {
+    "id": "ent_0008",
+    "title": "The Grey River",
+    "type": "place",
+    "body": "The Grey River runs forty leagues from the northern hills to the sea at Velmar. Its silt gives the harbour water its colour. Ilsa Corran piloted the first boats up it, and the Salt Guild still trades along it.",
+    "status": "canon",
+    "aliases": [
+      "the river"
+    ],
+    "facts": [
+      {
+        "key": "Length",
+        "value": "Forty leagues"
+      },
+      {
+        "key": "Mouth",
+        "value": "Velmar harbour"
+      },
+      {
+        "key": "Colour",
+        "value": "Grey, from silt"
+      }
+    ]
+  },
+  {
+    "id": "ent_0009",
+    "title": "The Tidehall",
+    "type": "place",
+    "body": "The Tidehall is the stone seat of the Harbour Council. Its lintel carries the founding date and Ilsa Corran lies in a crypt below. The Cinder Steps descend from its seaward side to the water.",
+    "status": "canon",
+    "aliases": [
+      "the Hall"
+    ],
+    "facts": [
+      {
+        "key": "Seat of",
+        "value": "The Harbour Council",
+        "refs": [
+          "ent_0002"
+        ]
+      },
+      {
+        "key": "Built",
+        "value": "Early 4th century AF"
+      },
+      {
+        "key": "Feature",
+        "value": "Cinder Steps on the seaward side"
+      }
+    ]
+  },
+  {
+    "id": "ent_0010",
+    "title": "Lantern Quay",
+    "type": "place",
+    "body": "Lantern Quay is the busiest waterfront in Velmar, a mile of timber piers lit by iron lanterns. Ketra Dunn tends them. The Salt Guild keeps its warehouses here and the Law of Lanterns governs it.",
+    "status": "canon",
+    "aliases": [
+      "the Quay"
+    ],
+    "facts": [
+      {
+        "key": "Lanterns",
+        "value": "Two hundred iron lanterns"
+      },
+      {
+        "key": "Lit",
+        "value": "At dusk each evening"
+      },
+      {
+        "key": "Warehouses",
+        "value": "Held by the Salt Guild",
+        "refs": [
+          "ent_0011"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ent_0011",
+    "title": "The Salt Guild",
+    "type": "faction",
+    "body": "The Salt Guild is the trading and fishing league of Velmar, led by Tomas Reeve. It holds two seats on the Harbour Council and backs the Law of Lanterns. Guild members blame the Ashen Choir for the death of Warden Vane, a charge nobody has proved.",
+    "status": "canon",
+    "aliases": [
+      "the Guild"
+    ],
+    "facts": [
+      {
+        "key": "Led by",
+        "value": "Tomas Reeve",
+        "refs": [
+          "ent_0018"
+        ]
+      },
+      {
+        "key": "Council seats",
+        "value": "Two of seven",
+        "refs": [
+          "ent_0002"
+        ]
+      },
+      {
+        "key": "Trades",
+        "value": "Salt and dried fish"
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0018",
+        "relation": "led by"
+      }
+    ]
+  },
+  {
+    "id": "ent_0012",
+    "title": "Ister, the red moon",
+    "type": "place",
+    "body": "Ister is the one moon of Velmar, a red disc that is full every twenty-nine days. At the solstice it rises red and huge over the Grey River. The Ashen Choir sings to it and the Sky of Velmar holds nothing else bright.",
+    "status": "canon",
+    "aliases": [
+      "Ister"
+    ],
+    "facts": [
+      {
+        "key": "Only light in the night sky",
+        "value": "Ister"
+      },
+      {
+        "key": "Colour",
+        "value": "Red"
+      },
+      {
+        "key": "Full",
+        "value": "Every 29 days"
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0007",
+        "relation": "seen in"
+      }
+    ]
+  },
+  {
+    "id": "ent_0013",
+    "title": "The Law of Lanterns",
+    "type": "rule",
+    "body": "Written by Ilsa Corran, the Law of Lanterns requires every lantern on Lantern Quay to be lit at dusk and kept burning until dawn whenever sea fog covers the harbour. The Salt Guild enforces it, and the penalty for a dark lantern is a fine of one silver mark.",
+    "status": "canon",
+    "aliases": [
+      "the Lantern Law"
+    ],
+    "facts": [
+      {
+        "key": "Applies to",
+        "value": "Every lantern on Lantern Quay",
+        "refs": [
+          "ent_0010"
+        ]
+      },
+      {
+        "key": "Penalty",
+        "value": "Fine of one silver mark"
+      },
+      {
+        "key": "Enforced by",
+        "value": "The Salt Guild",
+        "refs": [
+          "ent_0011"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ent_0014",
+    "title": "The Drowned Bell",
+    "type": "item",
+    "body": "The Drowned Bell is a bronze fog-bell that hangs on a post in the harbour mouth, rung by the tide. It was cast in 318 AF from the first anchor of the settlers. Ketra Dunn checks its rope every spring.",
+    "status": "canon",
+    "aliases": [
+      "the harbour bell"
+    ],
+    "facts": [
+      {
+        "key": "Material",
+        "value": "Bronze"
+      },
+      {
+        "key": "Cast",
+        "value": "318 AF"
+      },
+      {
+        "key": "Location",
+        "value": "On a post in the harbour mouth"
+      }
+    ]
+  },
+  {
+    "id": "ent_0015",
+    "title": "The Song of Three Moons",
+    "type": "event",
+    "body": "The Ashen Choir sings that Velmar once had three moons that rose together, and that two fell into the sea, making the fog. Scholars of the Tidehall call it a lullaby, not history. The song is told on the Cinder Steps and nowhere else.",
+    "status": "myth",
+    "aliases": [
+      "the Three-Moon Song"
+    ],
+    "facts": [
+      {
+        "key": "Moons",
+        "value": "Three, rising together",
+        "status": "myth",
+        "told_by": "ent_0004"
+      },
+      {
+        "key": "Cause of the fog",
+        "value": "Two moons fell into the sea",
+        "status": "myth",
+        "told_by": "ent_0004"
+      },
+      {
+        "key": "Sung at",
+        "value": "The Cinder Steps",
+        "refs": [
+          "ent_0009"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0004",
+        "relation": "kept by"
+      }
+    ]
+  },
+  {
+    "id": "ent_0016",
+    "title": "The Drowning of Warden Vane",
+    "type": "event",
+    "body": "Harbour-Warden Edric Vane was found drowned below the Cinder Steps in 331 AF. The Salt Guild whispers that the Ashen Choir pushed him in, but no witness has ever come forward.",
+    "status": "rumour",
+    "aliases": [
+      "Warden Vane"
+    ],
+    "facts": [
+      {
+        "key": "Year",
+        "value": "331 AF"
+      },
+      {
+        "key": "Victim",
+        "value": "Harbour-Warden Edric Vane"
+      },
+      {
+        "key": "Culprit",
+        "value": "The Ashen Choir",
+        "refs": [
+          "ent_0004"
+        ],
+        "status": "rumour",
+        "told_by": "ent_0011"
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0011",
+        "relation": "rumoured by"
+      }
+    ]
+  },
+  {
+    "id": "ent_0017",
+    "title": "Ketra Dunn",
+    "type": "character",
+    "body": "Ketra Dunn is head lamplighter of Lantern Quay. She lights the lanterns at dusk, rings the Drowned Bell in thick fog and knows every pier by touch. She holds no seat on the Harbour Council.",
+    "status": "canon",
+    "aliases": [],
+    "facts": [
+      {
+        "key": "Role",
+        "value": "Head lamplighter of Lantern Quay"
+      },
+      {
+        "key": "Age",
+        "value": "41"
+      },
+      {
+        "key": "Tends",
+        "value": "The Drowned Bell and the quay lanterns",
+        "refs": [
+          "ent_0014",
+          "ent_0010"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0010",
+        "relation": "tends"
+      }
+    ]
+  },
+  {
+    "id": "ent_0018",
+    "title": "Tomas Reeve",
+    "type": "character",
+    "body": "Tomas Reeve leads the Salt Guild and holds one of its two Council seats. He is loud, shrewd and openly hostile to the Ashen Choir, and he is the source of the whispers about Warden Vane.",
+    "status": "canon",
+    "aliases": [],
+    "facts": [
+      {
+        "key": "Role",
+        "value": "Master of the Salt Guild"
+      },
+      {
+        "key": "Age",
+        "value": "60"
+      },
+      {
+        "key": "Attitude to the Choir",
+        "value": "Openly hostile",
+        "refs": [
+          "ent_0004"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "target_id": "ent_0011",
+        "relation": "leads"
+      }
+    ]
+  }
+]
