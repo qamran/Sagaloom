@@ -92,6 +92,8 @@ class Flag(BaseModel):
     severity: Literal["hard", "possible", "note"] | None = None
     explanation: str
     suggested_fix: str | None = None
+    # The existing side is (or may be) a secret fact; the card masks this flag's free text.
+    existing_secret: bool = False
 
 
 class EntryRef(BaseModel):

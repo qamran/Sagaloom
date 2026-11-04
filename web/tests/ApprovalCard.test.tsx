@@ -37,7 +37,7 @@ const update: Proposal = {
 const flag = (over: Partial<Flag>): Flag => ({
   kind: "conflict", entry_id: "ent_0012", title: "Ister", fact_key: null, existing_fact: null,
   new_fact: null, existing_quote: null, new_quote: null, severity: null, explanation: "",
-  suggested_fix: null, ...over,
+  suggested_fix: null, existing_secret: false, ...over,
 });
 
 const conflict = flag({
@@ -253,6 +253,31 @@ describe("ApprovalCard", () => {
     const quote = screen.getByText(/In canon:/).closest("blockquote") as HTMLElement;
     await userEvent.click(within(quote).getByRole("button", { name: /show secret fact/i }));
     expect(screen.getByText(/the only light in the night sky/)).toBeInTheDocument();
+  });
+
+  it("masks the explanation and suggested fix of a flag the server marks secret", async () => {
+    const secretFlag = flag({
+      kind: "conflict", severity: "hard", existing_quote: "sings at every full moon",
+      new_quote: "has never sung", explanation: "Ister sings at every full moon.",
+      suggested_fix: "Drop the claim that Ister never sang.", existing_secret: true,
+    });
+    // Canon is loaded and holds no secret: only the server's existing_secret hides the text.
+    render(<ApprovalCard proposal={update} check={check("conflict", [secretFlag])} canon={[ister]} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/sings at every full moon/)).toBeNull();
+    expect(screen.queryByText(/Drop the claim/)).toBeNull();
+    const fix = screen.getByText("Suggested fix:").parentElement as HTMLElement;
+    await userEvent.click(within(fix).getByRole("button", { name: /show secret fact/i }));
+    expect(screen.getByText("Drop the claim that Ister never sang.")).toBeInTheDocument();
+  });
+
+  it("shows the explanation and fix of a flag that cites no secret", () => {
+    const plain = flag({
+      kind: "conflict", severity: "hard", existing_quote: "one moon", new_quote: "three moons",
+      explanation: "Ister is the only moon.", suggested_fix: "Keep one moon.",
+    });
+    render(<ApprovalCard proposal={update} check={check("conflict", [plain])} canon={[ister]} onDecide={vi.fn()} />);
+    expect(screen.getByText("Ister is the only moon.")).toBeInTheDocument();
+    expect(screen.getByText("Keep one moon.")).toBeInTheDocument();
   });
 
   it("shows a failed update check's notice once, with Approve anyway kept secondary", () => {

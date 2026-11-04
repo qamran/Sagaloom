@@ -45,6 +45,11 @@ function stubClipboard(writeText: (t: string) => Promise<void>) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("UnderTheHood", () => {
+  it("warns that prompts are shown verbatim and may contain secret facts", () => {
+    render(<UnderTheHood turn={turn} onClose={() => {}} />);
+    expect(screen.getByText("Prompts are shown verbatim as sent and may contain secret facts.")).toBeInTheDocument();
+  });
+
   it("shows system prompt, highlights untrusted_data, collapses tool schemas", () => {
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
     const request = screen.getByRole("region", { name: /Request/ });

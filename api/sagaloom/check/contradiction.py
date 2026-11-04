@@ -211,18 +211,28 @@ def _to_flag(jf: JudgeFlag, entry: Entry, draft: EntryDraft) -> Flag:
         or (existing and all(f.status in _BELIEFS for f in existing))
     )
     is_fact = bool(proposed)  # a key the proposal doesn't have is treated as a prose clash
+    # Quote the store, not the judge's paraphrase, when the cited fact is unambiguous (R4.3).
+    existing_fact = f"{existing[0].key}: {existing[0].value}" if len(existing) == 1 else jf.existing
+    # The judge's free text may restate a secret: mark the flag so the card hides it (R12.12).
+    # An unresolved citation is treated as secret if the entry holds any secret fact.
+    existing_secret = (
+        entry.status == "secret"
+        or any(f.status == "secret" for f in existing)
+        or (not existing and any(f.status == "secret" for f in entry.facts))
+    )
     return Flag(
         kind="note" if is_belief else "conflict",
         entry_id=entry.id,
         title=entry.title,
         fact_key=proposed[0].key if is_fact else None,
-        existing_fact=jf.existing if is_fact else None,
+        existing_fact=existing_fact if is_fact else None,
         new_fact=jf.proposed if is_fact else None,
         existing_quote=None if is_fact else jf.existing,
         new_quote=None if is_fact else jf.proposed,
         severity="note" if is_belief else jf.severity,
         explanation=jf.explanation,
         suggested_fix=jf.suggested_fix,
+        existing_secret=existing_secret,
     )
 
 

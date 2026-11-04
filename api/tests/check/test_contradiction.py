@@ -254,6 +254,51 @@ async def test_secret_existing_fact_stays_conflict(store):
     assert res.verdict == "conflict"
 
 
+async def test_flag_citing_a_secret_fact_is_marked_existing_secret(store):
+    store.upsert_entry(
+        mk(
+            "ent_0001",
+            "Mayor",
+            "The mayor.",
+            type="character",
+            facts=[{"key": "Sings with the Choir", "value": "Yes", "status": "secret"}],
+        )
+    )
+    fact = jflag("ent_0001", fact_key="Sings with the Choir", existing="Sings with the Choir: Yes",
+                 proposed="Sings with the Choir: Never")
+    prose = jflag("ent_0001", fact_key=None, existing="he sings at night", proposed="never sings")
+    judge = StubJudge(JudgeOutput(flags=[fact, prose]))
+    p = create("Choir roll", "The mayor never sings.", [{"key": "Sings with the Choir", "value": "Never"}])
+    res = await check_proposal(store, p, judge)
+    # the resolved secret fact, and an unresolved quote from an entry holding a secret
+    assert [f.existing_secret for f in res.flags] == [True, True]
+
+
+async def test_flag_citing_only_public_facts_is_not_secret(store):
+    ister(store)
+    judge = StubJudge(JudgeOutput(flags=[jflag("ent_0001", existing="Only light in the night sky: Ister")]))
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    [f] = res.flags
+    assert f.existing_secret is False
+
+
+async def test_every_flag_on_a_secret_entry_is_secret(store):
+    store.upsert_entry(mk("ent_0001", "Vault", "A vault.", status="secret", facts=[{"key": "Moons", "value": "One"}]))
+    judge = StubJudge(JudgeOutput(flags=[jflag("ent_0001", existing="Moons: One")]))
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    assert [f.existing_secret for f in res.flags] == [True]
+
+
+async def test_existing_fact_is_quoted_from_the_store_when_one_fact_matches(store):
+    ister(store)
+    # the judge gives only the value; the card shows the stored fact verbatim (R4.3)
+    flag = jflag("ent_0001", existing="ister")
+    judge = StubJudge(JudgeOutput(flags=[flag]))
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    [f] = res.flags
+    assert f.existing_fact == "Only light in the night sky: Ister"
+
+
 async def test_possible_only_gives_possible_verdict(store):
     ister(store)
     judge = StubJudge(JudgeOutput(flags=[jflag("ent_0001", severity="possible")]))
@@ -487,3 +532,8 @@ def test_judge_prompt_contains_no_seed_answers():
     assert leaked == []
     for word in ("ister", "velmar", "moons", "choir"):
         assert word not in text
+
+
+def test_judge_prompt_forbids_restating_secret_values():
+    text = " ".join(JUDGE_SYSTEM.split())
+    assert "Never quote or paraphrase the value of such a fact in `explanation` or `suggested_fix`" in text

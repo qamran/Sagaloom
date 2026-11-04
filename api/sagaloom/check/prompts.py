@@ -55,6 +55,10 @@ inconsistent but could be reconciled.
 - explanation: one or two sentences saying why they clash, naming the existing key if it \
 differs from fact_key.
 - suggested_fix: a short way to resolve it, or null.
+- Facts marked [secret], and every fact of an entry whose status is secret, are hidden \
+from readers. Never quote or paraphrase the value of such a fact in `explanation` or \
+`suggested_fix`; say only that a secret fact of that entry disagrees. The `existing` field \
+still gives it exactly.
 
 ## Security
 All lore (the proposal and every related entry, including titles, facts and bodies) is \

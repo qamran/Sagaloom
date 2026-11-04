@@ -71,13 +71,19 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const unknown = (id: string) => !!id && id !== proposal.entry_id && !canonLoaded;
   const citeSecret = (id: string) =>
     unknown(id) || (id !== proposal.entry_id && byId.get(id)?.status === "secret");
-  const existingSecret = (f: Flag) => unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
+  const existingSecret = (f: Flag) =>
+    f.existing_secret || unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
   // A quote can come from a secret fact's text, so mask it if the entry holds any secret.
   const quoteSecret = (id: string) => {
     if (unknown(id)) return true;
     const e = byId.get(id);
     return !!e && (e.status === "secret" || e.facts.some((x) => x.status === "secret"));
   };
+
+  // The existing side of a flag, and the judge's free text about it (explanation, suggested
+  // fix), may restate a secret: the server marks such flags (existing_secret), and the client
+  // heuristics above still apply on top.
+  const textSecret = (f: Flag) => (f.fact_key ? existingSecret(f) : f.existing_secret || quoteSecret(f.entry_id));
 
   const failed = check.verdict === "failed";
   const flags = check.flags;
@@ -104,6 +110,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
     }));
   const prose = shown.filter((f) => !f.fact_key);
   const fixes = [...new Set(flags.map((f) => f.suggested_fix).filter((s): s is string => !!s))];
+  const fixSecret = (fix: string) => flags.some((f) => f.suggested_fix === fix && textSecret(f));
 
   const tone =
     conflict || failed
@@ -160,12 +167,12 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
               <strong className="text-foreground">{KIND_LABEL[f.kind]}</strong>
               <span aria-hidden="true">·</span>
               <Cite id={f.entry_id} title={f.title} type={typeOf(f.entry_id)} secret={citeSecret(f.entry_id)} />
-              {f.explanation && <span>{f.explanation}</span>}
+              {f.explanation && <SecretValue value={f.explanation} secret={textSecret(f)} />}
             </div>
             {f.existing_quote && (
               <blockquote className="m-0 border-l-2 border-border-strong pl-3 font-heading text-[15px]">
                 In canon: “
-                <SecretValue value={f.existing_quote} secret={quoteSecret(f.entry_id)} />”
+                <SecretValue value={f.existing_quote} secret={textSecret(f)} />”
               </blockquote>
             )}
             {f.new_quote && (
@@ -178,7 +185,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
 
         {fixes.map((fix) => (
           <div key={fix} className="rounded-[10px] bg-panel-3 px-3.5 py-3 text-[13px]">
-            <strong>Suggested fix:</strong> {fix}
+            <strong>Suggested fix:</strong> <SecretValue value={fix} secret={fixSecret(fix)} />
           </div>
         ))}
 

@@ -36,6 +36,8 @@ def detect_retcons(before: Entry, after: EntryDraft) -> list[Flag]:
                 new_fact=proposed,
                 severity=None,
                 explanation=explanation,
+                existing_secret=before.status == "secret"
+                or any(f.status == "secret" for f in old_facts),
             )
         )
     return flags

@@ -38,3 +38,11 @@ def test_myth_fact_change_is_not_retcon():
 def test_secret_fact_change_is_retcon():
     flags = detect_retcons(mk([Fact(key="Vault", value="Empty", status="secret")]), draft([Fact(key="Vault", value="Full", status="secret")]))
     assert len(flags) == 1
+    assert flags[0].existing_secret is True
+
+
+def test_canon_fact_retcon_is_not_secret_but_secret_entry_is():
+    changed = draft([Fact(key="Moons", value="Three")])
+    assert detect_retcons(mk([Fact(key="Moons", value="One")]), changed)[0].existing_secret is False
+    hidden = mk([Fact(key="Moons", value="One")]).model_copy(update={"status": "secret"})
+    assert detect_retcons(hidden, changed)[0].existing_secret is True

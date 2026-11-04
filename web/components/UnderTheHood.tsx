@@ -309,6 +309,9 @@ export function UnderTheHood({ turn, onClose }: { turn: TurnView; onClose: () =>
         )}
         <div className="flex flex-col gap-2">
           <div className={LABEL}>Prompts sent to OpenRouter</div>
+          <p className="m-0 text-xs text-muted-foreground">
+            Prompts are shown verbatim as sent and may contain secret facts.
+          </p>
           {turn.calls.length === 0 && (
             <p className="m-0 text-xs text-muted-foreground">No model calls in this turn yet.</p>
           )}

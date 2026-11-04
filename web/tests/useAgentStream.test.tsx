@@ -317,7 +317,7 @@ describe("useAgentStream", () => {
         {
           kind: "conflict", entry_id: "ent_0012", title: "Ister", fact_key: "Moons",
           existing_fact: "One", new_fact: "Three", existing_quote: null, new_quote: null,
-          severity: "hard", explanation: "", suggested_fix: null,
+          severity: "hard", explanation: "", suggested_fix: null, existing_secret: false,
         },
       ],
     };

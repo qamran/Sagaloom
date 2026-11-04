@@ -73,6 +73,8 @@ export interface Flag {
   severity: "hard" | "possible" | "note" | null;
   explanation: string;
   suggested_fix: string | null;
+  /** The existing side is (or may be) a secret fact: its free text is masked on the card. */
+  existing_secret: boolean;
 }
 
 export interface EntryRef {
