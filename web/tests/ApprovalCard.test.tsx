@@ -1,0 +1,224 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { ApprovalCard } from "@/components/ApprovalCard";
+import type { CheckResult, Entry, Fact, Flag, Proposal } from "@/lib/types";
+
+const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fact => ({
+  key,
+  value,
+  refs: ["ent_0012"],
+  status,
+  told_by: null,
+});
+
+const before = {
+  id: "ent_0007", world_id: "w1", title: "Sky of Velmar", type: "place", body: "One red moon.",
+  status: "canon", source: "user", source_url: null, licence: null, trusted: true, aliases: ["the sky"],
+  links: [], facts: [fact("Moons", "One")], version: 3, created_at: "", updated_at: "",
+} as Entry;
+
+const update: Proposal = {
+  proposal_id: "p_1",
+  action: "update",
+  world_id: "w1",
+  entry_id: "ent_0007",
+  before,
+  after: {
+    title: "Sky of Velmar",
+    type: "place",
+    body: "Three moons rise together at the solstice.",
+    status: "canon",
+    aliases: ["the sky"],
+    facts: [fact("Moons", "Three"), fact("Hidden truth", "The moons are lanterns", "secret")],
+  },
+};
+
+const flag = (over: Partial<Flag>): Flag => ({
+  kind: "conflict", entry_id: "ent_0012", title: "Ister", fact_key: null, existing_fact: null,
+  new_fact: null, existing_quote: null, new_quote: null, severity: null, explanation: "",
+  suggested_fix: null, ...over,
+});
+
+const conflict = flag({
+  kind: "conflict", fact_key: "Moons", existing_fact: "One", new_fact: "Three", severity: "hard",
+  explanation: "Ister is the only moon.",
+  suggested_fix: "Keep one moon, and save three moons as a myth told by the Ashen Choir.",
+});
+const retcon = flag({
+  kind: "retcon", entry_id: "ent_0007", title: "Sky of Velmar", fact_key: "Moons",
+  existing_fact: "One", new_fact: "Three", explanation: "Changes this entry's own fact.",
+});
+const note = flag({
+  kind: "note", severity: "note", existing_quote: "the only light in the night sky",
+  new_quote: "three moons rise together", explanation: "Worth a look.",
+});
+
+const check = (verdict: CheckResult["verdict"], flags: Flag[]): CheckResult => ({
+  proposal_id: "p_1", verdict, flags, dependents: [],
+});
+
+describe("ApprovalCard", () => {
+  it("ApprovalCard shows Conflict, Retcon and Note badges with entry ids", () => {
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict, retcon, note])} onDecide={vi.fn()} />);
+    expect(screen.getByText("Commit to canon?")).toBeInTheDocument();
+    const badges = screen.getByRole("list", { name: "Check result" });
+    expect(within(badges).getByText("Conflict")).toBeInTheDocument();
+    expect(within(badges).getByText("Retcon")).toBeInTheDocument();
+    expect(within(badges).getByText("Note")).toBeInTheDocument();
+    // Fact table: Fact · In canon · Proposed, citing the entry and its ID.
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "In canon" })).toBeInTheDocument();
+    expect(within(table).getAllByText(/ent_0012/).length).toBeGreaterThan(0);
+    expect(within(table).getAllByText(/ent_0007/).length).toBeGreaterThan(0);
+    // Prose quote for the note, citing Ister and its ID.
+    expect(screen.getByText(/the only light in the night sky/)).toBeInTheDocument();
+    expect(screen.getByText(/Keep one moon/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve anyway" })).toBeInTheDocument();
+  });
+
+  it("ApprovalCard Save as myth calls onDecide with save_as_myth", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={onDecide} />);
+    const save = screen.getByRole("button", { name: "Save as myth" });
+    expect(save.tagName).toBe("BUTTON");
+    await userEvent.click(save);
+    expect(onDecide).toHaveBeenCalledWith(
+      expect.objectContaining({ proposal_id: "p_1", action: "save_as_myth" }),
+    );
+  });
+
+  it("ApprovalCard Save as myth passes an optional teller", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={onDecide} />);
+    await userEvent.type(screen.getByLabelText(/told by/i), "The Ashen Choir");
+    await userEvent.click(screen.getByRole("button", { name: "Save as myth" }));
+    expect(onDecide).toHaveBeenCalledWith({
+      proposal_id: "p_1",
+      action: "save_as_myth",
+      told_by: "The Ashen Choir",
+    });
+  });
+
+  it("ApprovalCard shows check-failed warning and no Save as myth", () => {
+    const failed = flag({ kind: "note", entry_id: "", title: "", explanation: "The check failed." });
+    render(<ApprovalCard proposal={update} check={check("failed", [failed])} onDecide={vi.fn()} />);
+    expect(screen.getByText("Check failed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The contradiction check couldn't run. Review this change yourself before approving.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save as myth" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve anyway" })).toBeInTheDocument();
+    expect(screen.queryByText("No conflicts found")).toBeNull();
+  });
+
+  it("ApprovalCard edit submits edited draft", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={onDecide} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const title = screen.getByLabelText("Title");
+    await userEvent.clear(title);
+    await userEvent.type(title, "Sky over Velmar");
+    const value = screen.getByLabelText("Fact 1 value");
+    await userEvent.clear(value);
+    await userEvent.type(value, "Two");
+    await userEvent.selectOptions(screen.getByLabelText("Fact 1 status"), "myth");
+    await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
+    expect(onDecide).toHaveBeenCalledWith({
+      proposal_id: "p_1",
+      action: "edit",
+      edited: {
+        title: "Sky over Velmar",
+        type: "place",
+        body: "Three moons rise together at the solstice.",
+        status: "canon",
+        aliases: ["the sky"],
+        facts: [
+          { key: "Moons", value: "Two", refs: ["ent_0012"], status: "myth", told_by: null },
+          { key: "Hidden truth", value: "The moons are lanterns", refs: ["ent_0012"], status: "secret", told_by: null },
+        ],
+      },
+    });
+  });
+
+  it("ApprovalCard lists the proposal's drafted facts", async () => {
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={vi.fn()} />);
+    const drafted = screen.getByRole("region", { name: /drafted facts/i });
+    expect(within(drafted).getByText("Moons")).toBeInTheDocument();
+    expect(within(drafted).getByText("Three")).toBeInTheDocument();
+    // Secret drafted facts stay hidden until Show (FactList).
+    expect(screen.queryByText("The moons are lanterns")).toBeNull();
+    await userEvent.click(within(drafted).getByRole("button", { name: /show secret fact/i }));
+    expect(within(drafted).getByText("The moons are lanterns")).toBeInTheDocument();
+    expect(screen.getAllByText("Sky of Velmar").length).toBeGreaterThan(0);
+  });
+
+  it("shows every retcon flag on a retcon-only card even though the verdict is none", () => {
+    render(<ApprovalCard proposal={update} check={check("none", [retcon])} onDecide={vi.fn()} />);
+    const badges = screen.getByRole("list", { name: "Check result" });
+    expect(within(badges).getByText("Retcon")).toBeInTheDocument();
+    expect(within(badges).queryByText("Conflict")).toBeNull();
+    expect(screen.queryByText("No conflicts found")).toBeNull();
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Moons")).toBeInTheDocument();
+    expect(within(table).getAllByText(/ent_0007/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Save as myth" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve anyway" })).toBeInTheDocument();
+  });
+
+  it("offers a plain Approve and says no conflicts found when the check is clean", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={onDecide} />);
+    expect(screen.getByText("No conflicts found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save as myth" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(onDecide).toHaveBeenCalledWith({ proposal_id: "p_1", action: "approve" });
+    await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+    expect(onDecide).toHaveBeenLastCalledWith({ proposal_id: "p_1", action: "reject" });
+  });
+
+  it("lists dependents of a delete and offers no Edit or Save as myth", () => {
+    const del: Proposal = { ...update, proposal_id: "p_2", action: "delete", after: null };
+    render(
+      <ApprovalCard
+        proposal={del}
+        check={{
+          proposal_id: "p_2", verdict: "none", flags: [],
+          dependents: [{ id: "ent_0003", title: "Captain Sorn", type: "character" }],
+        }}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("These entries mention it:")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Captain Sorn/ })).toHaveAttribute("href", "/canon/ent_0003");
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save as myth" })).toBeNull();
+  });
+
+  it("hides a cited secret canon fact in the table until Show", async () => {
+    const ister = {
+      ...before, id: "ent_0012", title: "Ister", facts: [fact("Moons", "One", "secret")],
+    } as Entry;
+    render(
+      <ApprovalCard
+        proposal={update}
+        check={check("conflict", [conflict])}
+        canon={[ister]}
+        onDecide={vi.fn()}
+      />,
+    );
+    const table = screen.getByRole("table");
+    expect(within(table).queryByText(/^One/)).toBeNull();
+    await userEvent.click(within(table).getByRole("button", { name: /show secret fact/i }));
+    expect(within(table).getByText(/^One/)).toBeInTheDocument();
+  });
+
+  it("uses real buttons at least 44px tall", () => {
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={vi.fn()} />);
+    for (const name of ["Save as myth", "Edit", "Approve anyway", "Reject"]) {
+      expect(screen.getByRole("button", { name })).toHaveClass("min-h-11");
+    }
+  });
+});
