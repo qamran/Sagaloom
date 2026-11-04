@@ -1,26 +1,127 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/* Sagaloom design tokens: one dark, literary theme (design doc 4.7). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #121514;
+  --panel: #161a19;
+  --panel-2: #181d1b;
+  --panel-3: #1e2422;
+  --border: #2b3330;
+  --border-strong: #3a4440;
+  --foreground: #ece8df;
+  --muted-foreground: #a8ada6;
+  --accent: #6fbfa8;
+  --conflict: #e8a15a;
+  --myth: #d7c3ff;
+
+  --character: #cbbbff;
+  --place: #9fe0bf;
+  --faction: #f7b3d2;
+  --rule: #a9d3ff;
+  --event: #f2c26b;
+  --item: #e8c3a0;
+
+  --card: var(--panel-2);
+  --card-foreground: var(--foreground);
+  --popover: var(--panel-3);
+  --popover-foreground: var(--foreground);
+  --primary: var(--accent);
+  --primary-foreground: #121514;
+  --secondary: var(--panel-3);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--panel-3);
+  --accent-foreground: #121514;
+  --destructive: #e8785a;
+  --input: var(--border);
+  --ring: var(--accent);
+  --radius: 0.625rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-panel-3: var(--panel-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-conflict: var(--conflict);
+  --color-myth: var(--myth);
+
+  --color-character: var(--character);
+  --color-place: var(--place);
+  --color-faction: var(--faction);
+  --color-rule: var(--rule);
+  --color-event: var(--event);
+  --color-item: var(--item);
+  /* chip fills and outlines: character, place and faction are from the mockup; the rest are derived the same way */
+  --color-character-bg: #211c33;
+  --color-character-line: #463d6e;
+  --color-place-bg: #17291f;
+  --color-place-line: #2f5a42;
+  --color-faction-bg: #2a1922;
+  --color-faction-line: #5c3349;
+  --color-rule-bg: #16212d;
+  --color-rule-line: #35557a;
+  --color-event-bg: #2a2314;
+  --color-event-line: #6b5a2a;
+  --color-item-bg: #2a2018;
+  --color-item-line: #66503a;
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-heading: var(--font-newsreader), Georgia, serif;
+  --font-serif: var(--font-newsreader), Georgia, serif;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  a {
+    color: #8fd3bf;
+  }
+  a:hover {
+    color: #bde8da;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
