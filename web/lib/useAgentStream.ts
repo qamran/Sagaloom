@@ -282,10 +282,10 @@ export function useAgentStream(threadId: string): AgentStream {
         setError(PENDING_FIRST);
         return;
       }
-      markTour("chatted");
-      await run("messages", { content: text }, "message", () =>
-        setMessages((m) => [...m, { role: "user", content: text }]),
-      );
+      await run("messages", { content: text }, "message", () => {
+        markTour("chatted");
+        setMessages((m) => [...m, { role: "user", content: text }]);
+      });
     },
     [run],
   );
@@ -304,8 +304,10 @@ export function useAgentStream(threadId: string): AgentStream {
         return;
       }
       const ordered = asked.map((id) => decisions.find((d) => d.proposal_id === id) as Decision);
-      if (ordered.some((d) => d.action === "save_as_myth")) markTour("myth");
-      await run("decisions", { decisions: ordered }, "decision", () => setPending(null));
+      await run("decisions", { decisions: ordered }, "decision", () => {
+        if (ordered.some((d) => d.action === "save_as_myth")) markTour("myth");
+        setPending(null);
+      });
     },
     [run, setPending],
   );
