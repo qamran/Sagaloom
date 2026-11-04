@@ -218,7 +218,13 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
             result = await check_proposal(store, proposal, judge_llm)
             lines = [f"verdict: {result.verdict}"]
             for f in result.flags:
-                lines.append(f"- {f.kind} {f.entry_id} fact_key={f.fact_key}: {f.explanation}")
+                # Never echo a secret back to the agent: the judge's text may quote it.
+                why = (
+                    f"a secret fact of {f.entry_id} disagrees"
+                    if f.existing_secret
+                    else f.explanation
+                )
+                lines.append(f"- {f.kind} {f.entry_id} fact_key={f.fact_key}: {why}")
             return "\n".join(lines)
         except Exception as e:
             log.warning("check_contradiction failed", exc_info=True)

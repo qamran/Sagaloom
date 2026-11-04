@@ -331,3 +331,25 @@ async def test_update_keeps_every_fact_of_a_secret_entry(store):
     )
     [p] = cmd.update["pending_proposals"]
     assert {(f.key, f.value) for f in p.after.facts} == {("c", "d"), ("a", "b"), ("Hidden", SECRET)}
+
+
+async def test_check_contradiction_never_echoes_secret_flag_text(store, monkeypatch):
+    from sagaloom.models import CheckResult, Flag
+
+    _with_secret(store)
+    ts, *_ = tools_for(store)
+
+    async def judged(_store, proposal, _llm):
+        return CheckResult(
+            proposal_id=proposal.proposal_id,
+            verdict="conflict",
+            flags=[
+                Flag(kind="conflict", entry_id="ent_0001", title="t", fact_key="Hidden",
+                     explanation=f"Canon says it is {SECRET}.", existing_secret=True),
+            ],
+        )
+
+    monkeypatch.setattr("sagaloom.tools.canon_tools.check_proposal", judged)
+    out = await ts["check_contradiction"].ainvoke({"proposed_text": "x", "world_id": W})
+    assert SECRET not in out
+    assert "a secret fact of ent_0001 disagrees" in out
