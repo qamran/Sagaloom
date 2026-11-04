@@ -319,3 +319,79 @@ async def test_startup_seeds_velmar_once(store, tmp_path, make_env):
     async with app.router.lifespan_context(app):
         pass
     assert len(store.list_entries(VELMAR_ID)) == n
+
+
+# ---------- fix round 1 ----------
+
+
+async def test_concurrent_duplicate_decisions_resume_once(make_env, store):
+    import asyncio
+
+    env = make_env([create_call(), AIMessage(content="Saved it.")])
+    tid = await env.new_thread()
+    await env.send(tid)
+    pid = await env.pending_id(tid)
+    (r1, _), (r2, _) = await asyncio.gather(env.decide(tid, approve(pid)), env.decide(tid, approve(pid)))
+    assert sorted([r1.status_code, r2.status_code]) == [200, 409]
+    loser = r1 if r1.status_code == 409 else r2
+    assert loser.json() == {"detail": "turn in progress"}
+    assert [e.title for e in store.list_entries(W)] == ["Ostra"]
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    assert len([m for m in body["messages"] if m["role"] == "review"]) == 1
+    # the lock is released afterwards
+    r, _ = await env.send(tid, "and then?")
+    assert r.status_code == 200
+
+
+async def test_message_during_running_turn_returns_409_and_error_paths_release(make_env):
+    import asyncio
+
+    env = make_env([create_call(), AIMessage(content="x")])
+    tid = await env.new_thread()
+    (r1, _), (r2, _) = await asyncio.gather(env.send(tid), env.send(tid, "second"))
+    assert sorted([r1.status_code, r2.status_code]) == [200, 409]
+    # a 409 (pending) path released the lock: a decision can now be taken
+    pid = await env.pending_id(tid)
+    ok, _ = await env.decide(tid, approve(pid))
+    assert ok.status_code == 200
+    bad, _ = await env.decide(tid, approve("x"))  # no pending: 409, must release
+    assert bad.status_code == 409
+    again, _ = await env.send(tid, "more")
+    assert again.status_code == 200
+
+
+async def test_usage_includes_judge_and_extractor_calls_from_the_log(make_env, store):
+    from sagaloom.models import Entry
+
+    store.upsert_entry(Entry(id="ent_0001", world_id=W, title="Velmar", type="place", body="A city."))
+    env = make_env([create_call(title="Velmar Docks", content="Drafting.")], real_judge=True)
+    tid = await env.new_thread()
+    _, events = await env.send(tid, "Add the Velmar docks")
+    usage = next(d for e, d in events if e == "usage")
+    # agent 100/20 + judge 50/10
+    assert usage["turn"]["prompt_tokens"] == 150 and usage["turn"]["completion_tokens"] == 30
+    assert usage["total"] == usage["turn"]
+    thread = (await env.client.get(f"/api/threads/{tid}")).json()
+    assert thread["usage"] == usage["total"]
+    studio = (await env.client.get("/api/studio")).json()
+    assert studio["usage"] == usage["total"]
+    # persists: a new log object over the same file gives the same sum
+    from sagaloom.promptlog import PromptLog
+
+    assert PromptLog(env.deps.promptlog.path).usage(tid).prompt_tokens == 150
+
+
+async def test_judge_llm_request_is_streamed_with_untrusted_context(make_env, store):
+    from sagaloom.models import Entry
+
+    store.upsert_entry(Entry(id="ent_0001", world_id=W, title="Velmar", type="place", body="A city."))
+    env = make_env([create_call(title="Velmar Docks", content="Drafting.")], real_judge=True)
+    tid = await env.new_thread()
+    _, events = await env.send(tid, "Add the Velmar docks")
+    reqs = [d for e, d in events if e == "llm_request"]
+    assert len(reqs) == 2 and len([1 for e, _ in events if e == "llm_response"]) == 2
+    judge = reqs[1]  # the agent call comes first, the contradiction judge second
+    assert reqs[0]["messages"][0]["role"] == "system" and "Velmar Docks" in json.dumps(judge["messages"])
+    assert "<untrusted_data" in json.dumps(judge["messages"])
+    log = (await env.client.get(f"/api/threads/{tid}/llm-log")).json()
+    assert len(log) == 2

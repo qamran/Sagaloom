@@ -12,6 +12,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
+from langchain_core.runnables import RunnableLambda
 from pydantic import Field
 
 from sagaloom.check.contradiction import JudgeOutput
@@ -71,6 +72,24 @@ class ScriptedChat(BaseChatModel):
                 usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
             )
         )
+
+
+class FakeJudge(BaseChatModel):
+    """A judge that IS a chat model, so LangChain callbacks (and prompt capture) fire."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake-judge"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        msg = AIMessage(
+            content="{}",
+            usage_metadata={"input_tokens": 50, "output_tokens": 10, "total_tokens": 60},
+        )
+        return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    def with_structured_output(self, schema, **kwargs):
+        return self | RunnableLambda(lambda _: JudgeOutput(flags=[]))
 
 
 class StubLLM:
@@ -148,14 +167,16 @@ class Env:
 
 @pytest.fixture
 def make_env(store, tmp_path):
-    def build(script=(), judge_reply=None, usage=True) -> Env:
+    def build(script=(), judge_reply=None, usage=True, real_judge=False) -> Env:
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
         )
         agent = ScriptedChat(script=iter(script), usage=usage)
         roles = {
             "agent": agent,
-            "judge": StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[])),
+            "judge": FakeJudge()
+            if real_judge
+            else StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[])),
             "extractor": StubLLM(FactList(facts=[Fact(key="k", value="v")])),
             "guard": agent,
         }

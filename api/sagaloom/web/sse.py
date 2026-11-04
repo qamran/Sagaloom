@@ -9,13 +9,15 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
+from contextlib import aclosing
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import openai
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langgraph.errors import GraphRecursionError
 from sse_starlette import EventSourceResponse
+from starlette.background import BackgroundTask
 
 from sagaloom.models import Usage
 from sagaloom.usage import add_usage
@@ -89,9 +91,12 @@ async def run_turn_events(
     config: dict,
     *,
     extra: asyncio.Queue | None = None,
+    usage_fn: Callable[[], tuple[Usage, Usage]] | None = None,
 ) -> AsyncIterator[Event]:
     """Run the graph and yield SSE events. `extra` carries events produced outside the graph
-    stream (the prompt-capture handler's llm_request / llm_response)."""
+    stream (the prompt-capture handler's llm_request / llm_response). `usage_fn` returns
+    (turn, total) from the prompt log, which counts every model call; without it the agent-only
+    state usage is used."""
     try:
         before = (await graph.aget_state(config)).values.get("token_usage") or Usage()
         turn = Usage()
@@ -130,10 +135,11 @@ async def run_turn_events(
                     yield _ev("node", {"name": body["name"], "phase": "end", "ms": ms})
         for ev in _drain(extra):
             yield ev
-        yield _ev(
-            "usage",
-            {"turn": turn.model_dump(), "total": add_usage(before, turn).model_dump()},
-        )
+        if usage_fn is not None:
+            turn, total = usage_fn()
+        else:
+            total = add_usage(before, turn)
+        yield _ev("usage", {"turn": turn.model_dump(), "total": total.model_dump()})
         yield _ev("done")
     except asyncio.CancelledError:
         raise
@@ -150,5 +156,20 @@ async def sse_events(events: AsyncIterator[Event]) -> AsyncIterator[dict[str, st
         yield {"event": ev["event"], "data": json.dumps(ev["data"], ensure_ascii=False)}
 
 
-def sse_response(events: AsyncIterator[Event]) -> EventSourceResponse:
-    return EventSourceResponse(sse_events(events))
+def sse_response(
+    events: AsyncIterator[Event], on_close: Callable[[], None] | None = None
+) -> EventSourceResponse:
+    """`on_close` always runs once the stream ends, fails, or the client goes away."""
+
+    async def guarded() -> AsyncIterator[dict[str, str]]:
+        try:
+            async with aclosing(sse_events(events)) as stream:
+                async for item in stream:
+                    yield item
+        finally:
+            if on_close:
+                on_close()
+
+    return EventSourceResponse(
+        guarded(), background=BackgroundTask(on_close) if on_close else None
+    )

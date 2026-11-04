@@ -37,3 +37,42 @@ def test_embeddings_config():
     assert e.model == s.embed_model
     assert e.openai_api_base == s.openrouter_base_url
     assert e.check_embedding_ctx_length is False
+
+
+def _chunks(cost=0.0123):
+    base = {"id": "x", "model": "m", "object": "chat.completion.chunk"}
+    return [
+        {**base, "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hel"}}]},
+        {**base, "choices": [{"index": 0, "delta": {"content": "lo"}, "finish_reason": "stop"}]},
+        {**base, "choices": [], "usage": {"prompt_tokens": 1000, "completion_tokens": 500,
+                                          "total_tokens": 1500, "cost": cost}},
+    ]
+
+
+def test_streamed_chunks_keep_openrouter_cost():
+    from langchain_core.messages import AIMessageChunk
+
+    from sagaloom.usage import extract_usage
+
+    s = _settings()
+    m = make_chat_model(s)
+    merged = None
+    for raw in _chunks():
+        gen = m._convert_chunk_to_generation_chunk(raw, AIMessageChunk, None)
+        if gen is not None:
+            merged = gen.message if merged is None else merged + gen.message
+    assert merged.content == "Hello"
+    u = extract_usage(merged, s)
+    assert (u.prompt_tokens, u.completion_tokens) == (1000, 500)
+    assert u.cost_usd == 0.0123  # not the estimate
+
+
+def test_non_streamed_result_keeps_cost():
+    from langchain_core.messages import AIMessage
+
+    from sagaloom.usage import extract_usage
+
+    s = _settings()
+    msg = AIMessage(content="x", response_metadata={"token_usage": {
+        "prompt_tokens": 10, "completion_tokens": 5, "cost": 0.5}})
+    assert extract_usage(msg, s).cost_usd == 0.5

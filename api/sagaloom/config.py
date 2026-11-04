@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     openrouter_api_key: SecretStr
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    gemini_api_key: str | None = None
+    gemini_api_key: SecretStr | None = None
     chat_model: str = "openai/gpt-6-luna"
     judge_model: str = "openai/gpt-6-luna"
     extractor_model: str = "openai/gpt-6-luna"

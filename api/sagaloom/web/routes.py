@@ -1,6 +1,7 @@
 """JSON + SSE endpoints (R19.1). Everything here is mounted behind the shared-secret check."""
 
 import asyncio
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -79,23 +80,59 @@ def _pending(state) -> dict | None:
     return dict(state.interrupts[0].value) if state.interrupts else None
 
 
-def _turn_config(request: Request, thread, emit: Callable[[str, dict], None]) -> dict:
+def _turn_config(
+    request: Request, thread, emit: Callable[[str, dict], None], turn_id: str
+) -> dict:
     d = _deps(request)
     s = d.settings
     secrets = [s.openrouter_api_key.get_secret_value(), s.api_shared_secret.get_secret_value()]
     if s.gemini_api_key:
-        secrets.append(s.gemini_api_key)
+        secrets.append(s.gemini_api_key.get_secret_value())
     cfg = run_config(thread.thread_id, thread.world_id)
     cfg["callbacks"] = [
-        PromptLogHandler(d.promptlog, thread.thread_id, emit, settings=s, secrets=secrets)
+        PromptLogHandler(
+            d.promptlog, thread.thread_id, emit, settings=s, secrets=secrets, turn_id=turn_id
+        )
     ]
     return cfg
 
 
-def _stream_run(request: Request, thread, input_or_command: Any):
+async def _take_turn(request: Request, thread_id: str) -> Callable[[], None]:
+    """One running turn per thread. Returns an idempotent release; 409 if a turn is running.
+    Taken before any state check, so two racing POSTs cannot both pass them."""
+    lock = _deps(request).locks.setdefault(thread_id, asyncio.Lock())
+    if lock.locked():
+        raise HTTPException(status_code=409, detail="turn in progress")
+    await lock.acquire()  # uncontended here, so it does not yield between check and acquire
+    released = False
+
+    def release() -> None:
+        nonlocal released
+        if not released:
+            released = True
+            lock.release()
+
+    return release
+
+
+def _stream_run(request: Request, thread, input_or_command: Any, release: Callable[[], None]):
+    d = _deps(request)
     queue: asyncio.Queue = asyncio.Queue()
-    cfg = _turn_config(request, thread, lambda name, data: queue.put_nowait({"event": name, "data": data}))
-    return sse_response(run_turn_events(_deps(request).graph, input_or_command, cfg, extra=queue))
+    turn_id = uuid.uuid4().hex
+    cfg = _turn_config(
+        request, thread, lambda name, data: queue.put_nowait({"event": name, "data": data}), turn_id
+    )
+
+    def usage_fn() -> tuple[Usage, Usage]:
+        return (
+            d.promptlog.usage(thread.thread_id, turn_id),
+            d.promptlog.usage(thread.thread_id),
+        )
+
+    return sse_response(
+        run_turn_events(d.graph, input_or_command, cfg, extra=queue, usage_fn=usage_fn),
+        on_close=release,
+    )
 
 
 # ---------- worlds and entries ----------
@@ -165,38 +202,54 @@ async def get_thread(thread_id: str, request: Request) -> dict:
             if interrupt
             else None
         ),
-        "usage": (values.get("token_usage") or Usage()).model_dump(),
+        "usage": _deps(request).promptlog.usage(thread_id).model_dump(),
     }
 
 
 @router.post("/threads/{thread_id}/messages")
 async def post_message(thread_id: str, body: NewMessage, request: Request):
     t = _thread(request, thread_id)
-    state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
-    if state.interrupts:  # a new message would silently drop the pending approval (R15)
-        raise HTTPException(status_code=409, detail="approval pending")
-    return _stream_run(
-        request, t, {"messages": [HumanMessage(content=body.content)], "world_id": t.world_id}
-    )
+    release = await _take_turn(request, thread_id)
+    try:
+        state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
+        if state.interrupts:  # a new message would silently drop the pending approval (R15)
+            raise HTTPException(status_code=409, detail="approval pending")
+        return _stream_run(
+            request,
+            t,
+            {"messages": [HumanMessage(content=body.content)], "world_id": t.world_id},
+            release,
+        )
+    except BaseException:
+        release()
+        raise
 
 
 @router.post("/threads/{thread_id}/decisions")
 async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
     t = _thread(request, thread_id)
-    state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
-    interrupt = _pending(state)
-    if interrupt is None:
-        raise HTTPException(status_code=409, detail="no pending approval")
-    asked = sorted(p["proposal_id"] for p in interrupt["proposals"])
-    given = sorted(d.proposal_id for d in body.decisions)
-    if given != asked:  # unknown, duplicate or missing ids: validated BEFORE resuming
-        raise HTTPException(
-            status_code=422,
-            detail=f"Give exactly one decision for each pending proposal: {', '.join(asked)}",
+    release = await _take_turn(request, thread_id)
+    try:
+        state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
+        interrupt = _pending(state)
+        if interrupt is None:
+            raise HTTPException(status_code=409, detail="no pending approval")
+        asked = sorted(p["proposal_id"] for p in interrupt["proposals"])
+        given = sorted(d.proposal_id for d in body.decisions)
+        if given != asked:  # unknown, duplicate or missing ids: validated BEFORE resuming
+            raise HTTPException(
+                status_code=422,
+                detail=f"Give exactly one decision for each pending proposal: {', '.join(asked)}",
+            )
+        return _stream_run(
+            request,
+            t,
+            Command(resume={"decisions": [d.model_dump(mode="json") for d in body.decisions]}),
+            release,
         )
-    return _stream_run(
-        request, t, Command(resume={"decisions": [d.model_dump(mode="json") for d in body.decisions]})
-    )
+    except BaseException:
+        release()
+        raise
 
 
 @router.get("/threads/{thread_id}/llm-log")

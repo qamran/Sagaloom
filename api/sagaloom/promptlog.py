@@ -85,8 +85,18 @@ class PromptLog:
         return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
     def total_usage(self) -> Usage:
+        return self.usage()
+
+    def usage(self, thread_id: str | None = None, run_id: str | None = None) -> Usage:
+        """Sum of the recorded calls (agent, judge, extractor): the single source of truth for
+        per-turn (`run_id`), per-thread (`thread_id`) and overall usage (R16 ruling)."""
+        sql, args = "SELECT record FROM prompt_log", []
+        where = [(c, v) for c, v in (("thread_id", thread_id), ("run_id", run_id)) if v is not None]
+        if where:
+            sql += " WHERE " + " AND ".join(f"{c} = ?" for c, _ in where)
+            args = [v for _, v in where]
         with closing(self._connect()) as conn:
-            rows = conn.execute("SELECT record FROM prompt_log").fetchall()
+            rows = conn.execute(sql, args).fetchall()
         prompt = completion = 0
         cost = 0.0
         for (raw,) in rows:

@@ -1,7 +1,7 @@
 import asyncio
 import hmac
 from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,7 @@ class AppDeps:
     settings: Settings | None = None
     promptlog: PromptLog | None = None
     seed_dir: Path | None = SEED_DIR
+    locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
 
 
 def make_model_for(settings: Settings):
