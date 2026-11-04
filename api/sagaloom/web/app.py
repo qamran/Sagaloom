@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
 from sagaloom.config import Settings
-from sagaloom.model_settings import ModelSettings
+from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
 from sagaloom.seed import ensure_first_run
 from sagaloom.store.threads import ThreadRegistry
@@ -104,6 +104,7 @@ def make_require_secret(secret: str):
 
 
 def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
+    validate_role_models(settings)
     app = FastAPI(title="Sagaloom", lifespan=_open_runtime)
     data = Path(settings.data_dir)
     deps = deps or AppDeps()
@@ -138,9 +139,12 @@ def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
 def _build_default_app() -> FastAPI:
     try:
         return create_app(Settings())
-    except ValidationError as exc:
-        missing = ", ".join(str(e["loc"][0]).upper() for e in exc.errors())
-        message = f"Sagaloom API is misconfigured; set in api/.env or the environment: {missing}"
+    except (ValidationError, ValueError) as exc:  # ValidationError is a ValueError: test it first
+        if isinstance(exc, ValidationError):
+            missing = ", ".join(str(e["loc"][0]).upper() for e in exc.errors())
+            message = f"Sagaloom API is misconfigured; set in api/.env or the environment: {missing}"
+        else:
+            message = f"Sagaloom API is misconfigured: {exc}"
 
         @asynccontextmanager
         async def fail(_app: FastAPI):

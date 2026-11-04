@@ -138,3 +138,26 @@ def test_model_for_tags_the_role_on_the_model(tmp_path):
     model_for = make_model_for(s, ModelSettings(tmp_path / "ms.json", s))
     assert model_for("judge").metadata["role"] == "judge"
     assert model_for("extractor").metadata["role"] == "extractor"
+
+
+def test_env_default_model_off_the_allowlist_fails_fast(tmp_path):
+    from sagaloom.model_settings import validate_role_models
+    from sagaloom.web.app import create_app
+
+    validate_role_models(make_settings(tmp_path))  # the built-in defaults are allowed
+    bad = make_settings(tmp_path, judge_model="foo/bar")
+    with pytest.raises(ValueError, match=r"allowed_models\.json: JUDGE_MODEL=foo/bar"):
+        validate_role_models(bad)
+    with pytest.raises(ValueError, match="JUDGE_MODEL=foo/bar"):
+        create_app(bad)
+
+
+async def test_default_app_reports_a_bad_env_model_at_startup(tmp_path, monkeypatch):
+    import sagaloom.web.app as app_module
+
+    # Never read the real .env files: replace the Settings() the default app builds.
+    monkeypatch.setattr(app_module, "Settings", lambda: make_settings(tmp_path, chat_model="foo/bar"))
+    app = app_module._build_default_app()
+    with pytest.raises(RuntimeError, match="misconfigured: .*CHAT_MODEL=foo/bar"):
+        async with app.router.lifespan_context(app):
+            pass

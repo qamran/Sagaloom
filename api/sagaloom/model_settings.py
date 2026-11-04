@@ -12,6 +12,33 @@ Role = Literal["agent", "judge", "extractor", "guard"]
 ROLES: tuple[str, ...] = get_args(Role)
 
 
+def default_models(settings: Settings) -> dict[str, str]:
+    """role -> model id from the environment (or the built-in default)."""
+    s = settings
+    return {
+        "agent": s.chat_model,
+        "judge": s.judge_model,
+        "extractor": s.extractor_model,
+        "guard": s.guard_model,
+    }
+
+
+_ENV_VAR = {"agent": "CHAT_MODEL", "judge": "JUDGE_MODEL", "extractor": "EXTRACTOR_MODEL", "guard": "GUARD_MODEL"}
+
+
+def validate_role_models(settings: Settings) -> None:
+    """Fail fast at startup when a default role model from the environment is not on the
+    allowlist, instead of failing at call time with a raw API error (R11.G10)."""
+    allowed = {m.id for m in settings.allowed_models}
+    defaults = default_models(settings)
+    bad = [f"{_ENV_VAR[role]}={model}" for role, model in defaults.items() if model not in allowed]
+    if bad:
+        raise ValueError(
+            f"model not in sagaloom/allowed_models.json: {', '.join(bad)}. "
+            "Pick a listed model id."
+        )
+
+
 class ModelSettings:
     def __init__(self, path: Path, settings: Settings):
         self.path = Path(path)
@@ -19,13 +46,7 @@ class ModelSettings:
         self._lock = threading.Lock()
 
     def _defaults(self) -> dict[str, str]:
-        s = self.settings
-        return {
-            "agent": s.chat_model,
-            "judge": s.judge_model,
-            "extractor": s.extractor_model,
-            "guard": s.guard_model,
-        }
+        return default_models(self.settings)
 
     def _allowed(self) -> set[str]:
         return {m.id for m in self.settings.allowed_models}
