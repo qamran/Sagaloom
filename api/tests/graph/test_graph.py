@@ -574,6 +574,34 @@ async def test_agent_adds_token_usage(store):
     assert (usage.prompt_tokens, usage.completion_tokens) == (200, 20)
 
 
+async def test_tool_drafts_facts_through_role_proxy_in_real_tool_node(store):
+    extractor = StubLLM(FactList(facts=[Fact(key="harbour", value="deep")]))
+    agent = ScriptedChat(script=iter([tc(
+        "create_or_update_entry",
+        {"action": "create", "title": "Ostra", "type": "place", "body": "A deep port."},
+    )]))
+    roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])), "extractor": extractor}
+    graph = build_graph(store=store, model_for=roles.__getitem__, checkpointer=InMemorySaver(), settings=S)
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    assert extractor.calls == 1
+    [p] = (await graph.aget_state(cfg)).values["pending_proposals"]
+    assert p.after.facts == [Fact(key="harbour", value="deep")]
+
+
+async def test_model_for_is_resolved_on_each_turn(store):
+    first = ScriptedChat(script=iter([AIMessage(content="one")]))
+    second = ScriptedChat(script=iter([AIMessage(content="two")]))
+    roles = {"agent": first, "judge": StubLLM(JudgeOutput(flags=[])), "extractor": StubLLM(FactList())}
+    graph = build_graph(store=store, model_for=lambda r: roles[r], checkpointer=InMemorySaver(), settings=S)
+    cfg = run_config("t1", W)
+    await run(graph, start("hi"), cfg)
+    roles["agent"] = second
+    await run(graph, start("again"), cfg)
+    assert len(first.seen) == 1 and len(second.seen) == 1
+    assert (await graph.aget_state(cfg)).values["messages"][-1].content == "two"
+
+
 def test_system_prompt_covers_rules():
     s = SYSTEM.lower()
     assert "entry id" in s or "entry ids" in s
