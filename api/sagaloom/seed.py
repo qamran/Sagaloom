@@ -15,10 +15,11 @@ def load_seed(
     """Upsert the seed entries (fixed IDs, so safe to repeat). Returns the entry count."""
     raw = json.loads((Path(seed_dir) / "entries.json").read_text(encoding="utf-8"))
     entries = [Entry(**{**r, "world_id": world_id}) for r in raw]
-    if worlds.get(world_id) is None:
-        worlds.create(VELMAR_NAME, world_id=world_id, is_demo=True)
     for e in entries:
         store.upsert_entry(e)
+    # The world is the "seed committed" marker: create it only after every upsert succeeded.
+    if worlds.get(world_id) is None:
+        worlds.create(VELMAR_NAME, world_id=world_id, is_demo=True)
     return len(entries)
 
 

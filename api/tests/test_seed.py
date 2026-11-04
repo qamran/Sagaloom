@@ -97,3 +97,46 @@ def test_scripted_proposals_reference_existing_ids(store, worlds):
     assert "Moons" in three["expect"]["retcon_keys"]
     sorn = next(p for p in proposals if p["name"] == "captain_sorn")
     assert sorn["expect"] == {"conflict_ids": [], "retcon_keys": []}
+
+
+def test_seed_references_point_at_existing_ids(store, worlds):
+    load_seed(store, worlds, SEED)
+    entries = store.list_entries("velmar")
+    ids = {e.id for e in entries}
+    for e in entries:
+        for link in e.links:
+            assert link.target_id in ids, (e.id, link)
+        for f in e.facts:
+            assert set(f.refs) <= ids, (e.id, f)
+            assert f.told_by is None or f.told_by in ids, (e.id, f)
+
+
+def test_seed_keeps_a_rumour_fact_and_hidden_secret(store, worlds):
+    load_seed(store, worlds, SEED)
+    by_id = {e.id: e for e in store.list_entries("velmar")}
+    vane = by_id["ent_0016"]
+    assert vane.status == "canon"
+    assert any(f.status == "rumour" for f in vane.facts)
+    mayor = by_id["ent_0003"]
+    assert any(f.status == "secret" for f in mayor.facts)
+    assert "Choir" not in mayor.body
+
+
+def test_failed_load_leaves_no_world_and_retry_succeeds(store, worlds):
+    real = store.upsert_entry
+    calls = {"n": 0}
+
+    def flaky(entry):
+        calls["n"] += 1
+        if calls["n"] == 5:
+            raise RuntimeError("embedding failed")
+        return real(entry)
+
+    store.upsert_entry = flaky
+    with pytest.raises(RuntimeError):
+        ensure_first_run(store, worlds, SEED)
+    assert worlds.list() == []
+    store.upsert_entry = real
+    world = ensure_first_run(store, worlds, SEED)
+    assert world.id == "velmar"
+    assert len(store.list_entries("velmar")) == 18

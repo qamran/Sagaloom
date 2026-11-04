@@ -81,7 +81,7 @@
     "id": "ent_0003",
     "title": "Mayor Elsbeth Varr",
     "type": "character",
-    "body": "Elsbeth Varr, aged fifty-four, has been mayor of Velmar for eleven years and chairs the Harbour Council. She is calm, careful and rarely seen on the quay after dark. In truth she sings with the Ashen Choir at every full Ister.",
+    "body": "Elsbeth Varr, aged fifty-four, has been mayor of Velmar for eleven years and chairs the Harbour Council. She is calm, careful and rarely seen on the quay after dark.",
     "status": "canon",
     "aliases": [
       "Elsbeth Varr",
@@ -160,7 +160,7 @@
     "id": "ent_0005",
     "title": "Founding of Velmar",
     "type": "event",
-    "body": "Ilsa Corran led the first settlers up the Grey River in the year 312 AF and raised the first lantern on the headland where Lantern Quay now stands. The date is carved on the lintel of the Tidehall. Ister, the red moon, was full on the night of the landing, and settlers took it as a good omen.",
+    "body": "Ilsa Corran led the first settlers down the Grey River to its mouth in the year 312 AF and raised the first lantern on the headland where Lantern Quay now stands. The date is carved on the lintel of the Tidehall. Ister, the red moon, was full on the night of the landing, and settlers took it as a good omen.",
     "status": "canon",
     "aliases": [
       "the Founding"
@@ -231,7 +231,7 @@
     "id": "ent_0007",
     "title": "Sky of Velmar",
     "type": "place",
-    "body": "The night sky over Velmar holds a single moon, Ister, and little else is visible through the fog. At the solstice Ister rises red over the Grey River. Evening sea fog rolls in on most nights, and the Ashen Choir says it thins when they sing. Sailors steer by the lanterns of Lantern Quay, not the stars.",
+    "body": "The night sky over Velmar holds a single moon, Ister, and nothing else shines in it. At the solstice Ister rises red over the Grey River. Evening sea fog rolls in on most nights, and the Ashen Choir says it thins when they sing. Sailors steer by the lanterns of Lantern Quay.",
     "status": "canon",
     "aliases": [],
     "facts": [
@@ -262,7 +262,7 @@
     "id": "ent_0008",
     "title": "The Grey River",
     "type": "place",
-    "body": "The Grey River runs forty leagues from the northern hills to the sea at Velmar. Its silt gives the harbour water its colour. Ilsa Corran piloted the first boats up it, and the Salt Guild still trades along it.",
+    "body": "The Grey River runs forty leagues from the inland hills to the sea at Velmar. Its silt gives the harbour water its colour. Ilsa Corran piloted the first boats down it, and the Salt Guild still trades along it.",
     "status": "canon",
     "aliases": [
       "the river"
@@ -498,10 +498,8 @@
     "title": "The Drowning of Warden Vane",
     "type": "event",
     "body": "Harbour-Warden Edric Vane was found drowned below the Cinder Steps in 331 AF. The Salt Guild whispers that the Ashen Choir pushed him in, but no witness has ever come forward.",
-    "status": "rumour",
-    "aliases": [
-      "Warden Vane"
-    ],
+    "status": "canon",
+    "aliases": [],
     "facts": [
       {
         "key": "Year",
