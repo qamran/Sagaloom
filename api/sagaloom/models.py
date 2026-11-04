@@ -68,3 +68,49 @@ class SearchHit(BaseModel):
     source: Source
     snippet: str
     score: float
+
+
+FlagKind = Literal["conflict", "retcon", "note"]
+
+
+class Flag(BaseModel):
+    kind: FlagKind
+    entry_id: str
+    title: str
+    fact_key: str | None = None
+    existing_fact: str | None = None
+    new_fact: str | None = None
+    existing_quote: str | None = None
+    new_quote: str | None = None
+    severity: Literal["hard", "possible", "note"] | None = None
+    explanation: str
+    suggested_fix: str | None = None
+
+
+class EntryRef(BaseModel):
+    id: str
+    title: str
+    type: EntryType
+
+
+class CheckResult(BaseModel):
+    proposal_id: str
+    verdict: Literal["none", "possible", "conflict", "failed"]
+    flags: list[Flag] = Field(default_factory=list)
+    dependents: list[EntryRef] = Field(default_factory=list)
+
+
+class Proposal(BaseModel):
+    proposal_id: str
+    action: Literal["create", "update", "delete"]
+    world_id: str
+    entry_id: str | None
+    before: Entry | None
+    after: EntryDraft | None
+
+
+class Decision(BaseModel):
+    proposal_id: str
+    action: Literal["approve", "edit", "reject", "save_as_myth"]
+    edited: EntryDraft | None = None
+    told_by: str | None = None

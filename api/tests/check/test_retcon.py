@@ -1,0 +1,40 @@
+from sagaloom.check.retcon import detect_retcons
+from sagaloom.models import Entry, EntryDraft, Fact
+
+
+def mk(facts, body="A moon."):
+    return Entry(id="ent_0001", world_id="w1", title="Ister", type="place", body=body, facts=facts)
+
+
+def draft(facts, body="A moon."):
+    return EntryDraft(title="Ister", type="place", body=body, facts=facts)
+
+
+def test_changed_canon_fact_is_retcon():
+    flags = detect_retcons(
+        mk([Fact(key="Moons", value="One (Ister)")]), draft([Fact(key="moons", value="Three")])
+    )
+    assert len(flags) == 1
+    f = flags[0]
+    assert (f.kind, f.entry_id, f.title, f.fact_key) == ("retcon", "ent_0001", "Ister", "Moons")
+    assert (f.existing_fact, f.new_fact, f.severity) == ("One (Ister)", "Three", None)
+    assert f.explanation == "Changes established canon: One (Ister) → Three"
+
+
+def test_removed_canon_fact_is_retcon():
+    flags = detect_retcons(mk([Fact(key="Moons", value="One")]), draft([]))
+    assert len(flags) == 1 and flags[0].new_fact is None
+
+
+def test_prose_only_edit_has_no_retcon():
+    facts = [Fact(key="Moons", value="One")]
+    assert detect_retcons(mk(facts), draft([Fact(key=" MOONS ", value=" one ")], body="New prose.")) == []
+
+
+def test_myth_fact_change_is_not_retcon():
+    assert detect_retcons(mk([Fact(key="Moons", value="One", status="myth")]), draft([Fact(key="Moons", value="Three")])) == []
+
+
+def test_secret_fact_change_is_retcon():
+    flags = detect_retcons(mk([Fact(key="Vault", value="Empty", status="secret")]), draft([Fact(key="Vault", value="Full", status="secret")]))
+    assert len(flags) == 1
