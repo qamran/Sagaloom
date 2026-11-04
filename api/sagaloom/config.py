@@ -1,12 +1,23 @@
 import json
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_DIR = Path(__file__).resolve().parent.parent
 # Later files override earlier ones: api/.env beats the project-root .env.
 _ENV_FILES = (str(_API_DIR.parent / ".env"), str(_API_DIR / ".env"))
+
+
+
+def load_env_files(paths: tuple[str, ...] = _ENV_FILES) -> None:
+    """Export the env files to `os.environ`, where libraries such as the LangSmith tracer read
+    their settings (R13.3). `api/.env` is loaded first and nothing overrides a variable that is
+    already set, so the real environment beats `api/.env`, which beats the root `.env`: the
+    same order `Settings` applies (Ruling R3)."""
+    for path in reversed(paths):
+        load_dotenv(path, override=False)
 
 
 ALLOWED_MODELS_FILE = Path(__file__).resolve().parent / "allowed_models.json"

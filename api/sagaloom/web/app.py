@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from sagaloom.config import Settings
+from sagaloom.config import Settings, load_env_files
 from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
 from sagaloom.seed import ensure_first_run
@@ -136,9 +136,24 @@ def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
     return app
 
 
+def _with_env_export(app: FastAPI) -> FastAPI:
+    """Export the env files at server startup, not at import: the unit tests import this module
+    and must not pick up the developer's real environment (for example LangSmith tracing)."""
+    runtime = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(a: FastAPI):
+        load_env_files()
+        async with runtime(a) as state:
+            yield state
+
+    app.router.lifespan_context = lifespan
+    return app
+
+
 def _build_default_app() -> FastAPI:
     try:
-        return create_app(Settings())
+        return _with_env_export(create_app(Settings()))
     except (ValidationError, ValueError) as exc:  # ValidationError is a ValueError: test it first
         if isinstance(exc, ValidationError):
             missing = ", ".join(str(e["loc"][0]).upper() for e in exc.errors())
