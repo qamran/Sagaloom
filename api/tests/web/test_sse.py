@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage
 from sagaloom.graph.build import run_config
 from sagaloom.web.sse import run_turn_events, sse_events
 
-from conftest import W, create_call
+from fakes import W, create_call
 
 
 async def test_partial_turn_visible_via_get_after_client_disconnect(make_env):

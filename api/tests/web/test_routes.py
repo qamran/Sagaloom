@@ -9,7 +9,7 @@ from sagaloom.seed import VELMAR_ID
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.app import AppDeps, SEED_DIR
 
-from conftest import KEY, W, create_call, endless, names, parse_sse, tc
+from fakes import KEY, W, create_call, endless, names, parse_sse, tc
 
 
 def approve(pid):
@@ -183,16 +183,15 @@ async def test_entries_scoped_by_world(make_env, store):
 
 async def test_worlds_create_and_list(make_env):
     env = make_env()
-    assert (await env.client.get("/api/worlds")).json() == []
+    assert [w["id"] for w in (await env.client.get("/api/worlds")).json()] == [W]
     r = await env.client.post("/api/worlds", json={"name": "Ostra Sea"})
     assert r.status_code == 200 and r.json()["id"] == "ostra-sea" and r.json()["name"] == "Ostra Sea"
-    assert [w["id"] for w in (await env.client.get("/api/worlds")).json()] == ["ostra-sea"]
+    assert [w["id"] for w in (await env.client.get("/api/worlds")).json()] == [W, "ostra-sea"]
     assert (await env.client.post("/api/worlds", json={"name": ""})).status_code == 422
 
 
-async def test_thread_for_unknown_world_is_rejected_when_worlds_exist(make_env):
+async def test_thread_for_unknown_world_is_rejected(make_env):
     env = make_env()
-    env.deps.worlds.create("Real", world_id="real")
     r = await env.client.post("/api/threads", json={"world_id": "ghost"})
     assert r.status_code == 404
 

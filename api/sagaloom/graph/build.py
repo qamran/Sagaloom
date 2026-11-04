@@ -4,13 +4,18 @@ START -> agent -> (tool calls) tools -> (unchecked/undecided proposal) check -> 
 approval_gate -> check (edit / save as myth) | commit;  commit -> agent;  agent -> END.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
+import aiosqlite
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
+from sagaloom import models as sagaloom_models
 from sagaloom.config import Settings
 from sagaloom.graph.nodes import (
     ModelFor,
@@ -54,7 +59,24 @@ def run_config(thread_id: str, world_id: str) -> dict:
     }
 
 
-def sqlite_checkpointer(settings: Settings):
-    """Async context manager for the restart-safe checkpointer (R18.7)."""
+def checkpoint_serde() -> JsonPlusSerializer:
+    """Strict msgpack (R15): only LangGraph's built-in safe types plus our own
+    `sagaloom.models` classes may be rebuilt from a checkpoint. The default is permissive (it
+    warns on every unknown type); an explicit `allowed_msgpack_modules` list is the supported
+    way to lock it down, so no env var is needed."""
+    return JsonPlusSerializer(
+        allowed_msgpack_modules=[
+            ("sagaloom.models", name)
+            for name in vars(sagaloom_models)
+            if isinstance(getattr(sagaloom_models, name), type)
+            and getattr(sagaloom_models, name).__module__ == sagaloom_models.__name__
+        ]
+    )
+
+
+@asynccontextmanager
+async def sqlite_checkpointer(settings: Settings) -> AsyncIterator[AsyncSqliteSaver]:
+    """The restart-safe checkpointer (R18.7), with the strict serde above."""
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
-    return AsyncSqliteSaver.from_conn_string(str(Path(settings.data_dir) / "checkpoints.sqlite"))
+    async with aiosqlite.connect(str(Path(settings.data_dir) / "checkpoints.sqlite")) as conn:
+        yield AsyncSqliteSaver(conn, serde=checkpoint_serde())
