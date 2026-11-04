@@ -142,3 +142,87 @@ export type SseEvent =
   | { event: "usage"; data: { turn: Usage; total: Usage } }
   | { event: "done"; data: Record<string, never> }
   | { event: "error"; data: { message: string; retryable: boolean } };
+
+// ---------- Studio and prompt capture (Task 12) ----------
+
+export interface FeatureCardData {
+  id: string;
+  title: string;
+  brief_ref: string;
+  req_ids: string[];
+  status: "live" | "configured" | "off";
+  detail: string;
+  try_href: string | null;
+}
+
+export interface ProviderModel {
+  id: string;
+  role: string;
+  price_in: number | null;
+  price_out: number | null;
+}
+
+export interface ProviderStatus {
+  name: string;
+  key_set: boolean;
+  role: string;
+  models: ProviderModel[];
+  notice: string | null;
+}
+
+export interface ModelUsage {
+  model: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+}
+
+export interface StudioData {
+  features: FeatureCardData[];
+  providers: ProviderStatus[];
+  usage: Usage & { by_model: ModelUsage[] };
+  mermaid: string;
+}
+
+export type ModelRole = "agent" | "judge" | "extractor" | "guard";
+
+export interface AllowedModel {
+  id: string;
+  price_in: number;
+  price_out: number;
+}
+
+export interface ModelsPayload {
+  mapping: Record<ModelRole, string>;
+  allowed: AllowedModel[];
+}
+
+export interface PromptMessage {
+  role: string;
+  content: unknown;
+  name?: string;
+  tool_calls?: { id: string | null; name: string; args: Record<string, unknown> }[];
+}
+
+export interface LlmResponse {
+  content: string;
+  tool_calls: { id: string | null; name: string; args: Record<string, unknown> }[];
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+  latency_ms: number;
+}
+
+/** One prompt-log record (api/sagaloom/promptlog.py PromptRecord). */
+export interface PromptRecord {
+  id: string;
+  thread_id: string;
+  run_id: string;
+  provider: string;
+  model: string;
+  params: Record<string, unknown>;
+  request: { messages: PromptMessage[]; tools: unknown[] };
+  response: LlmResponse | null;
+  started_at: string;
+}

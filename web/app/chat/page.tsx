@@ -28,7 +28,9 @@ export default function NewChat() {
       }
       try {
         threadId ??= (await createThread(worldId)).thread_id;
-        router.replace(`/chat/${encodeURIComponent(threadId)}`);
+        // A Studio "Try it" link carries ?prompt=; the thread page puts it in the composer.
+        const prompt = new URLSearchParams(window.location.search).get("prompt");
+        router.replace(`/chat/${encodeURIComponent(threadId)}${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ""}`);
       } catch {
         setFailed(true);
       }

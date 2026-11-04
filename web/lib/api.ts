@@ -1,4 +1,13 @@
-import type { Entry, ThreadState, ThreadSummary, World } from "./types";
+import type {
+  Entry,
+  ModelRole,
+  ModelsPayload,
+  PromptRecord,
+  StudioData,
+  ThreadState,
+  ThreadSummary,
+  World,
+} from "./types";
 
 // The browser only ever talks to the Next.js proxy, which injects the shared secret.
 const BASE = "/api/proxy";
@@ -34,3 +43,9 @@ export const createThread = (worldId: string) =>
   request<{ thread_id: string }>("/threads", post({ world_id: worldId }));
 export const getThread = (id: string) => request<ThreadState>(`/threads/${encodeURIComponent(id)}`);
 export const getPendingThreads = () => request<ThreadSummary[]>("/threads?pending=true");
+export const getStudio = () => request<StudioData>("/studio");
+export const getModels = () => request<ModelsPayload>("/settings/models");
+export const putModel = (role: ModelRole, model: string) =>
+  request<ModelsPayload>("/settings/models", { method: "PUT", body: JSON.stringify({ role, model }) });
+export const getLlmLog = (threadId: string) =>
+  request<PromptRecord[]>(`/threads/${encodeURIComponent(threadId)}/llm-log`);

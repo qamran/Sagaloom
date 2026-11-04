@@ -268,6 +268,7 @@ export function useAgentStream(threadId: string): AgentStream {
         busyRef.current = false;
         if (abortRef.current === ctrl) abortRef.current = null;
         void qc.invalidateQueries({ queryKey: ["thread", threadId] });
+        void qc.invalidateQueries({ queryKey: ["llm-log", threadId] });
         if (kind === "decision") void qc.invalidateQueries({ queryKey: ["entries"] });
       }
     },

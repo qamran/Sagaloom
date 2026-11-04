@@ -1,10 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { Composer } from "@/components/Composer";
-import { getEntries } from "@/lib/api";
+import { UnderTheHood } from "@/components/UnderTheHood";
+import { getEntries, getLlmLog } from "@/lib/api";
+import { buildTurnViews } from "@/lib/turns";
 import type { ChatMessage, PendingInterrupt } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
@@ -81,10 +83,12 @@ function Message({ m, done }: { m: ChatMessage; done: boolean }) {
   );
 }
 
-export function ChatThread({ threadId }: { threadId: string }) {
+export function ChatThread({ threadId, initialPrompt }: { threadId: string; initialPrompt?: string | null }) {
   const s = useAgentStream(threadId);
   const { world, setThreadId } = useWorld();
   const bottom = useRef<HTMLDivElement>(null);
+  const [hood, setHood] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
 
   // The header's cost pill follows this thread.
   useEffect(() => {
@@ -100,6 +104,15 @@ export function ChatThread({ threadId }: { threadId: string }) {
     enabled: !!worldId,
   });
 
+  // Turns from this page load come from the stream; earlier ones are rebuilt from the prompt log.
+  const { data: log } = useQuery({
+    queryKey: ["llm-log", threadId],
+    queryFn: () => getLlmLog(threadId),
+    enabled: hood && !s.streaming,
+  });
+  const turns = useMemo(() => buildTurnViews(s.turnEvents, log ?? []), [s.turnEvents, log]);
+  const shown = turns.find((t) => t.key === picked) ?? turns[turns.length - 1] ?? null;
+
   const last = s.messages[s.messages.length - 1];
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
@@ -112,7 +125,43 @@ export function ChatThread({ threadId }: { threadId: string }) {
   const thinking = s.streaming && (!last || last.role !== "assistant" || !!last.tool_calls);
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-wrap">
+    <main className="flex min-h-0 min-w-0 flex-[999_1_520px] flex-col">
+      <div className="flex items-center justify-end gap-2.5 px-4 pt-3 md:px-7">
+        {hood && turns.length > 1 && (
+          <>
+            <label htmlFor="hood-turn" className="sr-only">
+              Turn shown in Under the hood
+            </label>
+            <select
+              id="hood-turn"
+              value={shown?.key ?? ""}
+              onChange={(e) => setPicked(e.target.value)}
+              className="min-h-9 rounded-lg border border-border bg-panel-3 px-2 text-xs text-foreground"
+            >
+              {turns.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        {hood && shown && turns.length === 1 && <span className="text-xs text-muted-foreground">{shown.label} selected</span>}
+        <button
+          type="button"
+          aria-pressed={hood}
+          onClick={() => setHood(!hood)}
+          className={`flex min-h-9 items-center gap-2 rounded-lg border px-3 text-[13px] ${
+            hood ? "border-[#5B4785] bg-[#2A2340] text-myth" : "border-border-strong text-foreground"
+          }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M8 6l-6 6 6 6M16 6l6 6-6 6" />
+          </svg>
+          Under the hood
+        </button>
+      </div>
       <div
         role="log"
         aria-label="Conversation"
@@ -199,9 +248,22 @@ export function ChatThread({ threadId }: { threadId: string }) {
           onSend={(text) => void s.send(text)}
           disabled={!s.loaded || busy || !!pending}
           hint={pending ? PENDING_HINT : null}
+          prefill={initialPrompt}
           placeholder={`Ask about ${world?.name ?? "your world"}, add a fact, or brainstorm.`}
         />
       </div>
     </main>
+    {hood &&
+      (shown ? (
+        <UnderTheHood turn={shown} onClose={() => setHood(false)} />
+      ) : (
+        <aside aria-label="Under the hood" className="w-full border-t border-[#3A3355] bg-[#14181A] p-[18px] md:max-w-[600px] md:flex-[1_1_560px] md:border-t-0 md:border-l">
+          <h2 className="m-0 font-heading text-xl font-semibold">Under the hood</h2>
+          <p className="text-[13px] text-muted-foreground">
+            {s.loaded ? "Send a message to see the prompts behind each turn." : "Loading…"}
+          </p>
+        </aside>
+      ))}
+    </div>
   );
 }

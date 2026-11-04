@@ -8,14 +8,22 @@ export function Composer({
   disabled,
   hint,
   placeholder,
+  prefill,
 }: {
   onSend: (text: string) => void;
   disabled?: boolean;
   /** Shown under the input; replaces the default reassurance line. */
   hint?: string | null;
   placeholder?: string;
+  /** Text to put in the box once (a Studio "Try it" link); the author still has to send it. */
+  prefill?: string | null;
 }) {
   const [text, setText] = useState("");
+  const [applied, setApplied] = useState<string | null>(null);
+  if (prefill && prefill !== applied) {
+    setApplied(prefill);
+    setText(prefill);
+  }
 
   function submit(e?: FormEvent) {
     e?.preventDefault();
