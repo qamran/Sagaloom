@@ -1,0 +1,212 @@
+import json
+
+from langchain_core.messages import ToolMessage
+from langgraph.types import Command
+
+from sagaloom.check.contradiction import JudgeOutput
+from sagaloom.models import Entry, Fact
+from sagaloom.tools.canon_tools import make_tools
+from sagaloom.tools.facts import FactList
+
+W = "w1"
+
+
+class StubLLM:
+    def __init__(self, reply):
+        self.reply = reply
+        self.calls = 0
+        self.kwargs = None
+
+    def with_structured_output(self, schema, **kwargs):
+        self.kwargs = kwargs
+        return self
+
+    async def ainvoke(self, messages, config=None):
+        self.calls += 1
+        return self.reply
+
+
+def entry(id="ent_0001", title="Velmar", **kw):
+    return Entry(id=id, world_id=W, title=title, type="place", body="A city.", **kw)
+
+
+def tools_for(store, facts=None, judge=None):
+    extractor = StubLLM(FactList(facts=facts if facts is not None else [Fact(key="k", value="v")]))
+    judge = judge or StubLLM(JudgeOutput(flags=[]))
+    ts = {t.name: t for t in make_tools(store, extractor, judge)}
+    return ts, extractor, judge
+
+
+def call(tool, args, id="call_1"):
+    return tool.ainvoke({"type": "tool_call", "name": tool.name, "id": id, "args": args})
+
+
+def msg(cmd: Command) -> ToolMessage:
+    return cmd.update["messages"][0]
+
+
+async def test_search_canon_wraps_results_and_includes_ids(store):
+    store.upsert_entry(entry())
+    ts, *_ = tools_for(store)
+    out = await call(ts["search_canon"], {"query": "city", "world_id": W})
+    out = out.content if hasattr(out, "content") else out
+    assert out.startswith('<untrusted_data source="search_canon">')
+    hits = json.loads(out.split("\n", 1)[1].rsplit("\n", 1)[0])
+    assert hits["results"][0]["id"] == "ent_0001"
+    assert {"title", "type", "status", "source", "snippet", "score"} <= set(hits["results"][0])
+
+
+async def test_search_canon_empty_returns_reason(store):
+    ts, *_ = tools_for(store)
+    out = await ts["search_canon"].ainvoke({"query": "x", "world_id": W})
+    assert "no matching canon in this world" in out
+    assert '"results": []' in out
+
+
+async def test_search_canon_is_read_only(store):
+    store.upsert_entry(entry())
+    ts, *_ = tools_for(store)
+    for _ in range(20):
+        await ts["search_canon"].ainvoke({"query": "city", "world_id": W})
+    assert len(store.list_entries(W)) == 1
+
+
+async def test_create_returns_proposal_and_writes_nothing(store):
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W},
+        id="c9",
+    )
+    assert isinstance(cmd, Command)
+    [p] = cmd.update["pending_proposals"]
+    assert p.proposal_id.startswith("p_") and len(p.proposal_id) == 10
+    assert p.action == "create" and p.after.title == "Ostra" and p.before is None
+    assert p.after.facts[0].key == "k"
+    m = msg(cmd)
+    assert m.tool_call_id == "c9" and m.status != "error"
+    assert m.content == f"Proposal {p.proposal_id} (create Ostra) is awaiting the author's review."
+    assert store.list_entries(W) == []
+
+
+async def test_invalid_type_returns_error_naming_field(store):
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "create", "title": "X", "type": "spaceship", "body": "b", "world_id": W},
+    )
+    assert "pending_proposals" not in cmd.update
+    assert msg(cmd).status == "error" and "type" in msg(cmd).content
+
+
+async def test_update_requires_entry_id(store):
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"], {"action": "update", "body": "new", "world_id": W}
+    )
+    assert msg(cmd).status == "error" and "entry_id" in msg(cmd).content
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_9999", "body": "n", "world_id": W},
+    )
+    assert msg(cmd).status == "error"
+
+
+async def test_update_keeps_unspecified_fields_and_drafts_facts_on_body_change(store):
+    old = entry(aliases=["The City"], facts=[Fact(key="a", value="b")])
+    store.upsert_entry(old)
+    ts, ext, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W},
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert p.before.id == "ent_0001" and p.after.title == "Velmar"
+    assert p.after.aliases == ["The City"] and p.after.body == "Changed."
+    assert ext.calls == 1 and p.after.facts[0].key == "k"
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "status": "myth", "world_id": W},
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert ext.calls == 1 and p.after.facts[0].key == "a" and p.after.status == "myth"
+
+
+async def test_delete_has_no_after(store):
+    store.upsert_entry(entry())
+    ts, ext, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"], {"action": "delete", "entry_id": "ent_0001", "world_id": W}
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert p.action == "delete" and p.after is None and p.before.id == "ent_0001"
+    assert ext.calls == 0
+    assert len(store.list_entries(W)) == 1
+
+
+async def test_create_without_facts_calls_draft_facts(store):
+    ts, ext, _ = tools_for(store)
+    await call(
+        ts["create_or_update_entry"],
+        {"action": "create", "title": "A", "type": "rule", "body": "b", "world_id": W},
+    )
+    assert ext.calls == 1
+    await call(
+        ts["create_or_update_entry"],
+        {
+            "action": "create",
+            "title": "B",
+            "type": "rule",
+            "body": "b",
+            "facts": [{"key": "x", "value": "y"}],
+            "world_id": W,
+        },
+    )
+    assert ext.calls == 1
+
+
+async def test_create_with_duplicate_title_returns_error_suggesting_update(store):
+    store.upsert_entry(entry(aliases=["The City"]))
+    ts, *_ = tools_for(store)
+    for title in ("velmar", "the city"):
+        cmd = await call(
+            ts["create_or_update_entry"],
+            {"action": "create", "title": title, "type": "place", "body": "b", "world_id": W},
+        )
+        assert "pending_proposals" not in cmd.update
+        assert msg(cmd).status == "error" and "ent_0001" in msg(cmd).content
+        assert "update" in msg(cmd).content
+
+
+async def test_tool_failure_returns_error_not_exception(store):
+    ts, *_ = tools_for(store)
+
+    def boom(*a, **k):
+        raise RuntimeError("db down")
+
+    store.search = boom
+    store.find_by_name = boom
+    out = await ts["search_canon"].ainvoke({"query": "x", "world_id": W})
+    assert "error" in json.loads(out)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "create", "title": "A", "type": "rule", "body": "b", "world_id": W},
+    )
+    assert msg(cmd).status == "error"
+
+
+async def test_check_contradiction_summarises_and_never_writes(store):
+    store.upsert_entry(entry())
+    ts, _, judge = tools_for(store)
+    out = await ts["check_contradiction"].ainvoke({"proposed_text": "Rain is red.", "world_id": W})
+    assert isinstance(out, str) and "none" in out
+    assert judge.calls == 1 or judge.calls == 0
+    assert len(store.list_entries(W)) == 1
+
+
+async def test_injected_args_hidden_from_llm_schema(store):
+    ts, *_ = tools_for(store)
+    for t in ts.values():
+        props = t.tool_call_schema.model_json_schema()["properties"]
+        assert "world_id" not in props and "tool_call_id" not in props
+        assert t.description
