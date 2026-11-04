@@ -10,7 +10,7 @@ def make_chat_model(
         model=model or settings.chat_model,
         temperature=temperature,
         base_url=settings.openrouter_base_url,
-        api_key=settings.openrouter_api_key,
+        api_key=settings.openrouter_api_key.get_secret_value(),
         max_retries=3,
         timeout=60,
         stream_usage=True,
@@ -25,6 +25,6 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         model=settings.embed_model,
         base_url=settings.openrouter_base_url,
-        api_key=settings.openrouter_api_key,
+        api_key=settings.openrouter_api_key.get_secret_value(),
         check_embedding_ctx_length=False,
     )

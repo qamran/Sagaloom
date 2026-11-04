@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_DIR = Path(__file__).resolve().parent.parent
@@ -10,7 +11,7 @@ _ENV_FILES = (str(_API_DIR.parent / ".env"), str(_API_DIR / ".env"))
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILES, extra="ignore")
 
-    openrouter_api_key: str
+    openrouter_api_key: SecretStr
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     gemini_api_key: str | None = None
     chat_model: str = "openai/gpt-6-luna"
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
     guard_model: str = "openai/gpt-6-luna"
     provider_order: list[str] = ["openai"]
     embed_model: str = "openai/text-embedding-3-small"
-    api_shared_secret: str
+    api_shared_secret: SecretStr
     web_origin: str = "http://localhost:3000"
     data_dir: Path = Path("data")
     price_in_per_mtok: float = 0.10

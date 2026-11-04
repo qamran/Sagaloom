@@ -49,3 +49,9 @@ async def test_cors_allows_only_web_origin(client):
     assert "access-control-allow-origin" not in bad.headers
     good = await client.options("/api/worlds", headers={**headers, "Origin": ORIGIN})
     assert good.headers["access-control-allow-origin"] == ORIGIN
+
+
+def test_settings_secrets_do_not_leak_in_repr():
+    s = Settings(_env_file=None, openrouter_api_key="sk-LEAK-1", api_shared_secret="shh-LEAK-2")
+    assert "LEAK" not in repr(s) and "LEAK" not in str(s)
+    assert s.openrouter_api_key.get_secret_value() == "sk-LEAK-1"

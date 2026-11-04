@@ -40,7 +40,7 @@ def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
         return {"status": "ok"}
 
     protected = APIRouter(
-        prefix="/api", dependencies=[Depends(make_require_secret(settings.api_shared_secret))]
+        prefix="/api", dependencies=[Depends(make_require_secret(settings.api_shared_secret.get_secret_value()))]
     )
 
     @protected.get("/worlds")
