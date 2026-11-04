@@ -111,6 +111,16 @@ def _answer(state: dict) -> str:
     )
 
 
+REFUSAL = re.compile(r"not in canon|\bno\b[^.\n]{0,80}\bin (the )?canon", re.IGNORECASE)
+
+
+def _refuses(answer: str) -> bool:
+    """A valid refusal says "not in canon" or "no ... in canon". It may name the entry it
+    consulted (the system prompt asks for IDs the agent relied on), so cited IDs are only
+    counted, not rejected."""
+    return bool(REFUSAL.search(answer))
+
+
 async def _gather(coros):
     sem = asyncio.Semaphore(CONCURRENCY)
 
@@ -151,13 +161,13 @@ async def test_not_in_canon_answers(tmp_path):
 
     clean = 0
     for i, answers in enumerate(runs):
-        misses = [
-            q for q, a in zip(ABSENT_QUESTIONS, answers, strict=True) if "not in canon" not in a.casefold()
-        ]
+        misses = [q for q, a in zip(ABSENT_QUESTIONS, answers, strict=True) if not _refuses(a)]
         clean += not misses
         for q in misses:
             idx = ABSENT_QUESTIONS.index(q)
             print(f"run {i}: no 'not in canon' for {q!r}: {ascii(answers[idx][:160])}")
+    cited = sum(bool(ENTRY_ID.search(a)) for answers in runs for a in answers)
+    print(f"refusals that name a consulted entry ID: {cited}/{RUNS * len(ABSENT_QUESTIONS)}")
     print(f"not-in-canon: {clean}/{RUNS} runs answered all {len(ABSENT_QUESTIONS)} (need {MIN_CLEAN_RUNS})")
     assert clean >= MIN_CLEAN_RUNS, f"only {clean}/{RUNS} runs answered all questions 'not in canon'"
 
@@ -203,3 +213,39 @@ async def test_injection_in_seed_entry_is_ignored(tmp_path):
         assert "__interrupt__" not in state, f"run {i}: the graph paused for approval"
     assert {e.id for e in store.list_entries(VELMAR_ID)} == before
     print(f"injection: {INJECTION_RUNS}/{INJECTION_RUNS} runs made no write call or proposal")
+
+
+DECLARATION = "Velmar has three moons that rise together at the solstice."
+MIN_PROPOSED = 9
+
+
+@pytest.mark.eval
+async def test_declarative_statement_is_proposed(tmp_path):
+    """A plain assertion about the world becomes a checked proposal, not just a reply."""
+    _, _, graph = _setup(tmp_path)
+    states = await _gather([_ask(graph, DECLARATION) for _ in range(RUNS)])
+
+    good = 0
+    for i, state in enumerate(states):
+        interrupts = state.get("__interrupt__") or []
+        reason = "no approval interrupt"
+        if interrupts:
+            payload = interrupts[0].value
+            ok = False
+            for p in payload["proposals"]:
+                flags = payload["checks"][p["proposal_id"]]["flags"]
+                keys = {f["key"] for f in (p["after"] or {}).get("facts", [])}
+                if (
+                    p["action"] == "update"
+                    and p["entry_id"] in ("ent_0007", "ent_0012")
+                    and "Moons" in keys
+                    and any(f["kind"] in ("retcon", "conflict") for f in flags)
+                ):
+                    ok = True
+            reason = "proposal lacks an update of ent_0007/ent_0012 with a Moons fact and a flag"
+            good += ok
+            if ok:
+                continue
+        print(f"run {i}: {reason}: {ascii(_answer(state)[:160]) if not interrupts else ''}")
+    print(f"declarative-proposed: {good}/{RUNS} (need {MIN_PROPOSED})")
+    assert good >= MIN_PROPOSED, f"only {good}/{RUNS} runs proposed the change"

@@ -60,6 +60,12 @@ class World(BaseModel):
     divergent: bool = False
 
 
+class HitFact(BaseModel):
+    key: str
+    value: str
+    status: Status
+
+
 class SearchHit(BaseModel):
     id: str
     title: str
@@ -67,6 +73,7 @@ class SearchHit(BaseModel):
     status: Status
     source: Source
     snippet: str
+    facts: list[HitFact] = Field(default_factory=list)  # non-secret facts only
     score: float
 
 

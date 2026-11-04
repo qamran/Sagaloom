@@ -6,10 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
 const scripted: { name: string; draft: { body: string } }[] = JSON.parse(fs.readFileSync(SEED, "utf-8"));
 const SORN_TEXT = scripted.find((s) => s.name === "captain_sorn")!.draft.body;
-// A bare statement is answered rather than proposed, and the agent picks its own fact keys, so the
-// demo asks for the change and names the fact (see docs/review-notes.md, error scenarios).
-const THREE_MOONS =
-  "Update the Sky of Velmar entry and set its fact Moons to Three: Velmar has three moons that rise together at the solstice.";
+const THREE_MOONS = "Velmar has three moons that rise together at the solstice.";
 
 const card = (page: Page, title: string) => page.getByRole("region", { name: `Review proposal: ${title}` });
 const log = (page: Page) => page.getByRole("log", { name: "Conversation" });

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import chromadb
 from langchain_core.embeddings import Embeddings
 
-from sagaloom.models import Entry, SearchHit
+from sagaloom.models import Entry, HitFact, SearchHit
 
 _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
 MAX_K = 10
@@ -123,6 +123,14 @@ class CanonStore:
                     status=e.status,
                     source=e.source,
                     snippet=e.body[:200],
+                    # Secret facts (or every fact of a secret entry) never reach the agent.
+                    facts=[]
+                    if e.status == "secret"
+                    else [
+                        HitFact(key=f.key, value=f.value, status=f.status)
+                        for f in e.facts
+                        if f.status != "secret"
+                    ],
                     score=1 - dist,
                 )
             )

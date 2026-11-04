@@ -106,3 +106,29 @@ def test_delete_entry(store):
     store.upsert_entry(mk())
     store.delete_entry("w1", "ent_0001")
     assert store.get_entry("w1", "ent_0001") is None
+
+
+def test_search_hits_carry_non_secret_facts_only(store):
+    store.upsert_entry(
+        mk(
+            facts=[
+                Fact(key="Colour", value="Red"),
+                Fact(key="Moons", value="Three", status="myth"),
+                Fact(key="Whispered", value="Heard at the dock", status="rumour"),
+                Fact(key="Hidden", value="Buried under the quay", status="secret"),
+            ]
+        )
+    )
+    (hit,) = store.search("w1", "Ister")
+    assert [(f.key, f.value, f.status) for f in hit.facts] == [
+        ("Colour", "Red", "canon"),
+        ("Moons", "Three", "myth"),
+        ("Whispered", "Heard at the dock", "rumour"),
+    ]
+    assert "Buried" not in hit.model_dump_json()
+
+
+def test_secret_entry_hit_has_no_facts(store):
+    store.upsert_entry(mk(status="secret", facts=[Fact(key="Where", value="Under the quay")]))
+    (hit,) = store.search("w1", "Ister")
+    assert hit.facts == []

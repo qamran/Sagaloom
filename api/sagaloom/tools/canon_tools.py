@@ -49,7 +49,11 @@ class CreateOrUpdateArgs(BaseModel):
     )
     aliases: list[str] | None = Field(default=None, description="Alternative names.")
     facts: list[Fact] | None = Field(
-        default=None, description="Key/value facts. Omit to have them drafted from the body."
+        default=None, description=(
+            "Key/value facts. Omit to have them drafted from the body. On update this REPLACES the "
+            "whole list: pass every existing fact, keep existing keys exactly as they are, and "
+            "change only the values the author changed."
+        )
     )
     world_id: _WorldId
     tool_call_id: _CallId
