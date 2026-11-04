@@ -2,10 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createThread } from "@/lib/api";
+import { createThread, getPendingThreads } from "@/lib/api";
 import { useWorld } from "@/lib/world";
 
-/** Starts a thread for the active world, then moves to /chat/[threadId] (R18.6). */
+/**
+ * Resumes the active world's thread that waits on an approval, so a pending card is never
+ * orphaned; otherwise starts a new thread. Then moves to /chat/[threadId] (R5.5, R18.6).
+ */
 export default function NewChat() {
   const { world, isLoading, error: worldError } = useWorld();
   const router = useRouter();
@@ -15,10 +18,21 @@ export default function NewChat() {
   useEffect(() => {
     if (!world || started.current === world.id) return;
     started.current = world.id;
-    createThread(world.id).then(
-      ({ thread_id }) => router.replace(`/chat/${encodeURIComponent(thread_id)}`),
-      () => setFailed(true),
-    );
+    const worldId = world.id;
+    (async () => {
+      let threadId: string | null = null;
+      try {
+        threadId = (await getPendingThreads()).find((t) => t.world_id === worldId && t.pending > 0)?.thread_id ?? null;
+      } catch {
+        /* lookup failed: start a new thread instead */
+      }
+      try {
+        threadId ??= (await createThread(worldId)).thread_id;
+        router.replace(`/chat/${encodeURIComponent(threadId)}`);
+      } catch {
+        setFailed(true);
+      }
+    })();
   }, [world, router]);
 
   return (

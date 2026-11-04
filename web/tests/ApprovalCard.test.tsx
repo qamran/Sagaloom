@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ApprovalCard } from "@/components/ApprovalCard";
+import { ApprovalCard, CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
 import type { CheckResult, Entry, Fact, Flag, Proposal } from "@/lib/types";
 
 const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fact => ({
@@ -58,9 +58,21 @@ const check = (verdict: CheckResult["verdict"], flags: Flag[]): CheckResult => (
   proposal_id: "p_1", verdict, flags, dependents: [],
 });
 
+// A loaded, non-secret Ister: cited values may be shown.
+const ister = {
+  ...before, id: "ent_0012", title: "Ister", type: "place", facts: [fact("Moons", "One")],
+} as Entry;
+
 describe("ApprovalCard", () => {
   it("ApprovalCard shows Conflict, Retcon and Note badges with entry ids", () => {
-    render(<ApprovalCard proposal={update} check={check("conflict", [conflict, retcon, note])} onDecide={vi.fn()} />);
+    render(
+      <ApprovalCard
+        proposal={update}
+        check={check("conflict", [conflict, retcon, note])}
+        canon={[ister]}
+        onDecide={vi.fn()}
+      />,
+    );
     expect(screen.getByText("Commit to canon?")).toBeInTheDocument();
     const badges = screen.getByRole("list", { name: "Check result" });
     expect(within(badges).getByText("Conflict")).toBeInTheDocument();
@@ -198,14 +210,12 @@ describe("ApprovalCard", () => {
   });
 
   it("hides a cited secret canon fact in the table until Show", async () => {
-    const ister = {
-      ...before, id: "ent_0012", title: "Ister", facts: [fact("Moons", "One", "secret")],
-    } as Entry;
+    const secretIster = { ...ister, facts: [fact("Moons", "One", "secret")] } as Entry;
     render(
       <ApprovalCard
         proposal={update}
         check={check("conflict", [conflict])}
-        canon={[ister]}
+        canon={[secretIster]}
         onDecide={vi.fn()}
       />,
     );
@@ -220,5 +230,44 @@ describe("ApprovalCard", () => {
     for (const name of ["Save as myth", "Edit", "Approve anyway", "Reject"]) {
       expect(screen.getByRole("button", { name })).toHaveClass("min-h-11");
     }
+  });
+
+  it("fails closed while canon is not loaded: cross-entry values, quotes and titles stay hidden", async () => {
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict, note])} onDecide={vi.fn()} />);
+    const table = screen.getByRole("table");
+    expect(within(table).queryByText(/^One/)).toBeNull();
+    expect(screen.queryByText("Ister")).toBeNull();
+    expect(screen.queryByText(/the only light in the night sky/)).toBeNull();
+    expect(screen.getAllByText("hidden secret").length).toBeGreaterThanOrEqual(3);
+    // IDs are still cited (R4.3), and Show reveals the value.
+    expect(within(table).getByText("ent_0012")).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole("button", { name: /show secret fact/i }));
+    expect(within(table).getByText(/^One/)).toBeInTheDocument();
+  });
+
+  it("masks a prose quote from an entry that holds a secret fact", async () => {
+    const withSecret = { ...ister, facts: [fact("Moons", "One"), fact("Truth", "A lantern", "secret")] } as Entry;
+    render(<ApprovalCard proposal={update} check={check("possible", [note])} canon={[withSecret]} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/the only light in the night sky/)).toBeNull();
+    expect(screen.getByText("Ister")).toBeInTheDocument();
+    const quote = screen.getByText(/In canon:/).closest("blockquote") as HTMLElement;
+    await userEvent.click(within(quote).getByRole("button", { name: /show secret fact/i }));
+    expect(screen.getByText(/the only light in the night sky/)).toBeInTheDocument();
+  });
+
+  it("shows a failed update check's notice once, with Approve anyway kept secondary", () => {
+    const notice = flag({
+      kind: "note", entry_id: "ent_0007", title: "Sky of Velmar", severity: "note",
+      explanation: "The check could not run. Review this change carefully before approving it.",
+    });
+    render(<ApprovalCard proposal={update} check={check("failed", [retcon, notice])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.getByText(CHECK_FAILED_TEXT)).toBeInTheDocument();
+    expect(screen.queryByText(/The check could not run/)).toBeNull();
+    expect(within(screen.getByRole("list", { name: "Check result" })).queryByText("Note")).toBeNull();
+    // Retcon flags still show on a failed check.
+    expect(within(screen.getByRole("table")).getByText("Moons")).toBeInTheDocument();
+    const approve = screen.getByRole("button", { name: "Approve anyway" });
+    expect(approve).not.toHaveClass("bg-accent");
+    expect(approve).toHaveClass("border-border-strong");
   });
 });

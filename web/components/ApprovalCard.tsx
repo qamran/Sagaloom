@@ -65,7 +65,19 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const typeOf = (id: string): EntryType | undefined =>
     byId.get(id)?.type ?? check.dependents.find((d) => d.id === id)?.type ??
     (id && id === proposal.entry_id ? (proposal.after?.type ?? proposal.before?.type) : undefined);
-  const citeSecret = (id: string) => id !== proposal.entry_id && byId.get(id)?.status === "secret";
+  // Fail closed: until this world's entries have loaded, any other entry cited by a flag may be
+  // secret, so its title, value and quotes stay hidden behind Show (R12.12).
+  const canonLoaded = canon !== undefined;
+  const unknown = (id: string) => !!id && id !== proposal.entry_id && !canonLoaded;
+  const citeSecret = (id: string) =>
+    unknown(id) || (id !== proposal.entry_id && byId.get(id)?.status === "secret");
+  const existingSecret = (f: Flag) => unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
+  // A quote can come from a secret fact's text, so mask it if the entry holds any secret.
+  const quoteSecret = (id: string) => {
+    if (unknown(id)) return true;
+    const e = byId.get(id);
+    return !!e && (e.status === "secret" || e.facts.some((x) => x.status === "secret"));
+  };
 
   const failed = check.verdict === "failed";
   const flags = check.flags;
@@ -77,14 +89,16 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const canMyth = proposal.after !== null && !failed && (conflict || retcon);
   const approveLabel = conflict || retcon || failed ? "Approve anyway" : "Approve";
 
-  // On a failed check the notice flag (entry_id "") is not a citation.
-  const shown = failed ? flags.filter((f) => f.entry_id) : flags;
+  // On a failed check the notice flag (no fact, no quotes) repeats the warning above: drop it.
+  const shown = failed
+    ? flags.filter((f) => !(f.kind === "note" && !f.fact_key && !f.existing_quote && !f.new_quote))
+    : flags;
   const rows: FactTableRow[] = shown
     .filter((f) => f.fact_key)
     .map((flag) => ({
       flag,
       type: typeOf(flag.entry_id),
-      existingSecret: isSecretFact(byId.get(flag.entry_id), flag.fact_key, flag.existing_fact),
+      existingSecret: existingSecret(flag),
       proposedSecret: isSecretFact(proposal.after, flag.fact_key, flag.new_fact),
       citeSecret: citeSecret(flag.entry_id),
     }));
@@ -151,7 +165,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
             {f.existing_quote && (
               <blockquote className="m-0 border-l-2 border-border-strong pl-3 font-heading text-[15px]">
                 In canon: “
-                <SecretValue value={f.existing_quote} secret={citeSecret(f.entry_id) || byId.get(f.entry_id)?.status === "secret"} />”
+                <SecretValue value={f.existing_quote} secret={quoteSecret(f.entry_id)} />”
               </blockquote>
             )}
             {f.new_quote && (
@@ -257,7 +271,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
                 type="button"
                 disabled={disabled}
                 onClick={() => decide("approve")}
-                className={canMyth ? BTN_SECONDARY : BTN_PRIMARY}
+                className={canMyth || failed ? BTN_SECONDARY : BTN_PRIMARY}
               >
                 {approveLabel}
               </button>

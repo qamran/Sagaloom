@@ -7,10 +7,27 @@ import type { EntryType, Flag } from "@/lib/types";
 
 /** An entry cited by a flag: a chip when its type is known, then its ID (R4.3). */
 export function Cite({ id, title, type, secret }: { id: string; title: string; type?: EntryType; secret?: boolean }) {
+  const [shown, setShown] = useState(false);
   if (!id) return null;
   const href = `/canon/${encodeURIComponent(id)}`;
   let chip: ReactNode;
-  if (secret) chip = <span className="text-muted-foreground">Secret entry</span>;
+  if (secret && !shown)
+    chip = (
+      <span className="inline-flex items-center gap-2">
+        <span className="text-muted-foreground">
+          <span aria-hidden="true">••••••</span>
+          <span className="sr-only">hidden secret</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setShown(true)}
+          aria-label="Show secret entry"
+          className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
+        >
+          Show
+        </button>
+      </span>
+    );
   else if (type) chip = <EntityChip type={type} name={title} href={href} />;
   else
     chip = (

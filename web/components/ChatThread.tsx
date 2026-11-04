@@ -96,7 +96,8 @@ export function ChatThread({ threadId }: { threadId: string }) {
   const { data: canon } = useQuery({
     queryKey: ["entries", worldId],
     queryFn: () => getEntries(worldId as string),
-    enabled: !!worldId && !!s.pending,
+    // Loaded up front so cited secrets can be identified; the card fails closed until then.
+    enabled: !!worldId,
   });
 
   const last = s.messages[s.messages.length - 1];
