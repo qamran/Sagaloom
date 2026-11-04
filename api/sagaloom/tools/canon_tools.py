@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sagaloom.check.contradiction import check_proposal
 from sagaloom.models import EntryDraft, EntryType, Fact, Proposal, Status
 from sagaloom.security import wrap_untrusted
+from sagaloom.store.canon import norm
 from sagaloom.tools.facts import draft_facts
 
 log = logging.getLogger(__name__)
@@ -77,6 +78,15 @@ def _json(obj: Any) -> str:
 def _bad_fields(e: ValidationError) -> str:
     bad = sorted({str(x["loc"][0]) for x in e.errors() if x["loc"]})
     return f"Invalid fields: {', '.join(bad)}. {e.errors()[0]['msg']}"
+
+
+def _keep_secret_facts(existing: list[Fact], proposed: list[Fact]) -> list[Fact]:
+    """The agent never sees secret facts, so an update that omits one cannot mean to delete it:
+    carry over every existing secret fact whose key the proposal does not mention. A proposed
+    fact with the same key replaces it."""
+    keys = {norm(f.key) for f in proposed}
+    kept = [f for f in existing if f.status == "secret" and norm(f.key) not in keys]
+    return [*proposed, *kept]
 
 
 def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) -> list[BaseTool]:
@@ -166,6 +176,7 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
                     after.facts = (
                         await draft_facts(after.title, after.body, extractor_llm) or before.facts
                     )
+                after.facts = _keep_secret_facts(before.facts, after.facts)
 
             proposal = Proposal(
                 proposal_id="p_" + uuid.uuid4().hex[:8],

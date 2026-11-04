@@ -247,3 +247,73 @@ async def test_check_contradiction_failure_returns_error_not_exception(store, mo
     monkeypatch.setattr("sagaloom.tools.canon_tools.check_proposal", boom)
     out = await ts["check_contradiction"].ainvoke({"proposed_text": "x", "world_id": W})
     assert "error" in json.loads(out)
+
+
+SECRET = "buried under the quay"
+
+
+def _with_secret(store):
+    store.upsert_entry(
+        entry(facts=[Fact(key="a", value="b"), Fact(key="Hidden", value=SECRET, status="secret")])
+    )
+
+
+async def test_update_omitting_a_secret_fact_keeps_it_through_commit(store):
+    from sagaloom.graph.nodes import _apply
+
+    _with_secret(store)
+    ts, _, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {
+            "action": "update",
+            "entry_id": "ent_0001",
+            "facts": [{"key": "a", "value": "changed"}],
+            "world_id": W,
+        },
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert {(f.key, f.value, f.status) for f in p.after.facts} == {
+        ("a", "changed", "canon"),
+        ("Hidden", SECRET, "secret"),
+    }
+    _apply(store, p)
+    saved = store.get_entry(W, "ent_0001")
+    assert any(f.key == "Hidden" and f.value == SECRET and f.status == "secret" for f in saved.facts)
+
+
+async def test_update_result_to_the_agent_contains_no_secret_value(store):
+    _with_secret(store)
+    ts, _, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "facts": [{"key": "a", "value": "c"}], "world_id": W},
+    )
+    assert SECRET not in json.dumps([m.content for m in cmd.update["messages"]])
+
+
+async def test_explicit_same_key_fact_replaces_the_secret(store):
+    _with_secret(store)
+    ts, _, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {
+            "action": "update",
+            "entry_id": "ent_0001",
+            "facts": [{"key": "hidden", "value": "now public"}],
+            "world_id": W,
+        },
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert [(f.key, f.value, f.status) for f in p.after.facts] == [("hidden", "now public", "canon")]
+
+
+async def test_redrafted_facts_also_keep_secrets(store):
+    _with_secret(store)
+    ts, _, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W},
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert any(f.status == "secret" and f.value == SECRET for f in p.after.facts)
