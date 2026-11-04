@@ -437,3 +437,53 @@ async def test_retrieval_error_fails_closed(store, monkeypatch):
     judge = StubJudge()
     res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
     assert res.verdict == "failed" and judge.calls == []
+
+
+def _sdk_invalid_reply_errors():
+    import openai
+    from langchain_openai.chat_models.base import OpenAIRefusalError
+
+    return [
+        ValueError("Structured Output response does not have a 'parsed' field"),
+        OpenAIRefusalError("I can't help with that"),
+        openai.LengthFinishReasonError.__new__(openai.LengthFinishReasonError),
+        openai.ContentFilterFinishReasonError(),
+    ]
+
+
+async def test_bare_value_error_twice_retries_then_fails_closed(store):
+    ister(store)
+    judge = StubJudge(ValueError("no parsed field"), ValueError("no parsed field"))
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    assert len(judge.calls) == 2
+    assert res.verdict == "failed"
+
+
+@pytest.mark.parametrize("err", _sdk_invalid_reply_errors(), ids=lambda e: type(e).__name__)
+async def test_sdk_invalid_reply_errors_are_retried(store, err):
+    ister(store)
+    judge = StubJudge(err, JudgeOutput(flags=[jflag("ent_0001")]))
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    assert len(judge.calls) == 2 and res.verdict == "conflict"
+
+
+def test_judge_prompt_contains_no_seed_answers():
+    seed = json.loads((SEED / "entries.json").read_text(encoding="utf-8"))
+    terms = set()
+    for e in seed:
+        terms.add(e["id"])
+        terms.add(e["title"])
+        terms.update(e["aliases"])
+        for f in e["facts"]:
+            terms.update([f["key"], f["value"]])
+    scripted = json.loads((SEED / "scripted_proposals.json").read_text(encoding="utf-8"))
+    for sp in scripted:
+        terms.add(sp["draft"]["title"])
+        for f in sp["draft"]["facts"]:
+            terms.update([f["key"], f["value"]])
+    text = JUDGE_SYSTEM.casefold()
+    # very short/generic words (e.g. "Red", "Age") would match ordinary English
+    leaked = sorted(t for t in terms if len(t) > 4 and t.casefold() in text)
+    assert leaked == []
+    for word in ("ister", "velmar", "moons", "choir"):
+        assert word not in text

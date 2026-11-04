@@ -50,6 +50,34 @@ class _JudgeInvalid(Exception):
     pass
 
 
+def _invalid_reply_errors() -> tuple[type[BaseException], ...]:
+    """Exceptions meaning "the model replied, but not with a usable JudgeOutput".
+
+    ChatOpenAI's json_schema parser raises a bare ValueError (no `parsed` field) or
+    OpenAIRefusalError; the openai SDK raises the finish-reason errors. Imported
+    defensively so a different SDK version can't break this module.
+    """
+    errors: list[type[BaseException]] = [OutputParserException, ValidationError, ValueError]
+    try:
+        from langchain_openai.chat_models.base import OpenAIRefusalError
+
+        errors.append(OpenAIRefusalError)
+    except ImportError:  # pragma: no cover
+        pass
+    try:
+        import openai
+
+        for name in ("LengthFinishReasonError", "ContentFilterFinishReasonError"):
+            if isinstance(cls := getattr(openai, name, None), type):
+                errors.append(cls)
+    except ImportError:  # pragma: no cover
+        pass
+    return tuple(errors)
+
+
+_INVALID_REPLY = _invalid_reply_errors()
+
+
 # ---------- retrieval ----------
 
 
@@ -148,7 +176,7 @@ async def _ask_judge(judge: BaseChatModel, messages: list) -> JudgeOutput:
             if isinstance(out, JudgeOutput):
                 return out
             log.warning("Judge returned no structured output (attempt %d)", attempt)
-        except (OutputParserException, ValidationError) as exc:
+        except _INVALID_REPLY as exc:
             log.warning("Judge reply invalid (attempt %d): %s", attempt, type(exc).__name__)
     raise _JudgeInvalid
 
