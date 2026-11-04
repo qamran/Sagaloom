@@ -1,0 +1,581 @@
+"""Graph tests (R18, R5, R11.2.5-R11.2.8, R10.1, R15.1). No real LLM calls."""
+
+import itertools
+import uuid
+from typing import Any
+
+import pytest
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
+from pydantic import Field
+
+from sagaloom.check.contradiction import JudgeFlag, JudgeOutput
+from sagaloom.config import Settings
+from sagaloom.graph.build import build_graph, run_config
+from sagaloom.graph.nodes import make_commit_node
+from sagaloom.graph.prompts import SYSTEM
+from sagaloom.graph.state import merge_dict, merge_proposals
+from sagaloom.models import CheckResult, Decision, Entry, EntryDraft, Fact, Proposal, Usage
+from sagaloom.tools.facts import FactList
+
+W = "w1"
+S = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s")
+
+
+# ---------- stubs ----------
+
+
+class ScriptedChat(BaseChatModel):
+    """Fake agent model: replies from a script, records every prompt it sees."""
+
+    script: Any
+    seen: list = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted"
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.seen.append(list(messages))
+        step = next(self.script, None)
+        if step is None:
+            msg = AIMessage(content="(nothing more)")
+        elif callable(step):
+            msg = step()
+        else:
+            msg = step
+        return ChatResult(generations=[ChatGeneration(message=msg)])
+
+
+class StubLLM:
+    """Structured-output stub for the judge and extractor."""
+
+    def __init__(self, reply):
+        self.reply = reply
+        self.calls = 0
+        self.prompts: list = []
+
+    def with_structured_output(self, schema, **kwargs):
+        return self
+
+    async def ainvoke(self, messages, config=None):
+        self.calls += 1
+        self.prompts.append(messages)
+        reply = self.reply(messages) if callable(self.reply) else self.reply
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def tc(name: str, args: dict, call_id: str | None = None) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {"name": name, "args": args, "id": call_id or f"call_{uuid.uuid4().hex[:6]}", "type": "tool_call"}
+        ],
+    )
+
+
+def create_call(title="Ostra", body="A port.", facts=None) -> AIMessage:
+    return tc(
+        "create_or_update_entry",
+        {
+            "action": "create",
+            "title": title,
+            "type": "place",
+            "body": body,
+            "facts": facts if facts is not None else [{"key": "harbour", "value": "deep"}],
+        },
+    )
+
+
+def make(store, script, judge_reply=None, saver=None):
+    agent = ScriptedChat(script=iter(script))
+    judge = StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[]))
+    extractor = StubLLM(FactList(facts=[Fact(key="k", value="v")]))
+    roles = {"agent": agent, "judge": judge, "extractor": extractor, "guard": agent}
+    graph = build_graph(
+        store=store,
+        model_for=lambda role: roles[role],
+        checkpointer=saver if saver is not None else InMemorySaver(),
+        settings=S,
+    )
+    return graph, agent, judge
+
+
+async def run(graph, inp, cfg) -> list[str]:
+    nodes: list[str] = []
+    async for upd in graph.astream(inp, cfg, stream_mode="updates"):
+        nodes.extend(upd.keys())
+    return nodes
+
+
+def start(text="Add Ostra"):
+    return {"messages": [HumanMessage(content=text)], "world_id": W}
+
+
+def resume(*decisions: dict) -> Command:
+    return Command(resume={"decisions": list(decisions)})
+
+
+async def interrupt_payload(graph, cfg) -> dict:
+    state = await graph.aget_state(cfg)
+    assert state.interrupts, "expected a pending interrupt"
+    return state.interrupts[0].value
+
+
+async def only_pid(graph, cfg) -> str:
+    [p] = (await interrupt_payload(graph, cfg))["proposals"]
+    return p["proposal_id"]
+
+
+def reviews(state_values) -> list[str]:
+    return [
+        m.content
+        for m in state_values["messages"]
+        if isinstance(m, HumanMessage) and m.name == "review"
+    ]
+
+
+def seed(store, id="ent_0001", title="Velmar", body="A city under one moon.", facts=None, **kw):
+    return store.upsert_entry(
+        Entry(
+            id=id,
+            world_id=W,
+            title=title,
+            type="place",
+            body=body,
+            facts=facts if facts is not None else [Fact(key="moons", value="One")],
+            **kw,
+        )
+    )
+
+
+def conflict_on_moons(entry_id="ent_0001"):
+    return JudgeOutput(
+        flags=[
+            JudgeFlag(
+                entry_id=entry_id,
+                fact_key="moons",
+                existing="moons: One",
+                proposed="moons: Three",
+                severity="hard",
+                explanation="Velmar has one moon.",
+                suggested_fix=None,
+            )
+        ]
+    )
+
+
+# ---------- reducers ----------
+
+
+def P(pid, title="A"):
+    return Proposal(
+        proposal_id=pid, action="create", world_id=W, entry_id=None, before=None,
+        after=EntryDraft(title=title, type="place", body="b"),
+    )
+
+
+def test_merge_proposals_appends_list_updates():
+    out = merge_proposals([P("p1")], [P("p2")])
+    assert [p.proposal_id for p in out] == ["p1", "p2"]
+
+
+def test_merge_proposals_replaces_same_id_in_place():
+    out = merge_proposals([P("p1", "old"), P("p2")], [P("p1", "new")])
+    assert [(p.proposal_id, p.after.title) for p in out] == [("p1", "new"), ("p2", "A")]
+
+
+def test_merge_proposals_clear_removes_ids_and_is_pure():
+    left = [P("p1"), P("p2"), P("p3")]
+    out = merge_proposals(left, {"clear": ["p1", "p3"]})
+    assert [p.proposal_id for p in out] == ["p2"]
+    assert len(left) == 3
+    assert merge_proposals(None, [P("p1")])[0].proposal_id == "p1"
+
+
+def test_merge_dict_merges_and_none_deletes():
+    left = {"a": 1, "b": 2}
+    assert merge_dict(left, {"b": None, "c": 3}) == {"a": 1, "c": 3}
+    assert left == {"a": 1, "b": 2}
+    assert merge_dict(None, {"a": 1}) == {"a": 1}
+
+
+def test_run_config_groups_langsmith_runs_by_thread():
+    assert run_config("t9", W) == {
+        "configurable": {"thread_id": "t9"},
+        "metadata": {"thread_id": "t9", "world_id": W},
+        "recursion_limit": 25,
+    }
+
+
+# ---------- structure (R18.1, R18.2) ----------
+
+
+def test_graph_structure_only_gate_reaches_commit(store):
+    graph, *_ = make(store, [])
+    edges = graph.get_graph().edges
+    into = lambda n: {e.source for e in edges if e.target == n}  # noqa: E731
+    assert into("commit") == {"approval_gate"}
+    assert into("approval_gate") == {"check"}
+    assert into("check") == {"tools", "approval_gate"}
+    assert into("tools") == {"agent"}
+    assert {e.target for e in edges if e.source == "commit"} == {"agent"}
+
+
+async def test_every_path_to_commit_passes_check_and_gate(store):
+    graph, *_ = make(store, [create_call(), AIMessage(content="Saved after review.")])
+    cfg = run_config("t1", W)
+    first = await run(graph, start(), cfg)
+    assert first[-1] == "__interrupt__"
+    pid = await only_pid(graph, cfg)
+    second = await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    seq = [n for n in first + second if n != "__interrupt__"]
+    assert seq == ["agent", "tools", "check", "approval_gate", "commit", "agent"]
+
+
+# ---------- interrupt and commit ----------
+
+
+async def test_graph_interrupts_and_canon_unchanged_while_pending(store):
+    seed(store)
+    graph, *_ = make(store, [create_call()])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    state = await graph.aget_state(cfg)
+    assert state.next == ("approval_gate",)
+    payload = await interrupt_payload(graph, cfg)
+    [p] = payload["proposals"]
+    assert p["after"]["title"] == "Ostra"
+    assert payload["checks"][p["proposal_id"]]["verdict"] == "none"
+    assert [e.id for e in store.list_entries(W)] == ["ent_0001"]
+
+
+async def test_real_tool_node_injects_world_id_from_state(store):
+    graph, *_ = make(store, [create_call()])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    [p] = (await graph.aget_state(cfg)).values["pending_proposals"]
+    assert p.world_id == W
+
+
+def _commit_state(p, checks, decisions):
+    return {
+        "messages": [],
+        "world_id": W,
+        "pending_proposals": [p],
+        "check_results": checks,
+        "decisions": decisions,
+    }
+
+
+@pytest.mark.parametrize("case", ["no_check", "no_decision", "check_for_other_id", "wrong_world"])
+def test_commit_refuses_without_check_result(store, case):
+    p = P("p1", "Ostra")
+    ok_check = {"p1": CheckResult(proposal_id="p1", verdict="none")}
+    approve = {"p1": Decision(proposal_id="p1", action="approve")}
+    state = {
+        "no_check": _commit_state(p, {}, approve),
+        "no_decision": _commit_state(p, ok_check, {}),
+        "check_for_other_id": _commit_state(
+            p, {"p2": CheckResult(proposal_id="p2", verdict="none")}, approve
+        ),
+        "wrong_world": _commit_state(p.model_copy(update={"world_id": "other"}), ok_check, approve),
+    }[case]
+    out = make_commit_node(store)(state)
+    assert store.list_entries(W) == [] and store.list_entries("other") == []
+    assert "p1" not in out.get("pending_proposals", {}).get("clear", [])
+    [m] = out["messages"]
+    assert m.name == "review" and "not committed" in m.content
+
+
+async def test_approve_commits_with_new_id_and_tells_agent(store):
+    seed(store, id="ent_0003", title="Velmar")
+    graph, agent, _ = make(store, [create_call(), AIMessage(content="Committed ent_0004.")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0004")
+    assert e is not None and e.title == "Ostra" and e.version == 1
+    assert e.facts == [Fact(key="harbour", value="deep")]
+    values = (await graph.aget_state(cfg)).values
+    text = f"Review: {pid} approved, committed as ent_0004 (v1)."
+    assert reviews(values) == [text]
+    assert any(m.content == text for m in agent.seen[-1])  # the agent was told
+    assert values["pending_proposals"] == []
+    assert values["check_results"] == {} and values["decisions"] == {}
+
+
+async def test_update_increments_version(store):
+    old = seed(store, created_at="2020-01-01T00:00:00+00:00")
+    graph, *_ = make(
+        store,
+        [
+            tc(
+                "create_or_update_entry",
+                {"action": "update", "entry_id": "ent_0001", "body": "A bigger city.",
+                 "facts": [{"key": "moons", "value": "One"}]},
+            ),
+            AIMessage(content="Updated."),
+        ],
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("Grow Velmar"), cfg)
+    pid = await only_pid(graph, cfg)
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert e.body == "A bigger city." and e.version == 2
+    assert e.created_at == "2020-01-01T00:00:00+00:00"
+    assert e.updated_at != old.updated_at
+    values = (await graph.aget_state(cfg)).values
+    assert reviews(values) == [f"Review: {pid} approved, committed as ent_0001 (v2)."]
+
+
+async def test_reject_leaves_canon_unchanged_and_adds_review_message(store):
+    graph, agent, _ = make(store, [create_call(), AIMessage(content="Understood.")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    await run(graph, resume({"proposal_id": pid, "action": "reject"}), cfg)
+    assert store.list_entries(W) == []
+    values = (await graph.aget_state(cfg)).values
+    text = f"Review: {pid} rejected by the author. Do not propose it again."
+    assert reviews(values) == [text]
+    assert any(m.content == text for m in agent.seen[-1])
+    assert values["pending_proposals"] == []
+
+
+async def test_edit_reruns_check_before_gate(store):
+    seed(store)
+    judge_reply = lambda msgs: conflict_on_moons() if "Three" in msgs[-1].content else JudgeOutput(flags=[])  # noqa: E731
+    graph, _, judge = make(store, [create_call(), AIMessage(content="ok")], judge_reply=judge_reply)
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    assert (await interrupt_payload(graph, cfg))["checks"][pid]["verdict"] == "none"
+
+    edited = EntryDraft(
+        title="Ostra", type="place", body="A port of Velmar.",
+        facts=[Fact(key="moons", value="Three")],
+    )
+    nodes = await run(
+        graph, resume({"proposal_id": pid, "action": "edit", "edited": edited.model_dump()}), cfg
+    )
+    assert nodes == ["approval_gate", "check", "__interrupt__"]
+    payload = await interrupt_payload(graph, cfg)
+    [p] = payload["proposals"]
+    assert p["proposal_id"] == pid and p["after"]["body"] == "A port of Velmar."
+    assert payload["checks"][pid]["verdict"] == "conflict"  # new flag shown before approval
+    assert [e.id for e in store.list_entries(W)] == ["ent_0001"]
+    [pending] = (await graph.aget_state(cfg)).values["pending_proposals"]
+    assert pending.after.body == "A port of Velmar."
+
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    assert store.get_entry(W, "ent_0002").body == "A port of Velmar."
+
+
+async def test_save_as_myth_reruns_check_and_commits_myth_fact(store):
+    seed(store)
+    graph, _, judge = make(
+        store,
+        [
+            create_call("Sky of Velmar", "Velmar has three moons.", [{"key": "moons", "value": "Three"}]),
+            AIMessage(content="Saved as a myth."),
+        ],
+        judge_reply=conflict_on_moons(),
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("Velmar has three moons"), cfg)
+    pid = await only_pid(graph, cfg)
+    assert (await interrupt_payload(graph, cfg))["checks"][pid]["verdict"] == "conflict"
+
+    nodes = await run(
+        graph, resume({"proposal_id": pid, "action": "save_as_myth", "told_by": "Old sailors"}), cfg
+    )
+    assert nodes == ["approval_gate", "check", "__interrupt__"]
+    check = (await interrupt_payload(graph, cfg))["checks"][pid]
+    assert check["verdict"] != "conflict"
+    assert check["flags"] and all(f["kind"] == "note" for f in check["flags"])
+    assert judge.calls == 2
+
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    sky = store.get_entry(W, "ent_0002")
+    assert [(f.key, f.value, f.status, f.told_by) for f in sky.facts] == [
+        ("moons", "Three", "myth", "Old sailors")
+    ]
+    assert store.get_entry(W, "ent_0001").facts == [Fact(key="moons", value="One")]
+
+
+async def test_delete_runs_dependency_check_and_lists_dependents(store):
+    seed(store)
+    seed(store, id="ent_0002", title="Ostra", body="A port south of Velmar.", facts=[])
+    seed(store, id="ent_0003", title="Harbour", body="Ships from Velmar dock here.", facts=[])
+    seed(store, id="ent_0004", title="Peak", body="A lonely mountain.", facts=[])
+    graph, _, judge = make(
+        store,
+        [tc("create_or_update_entry", {"action": "delete", "entry_id": "ent_0001"}), AIMessage(content="ok")],
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("Delete Velmar"), cfg)
+    pid = await only_pid(graph, cfg)
+    check = (await interrupt_payload(graph, cfg))["checks"][pid]
+    assert sorted(d["id"] for d in check["dependents"]) == ["ent_0002", "ent_0003"]
+    assert judge.calls == 0
+    assert store.get_entry(W, "ent_0001") is not None
+
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    assert store.get_entry(W, "ent_0001") is None
+    assert reviews((await graph.aget_state(cfg)).values) == [f"Review: {pid} approved, deleted ent_0001."]
+
+
+async def test_failed_check_is_a_present_result_and_can_be_approved(store):
+    seed(store)
+    graph, *_ = make(store, [create_call(), AIMessage(content="ok")], judge_reply=RuntimeError("down"))
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    assert (await interrupt_payload(graph, cfg))["checks"][pid]["verdict"] == "failed"
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    assert store.get_entry(W, "ent_0002").title == "Ostra"
+
+
+async def test_duplicate_title_at_commit_writes_nothing(store):
+    graph, *_ = make(store, [create_call(), AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    seed(store, id="ent_0001", title="Ostra", body="Someone else's Ostra.", facts=[])
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    assert [(e.id, e.body) for e in store.list_entries(W)] == [("ent_0001", "Someone else's Ostra.")]
+    [text] = reviews((await graph.aget_state(cfg)).values)
+    assert text.startswith(f"Review: {pid} approved, but the commit failed")
+    assert "Nothing was written" in text
+
+
+async def test_batch_keeps_decisions_while_edited_proposal_is_rechecked(store):
+    two = AIMessage(
+        content="",
+        tool_calls=[
+            {**create_call("Ostra").tool_calls[0], "id": "c1"},
+            {**create_call("Peak", "A mountain.").tool_calls[0], "id": "c2"},
+        ],
+    )
+    graph, *_ = make(store, [two, AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    props = (await interrupt_payload(graph, cfg))["proposals"]
+    ids = {p["after"]["title"]: p["proposal_id"] for p in props}
+    assert set(ids) == {"Ostra", "Peak"}
+    edited = EntryDraft(title="Peak", type="place", body="A tall mountain.")
+    nodes = await run(
+        graph,
+        resume(
+            {"proposal_id": ids["Ostra"], "action": "approve"},
+            {"proposal_id": ids["Peak"], "action": "edit", "edited": edited.model_dump()},
+        ),
+        cfg,
+    )
+    assert nodes == ["approval_gate", "check", "__interrupt__"]
+    assert store.list_entries(W) == []  # nothing committed until the batch is decided
+    [again] = (await interrupt_payload(graph, cfg))["proposals"]
+    assert again["proposal_id"] == ids["Peak"]
+    await run(graph, resume({"proposal_id": ids["Peak"], "action": "approve"}), cfg)
+    assert sorted((e.title, e.body) for e in store.list_entries(W)) == [
+        ("Ostra", "A port."), ("Peak", "A tall mountain.")
+    ]
+
+
+async def test_malformed_resume_asks_again_and_valid_resume_still_works(store):
+    graph, *_ = make(store, [create_call(), AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    assert "error" not in await interrupt_payload(graph, cfg)
+    for bad in (
+        {"decisions": []},
+        {"decisions": [{"proposal_id": "p_nope", "action": "approve"}]},
+        {"decisions": [{"proposal_id": pid, "action": "edit"}]},
+        {"decisions": [{"proposal_id": pid, "action": "approve"}] * 2},
+        {"nope": 1},
+    ):
+        nodes = await run(graph, Command(resume=bad), cfg)
+        assert nodes == ["__interrupt__"] and "commit" not in nodes
+        payload = await interrupt_payload(graph, cfg)
+        assert payload["error"] and [p["proposal_id"] for p in payload["proposals"]] == [pid]
+        assert store.list_entries(W) == []
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    assert [e.title for e in store.list_entries(W)] == ["Ostra"]
+
+
+# ---------- limits, persistence, memory, usage ----------
+
+
+async def test_runaway_tool_loop_hits_recursion_limit(store):
+    loop = itertools.repeat(lambda: tc("search_canon", {"query": "Velmar"}))
+    graph, *_ = make(store, loop)
+    cfg = run_config("t1", W)
+    assert cfg["recursion_limit"] == 25
+    with pytest.raises(GraphRecursionError):
+        await run(graph, start("Search forever"), cfg)
+
+
+async def test_pending_interrupt_survives_new_saver_instance(store, tmp_path):
+    path = str(tmp_path / "checkpoints.sqlite")
+    cfg = run_config("t1", W)
+    async with AsyncSqliteSaver.from_conn_string(path) as saver:
+        graph, *_ = make(store, [create_call()], saver=saver)
+        await run(graph, start(), cfg)
+    async with AsyncSqliteSaver.from_conn_string(path) as saver:
+        graph, *_ = make(store, [AIMessage(content="Done.")], saver=saver)
+        state = await graph.aget_state(cfg)
+        assert state.interrupts
+        [p] = state.interrupts[0].value["proposals"]
+        await run(graph, resume({"proposal_id": p["proposal_id"], "action": "approve"}), cfg)
+    assert [e.title for e in store.list_entries(W)] == ["Ostra"]
+
+
+async def test_short_term_memory_recalls_earlier_turn_same_thread_only(store):
+    graph, agent, _ = make(store, [AIMessage(content=f"reply {i}") for i in range(5)])
+    a = run_config("thread-a", W)
+    await run(graph, start("My dragon is named Ember."), a)
+    await run(graph, start("Tell me about Velmar."), a)
+    await run(graph, start("And the moons?"), a)
+    await run(graph, start("What is my dragon called?"), a)
+    seen = agent.seen[-1]
+    assert isinstance(seen[0], SystemMessage) and seen[0].content == SYSTEM
+    assert any("Ember" in m.content for m in seen)
+    await run(graph, start("What is my dragon called?"), run_config("thread-b", W))
+    assert not any("Ember" in m.content for m in agent.seen[-1])
+
+
+async def test_agent_adds_token_usage(store):
+    def reply(i):
+        return AIMessage(
+            content=f"r{i}",
+            usage_metadata={"input_tokens": 100, "output_tokens": 10, "total_tokens": 110},
+        )
+
+    graph, *_ = make(store, [reply(1), reply(2)])
+    cfg = run_config("t1", W)
+    await run(graph, start("hi"), cfg)
+    await run(graph, start("again"), cfg)
+    usage = (await graph.aget_state(cfg)).values["token_usage"]
+    assert isinstance(usage, Usage)
+    assert (usage.prompt_tokens, usage.completion_tokens) == (200, 20)
+
+
+def test_system_prompt_covers_rules():
+    s = SYSTEM.lower()
+    assert "entry id" in s or "entry ids" in s
+    assert "not in canon" in s
+    assert "review" in s
