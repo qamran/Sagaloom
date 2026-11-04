@@ -92,6 +92,24 @@ class FakeJudge(BaseChatModel):
         return self | RunnableLambda(lambda _: JudgeOutput(flags=[]))
 
 
+class FakeExtractor(BaseChatModel):
+    """A fact extractor that IS a chat model, so its call is captured like the judge's."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake-extractor"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        msg = AIMessage(
+            content="{}",
+            usage_metadata={"input_tokens": 30, "output_tokens": 5, "total_tokens": 35},
+        )
+        return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    def with_structured_output(self, schema, **kwargs):
+        return self | RunnableLambda(lambda _: FactList(facts=[Fact(key="harbour", value="deep")]))
+
+
 class StubLLM:
     def __init__(self, reply):
         self.reply = reply
@@ -167,7 +185,7 @@ class Env:
 
 @pytest.fixture
 def make_env(store, tmp_path):
-    def build(script=(), judge_reply=None, usage=True, real_judge=False) -> Env:
+    def build(script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False) -> Env:
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
         )
@@ -177,7 +195,9 @@ def make_env(store, tmp_path):
             "judge": FakeJudge()
             if real_judge
             else StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[])),
-            "extractor": StubLLM(FactList(facts=[Fact(key="k", value="v")])),
+            "extractor": FakeExtractor(metadata={"role": "extractor"})
+            if real_extractor
+            else StubLLM(FactList(facts=[Fact(key="k", value="v")])),
             "guard": agent,
         }
         graph = build_graph(

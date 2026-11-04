@@ -360,7 +360,7 @@ async def test_message_during_running_turn_returns_409_and_error_paths_release(m
     assert again.status_code == 200
 
 
-async def test_usage_includes_judge_and_extractor_calls_from_the_log(make_env, store):
+async def test_usage_includes_agent_and_judge_calls_from_the_log(make_env, store):
     from sagaloom.models import Entry
 
     store.upsert_entry(Entry(id="ent_0001", world_id=W, title="Velmar", type="place", body="A city."))
@@ -379,6 +379,26 @@ async def test_usage_includes_judge_and_extractor_calls_from_the_log(make_env, s
     from sagaloom.promptlog import PromptLog
 
     assert PromptLog(env.deps.promptlog.path).usage(tid).prompt_tokens == 150
+
+
+async def test_extractor_llm_request_is_streamed_and_counted_in_usage(make_env, store):
+    # No `facts` in the call, so the tool drafts them with the extractor (R20.2: one
+    # llm_request per model call, for every role).
+    store.upsert_entry(Entry(id="ent_0001", world_id=W, title="Velmar", type="place", body="A city."))
+    call = tc("create_or_update_entry", {"action": "create", "title": "Ostra", "type": "place", "body": "A port."})
+    env = make_env([call], real_judge=True, real_extractor=True)
+    tid = await env.new_thread()
+    _, events = await env.send(tid, "Add Ostra")
+    reqs = [d for e, d in events if e == "llm_request"]
+    [extractor] = [r for r in reqs if r["role"] == "extractor"]
+    assert "<untrusted_data" in json.dumps(extractor["messages"])
+    usage = next(d for e, d in events if e == "usage")
+    # agent 100/20 + extractor 30/5 + judge 50/10
+    assert usage["turn"]["prompt_tokens"] == 180 and usage["turn"]["completion_tokens"] == 35
+    log = (await env.client.get(f"/api/threads/{tid}/llm-log")).json()
+    assert [r["role"] for r in log].count("extractor") == 1
+    pending = (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"]
+    assert pending["proposals"][0]["after"]["facts"][0]["key"] == "harbour"
 
 
 async def test_judge_llm_request_is_streamed_with_untrusted_context(make_env, store):
