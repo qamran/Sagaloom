@@ -32,6 +32,15 @@ describe("turn views", () => {
     expect(v.tools).toEqual([{ name: "search_canon", args: { query: "x" }, summary: "4 hits" }]);
   });
 
+  it("keeps the role from a live llm_request event", () => {
+    const v = viewFromEvents({
+      turn: 1,
+      kind: "message",
+      events: [{ event: "llm_request", data: { id: "a", model: "m", role: "judge", messages: [], tools: [] } }],
+    });
+    expect(v.calls[0].role).toBe("judge");
+  });
+
   it("groups the log by run id and does not list a live turn twice", () => {
     const live = [
       { turn: 1, kind: "message" as const, events: [{ event: "llm_request" as const, data: { id: "c", model: "m" } }] },

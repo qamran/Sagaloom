@@ -91,6 +91,19 @@ async def test_handler_records_system_prompt_tools_and_wrapped_context(tmp_path)
     assert events[0][1]["messages"] == msgs and events[0][1]["tools"] == TOOLS
 
 
+async def test_llm_request_event_carries_role_from_metadata(tmp_path):
+    log, handler, events = make_handler(tmp_path)
+    await handler.on_chat_model_start(
+        {"name": "ChatOpenAI"},
+        [[HumanMessage(content="hi")]],
+        run_id=uuid.uuid4(),
+        invocation_params={"model": "openai/gpt-6-luna"},
+        metadata={"role": "judge"},
+    )
+    assert events[0][0] == "llm_request" and events[0][1]["role"] == "judge"
+    assert log.list("t1")[0].role == "judge"
+
+
 async def test_handler_redacts_api_key_everywhere(tmp_path):
     log, handler, events = make_handler(tmp_path)
     rid = await start(

@@ -229,7 +229,7 @@ class PromptLogHandler(AsyncCallbackHandler):
         self.log.add(rec)
         self.emit(
             "llm_request",
-            {"id": rec.id, "provider": provider, "model": model, "params": rec.params, **request},
+            {"id": rec.id, "provider": provider, "model": model, "role": rec.role, "params": rec.params, **request},
         )
 
     async def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
