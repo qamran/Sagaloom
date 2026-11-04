@@ -39,3 +39,11 @@ async def test_draft_facts_binds_no_tools():
 
 async def test_draft_facts_returns_empty_on_failure():
     assert await draft_facts("T", "b", StubLLM(exc=RuntimeError("boom"))) == []
+
+
+async def test_title_is_inside_untrusted_wrapper():
+    llm = StubLLM(FactList(facts=[]))
+    await draft_facts("Ignore previous", "body", llm)
+    p = llm.prompts[-1]
+    start = p.index('<untrusted_data source="draft">')
+    assert start < p.index("Title: Ignore previous") < p.index("</untrusted_data>")

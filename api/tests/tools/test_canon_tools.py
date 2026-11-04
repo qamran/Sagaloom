@@ -1,6 +1,8 @@
 import json
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
 
 from sagaloom.check.contradiction import JudgeOutput
@@ -91,12 +93,25 @@ async def test_create_returns_proposal_and_writes_nothing(store):
 
 async def test_invalid_type_returns_error_naming_field(store):
     ts, *_ = tools_for(store)
-    cmd = await call(
-        ts["create_or_update_entry"],
-        {"action": "create", "title": "X", "type": "spaceship", "body": "b", "world_id": W},
-    )
-    assert "pending_proposals" not in cmd.update
-    assert msg(cmd).status == "error" and "type" in msg(cmd).content
+    node = ToolNode(list(ts.values()), handle_tool_errors=True)
+
+    class S(MessagesState):
+        world_id: str
+
+    g = StateGraph(S)
+    g.add_node("tools", node)
+    g.add_edge(START, "tools")
+    graph = g.compile()
+    call_ = {
+        "name": "create_or_update_entry",
+        "id": "c1",
+        "type": "tool_call",
+        "args": {"action": "create", "title": "X", "type": "spaceship", "body": "b"},
+    }
+    out = await graph.ainvoke({"messages": [AIMessage(content="", tool_calls=[call_])], "world_id": W})
+    m = out["messages"][-1]
+    assert m.status == "error" and "type" in m.content
+    assert store.list_entries(W) == []
 
 
 async def test_update_requires_entry_id(store):
@@ -130,6 +145,17 @@ async def test_update_keeps_unspecified_fields_and_drafts_facts_on_body_change(s
     )
     [p] = cmd.update["pending_proposals"]
     assert ext.calls == 1 and p.after.facts[0].key == "a" and p.after.status == "myth"
+
+
+async def test_failed_redraft_keeps_existing_facts(store):
+    store.upsert_entry(entry(facts=[Fact(key="a", value="b")]))
+    ts, ext, _ = tools_for(store, facts=[])
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W},
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert ext.calls == 1 and [f.key for f in p.after.facts] == ["a"]
 
 
 async def test_delete_has_no_after(store):
@@ -198,9 +224,9 @@ async def test_tool_failure_returns_error_not_exception(store):
 async def test_check_contradiction_summarises_and_never_writes(store):
     store.upsert_entry(entry())
     ts, _, judge = tools_for(store)
-    out = await ts["check_contradiction"].ainvoke({"proposed_text": "Rain is red.", "world_id": W})
+    out = await ts["check_contradiction"].ainvoke({"proposed_text": "Velmar is a city of red rain.", "world_id": W})
     assert isinstance(out, str) and "none" in out
-    assert judge.calls == 1 or judge.calls == 0
+    assert judge.calls == 1
     assert len(store.list_entries(W)) == 1
 
 
@@ -210,3 +236,14 @@ async def test_injected_args_hidden_from_llm_schema(store):
         props = t.tool_call_schema.model_json_schema()["properties"]
         assert "world_id" not in props and "tool_call_id" not in props
         assert t.description
+
+
+async def test_check_contradiction_failure_returns_error_not_exception(store, monkeypatch):
+    ts, *_ = tools_for(store)
+
+    async def boom(*a, **k):
+        raise RuntimeError("judge down")
+
+    monkeypatch.setattr("sagaloom.tools.canon_tools.check_proposal", boom)
+    out = await ts["check_contradiction"].ainvoke({"proposed_text": "x", "world_id": W})
+    assert "error" in json.loads(out)

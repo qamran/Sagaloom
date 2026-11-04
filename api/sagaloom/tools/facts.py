@@ -31,7 +31,7 @@ async def draft_facts(title: str, body: str, llm: BaseChatModel) -> list[Fact]:
         result = await structured.ainvoke(
             [
                 SystemMessage(content=_SYSTEM),
-                HumanMessage(content=f"Title: {title}\n\n{wrap_untrusted(body, 'draft')}"),
+                HumanMessage(content=wrap_untrusted(f"Title: {title}\n\n{body}", "draft")),
             ]
         )
         if isinstance(result, dict):

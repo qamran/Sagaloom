@@ -3,7 +3,7 @@
 import json
 import logging
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import ToolMessage
@@ -34,20 +34,18 @@ class SearchCanonArgs(BaseModel):
 
 
 class CreateOrUpdateArgs(BaseModel):
-    action: str = Field(description="One of: create, update, delete.")
+    action: Literal["create", "update", "delete"] = Field(
+        description="One of: create, update, delete."
+    )
     entry_id: str | None = Field(
         default=None, description="Required for update and delete, e.g. ent_0012."
     )
     title: str | None = Field(default=None, description="Entry title (required for create).")
-    type: str | None = Field(
-        default=None,
-        description="One of: character, place, faction, item, rule, event (required for create).",
-    )
+    type: EntryType | None = Field(default=None, description="Entry type (required for create).")
     body: str | None = Field(default=None, description="Entry prose (required for create).")
-    status: str | None = Field(
+    status: Status | None = Field(
         default=None,
-        description="One of: canon, myth, rumour, secret. Defaults to canon on create; "
-        "kept unchanged on update.",
+        description="Defaults to canon on create; kept unchanged on update.",
     )
     aliases: list[str] | None = Field(default=None, description="Alternative names.")
     facts: list[Fact] | None = Field(
@@ -103,22 +101,20 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
 
     @tool("create_or_update_entry", args_schema=CreateOrUpdateArgs)
     async def create_or_update_entry(
-        action: str,
+        action: Literal["create", "update", "delete"],
         world_id: _WorldId,
         tool_call_id: _CallId,
         entry_id: str | None = None,
         title: str | None = None,
-        type: str | None = None,
+        type: EntryType | None = None,
         body: str | None = None,
-        status: str | None = None,
+        status: Status | None = None,
         aliases: list[str] | None = None,
         facts: list[Fact] | None = None,
     ) -> Command:
         """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
         queues a proposal that is contradiction-checked and shown to the author for approval."""
         try:
-            if action not in ("create", "update", "delete"):
-                return _err(tool_call_id, "Invalid field 'action': must be create, update or delete.")
             before = None
             after = None
             if action in ("update", "delete"):
@@ -140,9 +136,9 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
                 try:
                     after = EntryDraft(
                         title=title or "",
-                        type=type,  # type: ignore[arg-type]
+                        type=type,
                         body=body,
-                        status=status or "canon",  # type: ignore[arg-type]
+                        status=status or "canon",
                         aliases=aliases or [],
                         facts=facts or [],
                     )
@@ -154,20 +150,22 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
                 try:
                     after = EntryDraft(
                         title=title if title is not None else before.title,
-                        type=type if type is not None else before.type,  # type: ignore[arg-type]
+                        type=type if type is not None else before.type,
                         body=body if body is not None else before.body,
-                        status=status if status is not None else before.status,  # type: ignore[arg-type]
+                        status=status if status is not None else before.status,
                         aliases=aliases if aliases is not None else before.aliases,
                         facts=facts if facts is not None else before.facts,
                     )
                 except ValidationError as e:
                     return _err(tool_call_id, _bad_fields(e))
                 if facts is None and body is not None and body != before.body:
-                    after.facts = await draft_facts(after.title, after.body, extractor_llm)
+                    after.facts = (
+                        await draft_facts(after.title, after.body, extractor_llm) or before.facts
+                    )
 
             proposal = Proposal(
                 proposal_id="p_" + uuid.uuid4().hex[:8],
-                action=action,  # type: ignore[arg-type]
+                action=action,
                 world_id=world_id,
                 entry_id=entry_id,
                 before=before,
