@@ -28,3 +28,25 @@ describe("FactList", () => {
     expect(screen.getByText(/no facts/i)).toBeInTheDocument();
   });
 });
+
+describe("FactList reveal state", () => {
+  it("does not carry a reveal over to a different fact at the same position", async () => {
+    const first: Fact[] = [
+      { key: "Mayor", value: "Secretly a Choir member", refs: [], status: "secret", told_by: null },
+    ];
+    const second: Fact[] = [
+      { key: "Vault", value: "Under the bell tower", refs: [], status: "secret", told_by: null },
+    ];
+    const { rerender } = render(<FactList facts={first} />);
+    await userEvent.click(screen.getByRole("button", { name: /show/i }));
+    expect(screen.getByText("Secretly a Choir member")).toBeInTheDocument();
+    rerender(<FactList facts={second} />);
+    expect(screen.queryByText("Under the bell tower")).toBeNull();
+    expect(screen.getByRole("button", { name: /show/i })).toBeInTheDocument();
+  });
+
+  it("uses screen-reader text for the hidden placeholder", () => {
+    render(<FactList facts={facts} />);
+    expect(screen.getByText("hidden secret")).toHaveClass("sr-only");
+  });
+});

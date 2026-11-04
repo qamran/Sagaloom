@@ -17,8 +17,9 @@ function FactRow({ fact, hidden, onShow }: { fact: Fact; hidden: boolean; onShow
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {hidden ? (
           <>
-            <span className="text-muted-foreground" aria-label="hidden secret">
-              ••••••••
+            <span className="text-muted-foreground">
+              <span aria-hidden="true">••••••••</span>
+              <span className="sr-only">hidden secret</span>
             </span>
             <button
               type="button"
@@ -43,9 +44,11 @@ function FactRow({ fact, hidden, onShow }: { fact: Fact; hidden: boolean; onShow
   );
 }
 
+const factId = (f: Fact) => JSON.stringify([f.key, f.value]);
+
 /** key: value rows with a status badge. Secret facts stay hidden until Show is clicked (R12.12). */
 export function FactList({ facts }: { facts: Fact[] }) {
-  const [shown, setShown] = useState<Set<number>>(new Set());
+  const [shown, setShown] = useState<Set<string>>(new Set());
   if (facts.length === 0) {
     return <p className="m-0 text-sm text-muted-foreground">No facts recorded for this entry yet.</p>;
   }
@@ -55,8 +58,8 @@ export function FactList({ facts }: { facts: Fact[] }) {
         <FactRow
           key={`${f.key}-${i}`}
           fact={f}
-          hidden={f.status === "secret" && !shown.has(i)}
-          onShow={() => setShown((s) => new Set(s).add(i))}
+          hidden={f.status === "secret" && !shown.has(factId(f))}
+          onShow={() => setShown((s) => new Set(s).add(factId(f)))}
         />
       ))}
     </div>

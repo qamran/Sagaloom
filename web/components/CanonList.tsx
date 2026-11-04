@@ -22,14 +22,17 @@ export function CanonList() {
   });
 
   const needle = search.trim().toLowerCase();
-  const entries = (data ?? []).filter(
+  const all = data ?? [];
+  // Secret entries never affect the count or the search until revealed (no search oracle).
+  const hiddenCount = all.filter((e) => e.status === "secret").length;
+  const entries = all.filter(
     (e) =>
-      !needle ||
-      e.title.toLowerCase().includes(needle) ||
-      e.aliases.some((a) => a.toLowerCase().includes(needle)),
+      (showSecrets || e.status !== "secret") &&
+      (!needle ||
+        e.title.toLowerCase().includes(needle) ||
+        e.aliases.some((a) => a.toLowerCase().includes(needle))),
   );
-  const hiddenCount = entries.filter((e) => e.status === "secret").length;
-  const visible = entries.filter((e) => showSecrets || e.status !== "secret");
+  const visible = entries;
 
   return (
     <nav
@@ -56,7 +59,7 @@ export function CanonList() {
           Could not load entries.
         </p>
       )}
-      {data && visible.length === 0 && hiddenCount === 0 && (
+      {data && visible.length === 0 && (needle || all.length === 0) && (
         <p className="m-0 text-muted-foreground">
           {needle ? "No entries match." : "No entries yet. Ask the assistant in Chat to add one."}
         </p>

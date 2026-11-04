@@ -91,8 +91,8 @@ export interface CheckResult {
 export interface Decision {
   proposal_id: string;
   action: "approve" | "edit" | "reject" | "save_as_myth";
-  edited: EntryDraft | null;
-  told_by: string | null;
+  edited?: EntryDraft | null;
+  told_by?: string | null;
 }
 
 export interface Usage {
@@ -110,7 +110,8 @@ export interface ChatMessage {
 
 export interface PendingInterrupt {
   proposals: Proposal[];
-  checks: CheckResult[];
+  /** Keyed by proposal_id (graph/nodes.py approval gate). */
+  checks: Record<string, CheckResult>;
   error?: string;
 }
 
@@ -128,15 +129,16 @@ export interface ThreadSummary {
   pending: number;
 }
 
-// SSE events (R19.2). Payloads of events owned by Task 11 are kept loose on purpose.
+// SSE events (R19.2), mirroring api/sagaloom/web/sse.py. llm_request / llm_response payloads
+// come from the prompt-capture handler (Task 11/12) and are kept loose.
 export type SseEvent =
   | { event: "token"; data: { text: string } }
-  | { event: "tool_call"; data: { id?: string | null; name: string; args: Record<string, unknown> } }
-  | { event: "tool_result"; data: { id?: string | null; name: string; content: string } }
-  | { event: "node"; data: { name: string; phase?: string; ms?: number } }
+  | { event: "tool_call"; data: { name: string; args: Record<string, unknown> } }
+  | { event: "tool_result"; data: { name: string; summary: string } }
+  | { event: "node"; data: { name: string; phase: "start" | "end"; ms?: number } }
   | { event: "llm_request"; data: Record<string, unknown> }
   | { event: "llm_response"; data: Record<string, unknown> }
   | { event: "interrupt"; data: PendingInterrupt }
-  | { event: "usage"; data: { turn?: Usage; thread?: Usage } & Partial<Usage> }
-  | { event: "done"; data: Record<string, unknown> }
-  | { event: "error"; data: { message: string } };
+  | { event: "usage"; data: { turn: Usage; total: Usage } }
+  | { event: "done"; data: Record<string, never> }
+  | { event: "error"; data: { message: string; retryable: boolean } };

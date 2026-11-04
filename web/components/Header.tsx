@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { getThread } from "@/lib/api";
 import { useWorld } from "@/lib/world";
@@ -39,6 +39,8 @@ function Logo() {
 
 function WorldPicker() {
   const { worlds, world, setWorldId, startWorld } = useWorld();
+  const router = useRouter();
+  const pathname = usePathname();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,6 +54,7 @@ function WorldPicker() {
     setError(null);
     try {
       await startWorld(trimmed);
+      if (pathname.startsWith("/canon/")) router.push("/canon");
       setName("");
       setCreating(false);
     } catch {
@@ -72,7 +75,10 @@ function WorldPicker() {
         disabled={worlds.length === 0}
         onChange={(e) => {
           if (e.target.value === NEW_WORLD) setCreating(true);
-          else setWorldId(e.target.value);
+          else {
+            setWorldId(e.target.value);
+            if (pathname.startsWith("/canon/")) router.push("/canon");
+          }
         }}
         className="min-h-11 rounded-lg border border-border bg-panel-3 px-3 text-[13px] text-foreground sm:min-h-9"
       >
@@ -179,7 +185,11 @@ export function Header() {
         <Link
           href="/studio"
           aria-current={pathname.startsWith("/studio") ? "page" : undefined}
-          className="flex min-h-11 items-center rounded-[7px] border border-[#5b4785] px-[13px] text-[13px] text-myth no-underline hover:text-myth hover:no-underline hover:bg-[#211c33] sm:min-h-9"
+          className={`flex min-h-11 items-center rounded-[7px] border border-[#5b4785] px-[13px] text-[13px] no-underline hover:no-underline sm:min-h-9 ${
+            pathname.startsWith("/studio")
+              ? "border-myth bg-myth font-semibold text-background hover:text-background"
+              : "text-myth hover:bg-[#211c33] hover:text-myth"
+          }`}
         >
           Studio
         </Link>
