@@ -114,3 +114,9 @@ class Decision(BaseModel):
     action: Literal["approve", "edit", "reject", "save_as_myth"]
     edited: EntryDraft | None = None
     told_by: str | None = None
+
+
+class Usage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_usd: float = 0.0
