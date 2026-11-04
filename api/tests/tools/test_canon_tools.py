@@ -317,3 +317,17 @@ async def test_redrafted_facts_also_keep_secrets(store):
     )
     [p] = cmd.update["pending_proposals"]
     assert any(f.status == "secret" and f.value == SECRET for f in p.after.facts)
+
+
+async def test_update_keeps_every_fact_of_a_secret_entry(store):
+    # A secret-status entry's facts are all hidden from the agent, whatever their own status.
+    store.upsert_entry(
+        entry(status="secret", facts=[Fact(key="a", value="b"), Fact(key="Hidden", value=SECRET)])
+    )
+    ts, _, _ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "facts": [{"key": "c", "value": "d"}], "world_id": W},
+    )
+    [p] = cmd.update["pending_proposals"]
+    assert {(f.key, f.value) for f in p.after.facts} == {("c", "d"), ("a", "b"), ("Hidden", SECRET)}
