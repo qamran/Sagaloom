@@ -171,6 +171,10 @@ def _existing_facts(entry: Entry, existing: str, key: str | None) -> list[Fact]:
 def _to_flag(jf: JudgeFlag, entry: Entry, draft: EntryDraft) -> Flag:
     key = norm(jf.fact_key) if jf.fact_key else None
     proposed = [f for f in draft.facts if key and norm(f.key) == key]
+    if not proposed and ":" in jf.proposed:
+        # The judge may name the existing key; recover ours from "<proposed key>: <value>".
+        prefix = norm(jf.proposed.split(":", 1)[0])
+        proposed = [f for f in draft.facts if norm(f.key) == prefix]
     existing = _existing_facts(entry, jf.existing, key)
     is_belief = (
         draft.status in _BELIEFS

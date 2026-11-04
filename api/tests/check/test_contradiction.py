@@ -336,19 +336,36 @@ async def test_delete_uses_dependency_check(store):
     assert [d.id for d in res.dependents] == ["ent_0002"] and judge.calls == []
 
 
+async def test_judge_existing_key_is_recovered_from_proposed_fact(store):
+    # judge wrongly puts the EXISTING key in fact_key; the proposed "Moons: Two" names ours
+    ister(store)
+    flag = jflag(
+        "ent_0001",
+        fact_key="Only light in the night sky",
+        existing="Only light in the night sky: Ister",
+        proposed="moons: Two",
+    )
+    judge = StubJudge(JudgeOutput(flags=[flag]))
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    [f] = res.flags
+    assert f.kind == "conflict" and f.fact_key == "Moons"
+    assert f.existing_fact == "Only light in the night sky: Ister" and f.new_fact == "moons: Two"
+
+
 async def test_judge_fact_key_not_in_proposal_becomes_quote_flag(store):
     ister(store)
     flag = jflag(
         "ent_0001",
         fact_key="Only light in the night sky",
         existing="Only light in the night sky: Ister",
-        proposed="Moons: Two",
+        proposed="Orla shines beside Ister",
     )
     judge = StubJudge(JudgeOutput(flags=[flag]))
-    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    res = await check_proposal(store, create("Orla", "Orla shines beside Ister.", [{"key": "Moons", "value": "Two"}]), judge)
     [f] = res.flags
     assert f.kind == "conflict" and f.fact_key is None
-    assert f.existing_quote == "Only light in the night sky: Ister" and f.new_quote == "Moons: Two"
+    assert f.existing_quote == "Only light in the night sky: Ister"
+    assert f.new_quote == "Orla shines beside Ister"
 
 
 async def test_judge_fact_key_is_normalised_to_proposed_spelling(store):
