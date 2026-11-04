@@ -4,3 +4,10 @@ internal docs/
 .env.local
 data/
 .claude/settings.local.json
+api/.venv/
+web/node_modules/
+web/.next/
+test-results/
+__pycache__/
+.pytest_cache/
+node_modules/

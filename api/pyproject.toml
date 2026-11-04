@@ -1,0 +1,34 @@
+[project]
+name = "sagaloom"
+version = "0.1.0"
+description = "Sagaloom API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "chromadb>=1.5.9",
+    "fastapi>=0.162.0",
+    "langchain-openai>=1.7.3",
+    "langgraph>=1.2.19",
+    "langgraph-checkpoint-sqlite>=3.1.3",
+    "pydantic-settings>=2.16.2",
+    "sse-starlette>=3.6.0",
+    "uvicorn>=0.54.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sagaloom"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["eval: needs a real OpenRouter key"]
+addopts = "-m 'not eval'"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+]

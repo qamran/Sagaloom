@@ -1,0 +1,51 @@
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from sagaloom.config import Settings
+from sagaloom.web.app import create_app
+
+SECRET = "test-secret"
+ORIGIN = "http://localhost:3000"
+
+
+@pytest.fixture
+def client():
+    settings = Settings(
+        _env_file=None,
+        openrouter_api_key="test-key",
+        api_shared_secret=SECRET,
+        web_origin=ORIGIN,
+    )
+    app = create_app(settings)
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+async def test_health_needs_no_secret(client):
+    r = await client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+async def test_protected_route_rejects_missing_secret(client):
+    r = await client.get("/api/worlds")
+    assert r.status_code == 401
+    assert r.json() == {"detail": "unauthorised"}
+
+
+async def test_protected_route_rejects_wrong_secret(client):
+    r = await client.get("/api/worlds", headers={"X-Sagaloom-Secret": "nope"})
+    assert r.status_code == 401
+
+
+async def test_protected_route_accepts_right_secret(client):
+    r = await client.get("/api/worlds", headers={"X-Sagaloom-Secret": SECRET})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+async def test_cors_allows_only_web_origin(client):
+    headers = {"Access-Control-Request-Method": "GET"}
+    bad = await client.options("/api/worlds", headers={**headers, "Origin": "http://evil.test"})
+    assert "access-control-allow-origin" not in bad.headers
+    good = await client.options("/api/worlds", headers={**headers, "Origin": ORIGIN})
+    assert good.headers["access-control-allow-origin"] == ORIGIN

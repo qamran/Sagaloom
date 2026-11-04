@@ -1,0 +1,10 @@
+{
+  "name": "sagaloom",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"cd api && uv run uvicorn sagaloom.web.app:app --reload --port 8000\" \"cd web && pnpm dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
