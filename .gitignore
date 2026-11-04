@@ -1,0 +1,6 @@
+.env
+internal docs/
+.superpowers/
+.env.local
+data/
+.claude/settings.local.json
