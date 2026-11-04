@@ -236,11 +236,11 @@ async def test_tools_endpoint_lists_three_core_tools(make_env):
     assert all(t["description"] for t in tools)
 
 
-async def test_studio_stub(make_env):
+async def test_studio_endpoint_shape(make_env):
     env = make_env()
     body = (await env.client.get("/api/studio")).json()
-    assert body["features"] == [] and body["providers"] == []
-    assert set(body["usage"]) == {"prompt_tokens", "completion_tokens", "cost_usd"}
+    assert len(body["features"]) == 9 and len(body["providers"]) == 2
+    assert set(body["usage"]) >= {"prompt_tokens", "completion_tokens", "cost_usd"}
 
 
 # ---------- prompt capture over HTTP (R20.1, R20.2) ----------
@@ -374,7 +374,7 @@ async def test_usage_includes_judge_and_extractor_calls_from_the_log(make_env, s
     thread = (await env.client.get(f"/api/threads/{tid}")).json()
     assert thread["usage"] == usage["total"]
     studio = (await env.client.get("/api/studio")).json()
-    assert studio["usage"] == usage["total"]
+    assert {k: studio["usage"][k] for k in usage["total"]} == usage["total"]
     # persists: a new log object over the same file gives the same sum
     from sagaloom.promptlog import PromptLog
 

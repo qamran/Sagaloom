@@ -1,11 +1,27 @@
+import json
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_DIR = Path(__file__).resolve().parent.parent
 # Later files override earlier ones: api/.env beats the project-root .env.
 _ENV_FILES = (str(_API_DIR.parent / ".env"), str(_API_DIR / ".env"))
+
+
+ALLOWED_MODELS_FILE = Path(__file__).resolve().parent / "allowed_models.json"
+
+
+class AllowedModel(BaseModel):
+    id: str
+    price_in: float  # USD per 1M input tokens
+    price_out: float  # USD per 1M output tokens
+
+
+def load_allowed_models(path: Path = ALLOWED_MODELS_FILE) -> list[AllowedModel]:
+    """The account's guardrail-allowed OpenRouter models that support tools and structured output
+    (R11.G10)."""
+    return [AllowedModel(**m) for m in json.loads(path.read_text(encoding="utf-8"))]
 
 
 class Settings(BaseSettings):
@@ -25,3 +41,4 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     price_in_per_mtok: float = 0.10
     price_out_per_mtok: float = 0.50
+    allowed_models: list[AllowedModel] = Field(default_factory=load_allowed_models)

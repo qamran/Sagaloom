@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from sagaloom.graph.build import run_config
 from sagaloom.models import Decision, Entry, Usage, World
+from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.tools.canon_tools import make_tools
 from sagaloom.web.sse import run_turn_events, sse_response
@@ -267,7 +268,47 @@ def list_tools(request: Request) -> list[dict]:
     return [{"name": t.name, "description": t.description} for t in tools]
 
 
+class ModelChoice(BaseModel):
+    role: str
+    model: str
+
+
+def _models_payload(request: Request) -> dict:
+    d = _deps(request)
+    return {
+        "mapping": d.model_settings.get_model_settings(),
+        "allowed": [m.model_dump() for m in d.settings.allowed_models],
+    }
+
+
+@router.get("/settings/models")
+def get_models(request: Request) -> dict:
+    return _models_payload(request)
+
+
+@router.put("/settings/models")
+def put_models(body: ModelChoice, request: Request) -> dict:
+    try:
+        _deps(request).model_settings.set_model(body.role, body.model)  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _models_payload(request)
+
+
+def _mermaid(graph: Any) -> str:
+    try:
+        return graph.get_graph().draw_mermaid()
+    except Exception:
+        return ""
+
+
 @router.get("/studio")
 def studio(request: Request) -> dict:
-    # Task 12's studio.py fills features and providers.
-    return {"features": [], "providers": [], "usage": _deps(request).promptlog.total_usage().model_dump()}
+    d = _deps(request)
+    log = d.promptlog
+    return {
+        "features": [c.model_dump() for c in build_feature_map(d.settings, d)],
+        "providers": [p.model_dump() for p in providers_status(d.settings, d.model_settings.get_model_settings())],
+        "usage": {**log.total_usage().model_dump(), "by_model": log.usage_by_model()},
+        "mermaid": _mermaid(d.graph),
+    }

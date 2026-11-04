@@ -2,6 +2,7 @@
 response is filled in when the call ends. Records are stored per thread so they survive a
 refresh, and are emitted live as `llm_request` / `llm_response` events."""
 
+import builtins
 import json
 import sqlite3
 import time
@@ -106,6 +107,25 @@ class PromptLog:
                 completion += int(r.get("completion_tokens") or 0)
                 cost += float(r.get("cost_usd") or 0.0)
         return Usage(prompt_tokens=prompt, completion_tokens=completion, cost_usd=cost)
+
+
+    def usage_by_model(self) -> "builtins.list[dict]":
+        """Calls, tokens and cost per model over every recorded call (Studio usage panel)."""
+        with closing(self._connect()) as conn:
+            rows = conn.execute("SELECT record FROM prompt_log").fetchall()
+        agg: dict[str, dict] = {}
+        for (raw,) in rows:
+            rec = PromptRecord.model_validate_json(raw)
+            r = rec.response or {}
+            a = agg.setdefault(
+                rec.model,
+                {"model": rec.model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+            )
+            a["calls"] += 1
+            a["prompt_tokens"] += int(r.get("prompt_tokens") or 0)
+            a["completion_tokens"] += int(r.get("completion_tokens") or 0)
+            a["cost_usd"] += float(r.get("cost_usd") or 0.0)
+        return sorted(agg.values(), key=lambda a: -a["cost_usd"])
 
 
 _ROLES = {"human": "user", "ai": "assistant", "system": "system", "tool": "tool"}

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
 from sagaloom.config import Settings
+from sagaloom.model_settings import ModelSettings
 from sagaloom.promptlog import PromptLog
 from sagaloom.seed import ensure_first_run
 from sagaloom.store.threads import ThreadRegistry
@@ -31,22 +32,29 @@ class AppDeps:
     graph: Any = None
     settings: Settings | None = None
     promptlog: PromptLog | None = None
+    model_settings: ModelSettings | None = None
     seed_dir: Path | None = SEED_DIR
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
 
 
-def make_model_for(settings: Settings):
-    """role -> chat model, from the configured role models (Task 12 adds persisted switching)."""
-    from sagaloom.llm import make_chat_model
+def make_model_for(settings: Settings, model_settings: ModelSettings, factory=None):
+    """role -> chat model. The current mapping is read on every call and one model is built per
+    (role, model id), so a Studio switch (R11.G10) applies from the next turn."""
+    if factory is None:
+        from sagaloom.llm import make_chat_model
 
-    models = {
-        "agent": settings.chat_model,
-        "judge": settings.judge_model,
-        "extractor": settings.extractor_model,
-        "guard": settings.guard_model,
-    }
-    built = {role: make_chat_model(settings, model=m) for role, m in models.items()}
-    return lambda role: built[role]
+        def factory(role: str, model: str):
+            return make_chat_model(settings, model=model)
+
+    built: dict[tuple[str, str], Any] = {}
+
+    def model_for(role: str):
+        key = (role, model_settings.get_model_settings()[role])
+        if key not in built:
+            built[key] = factory(*key)
+        return built[key]
+
+    return model_for
 
 
 @asynccontextmanager
@@ -69,7 +77,7 @@ async def _open_runtime(app: FastAPI):
             saver = await stack.enter_async_context(sqlite_checkpointer(settings))
             deps.graph = build_graph(
                 store=deps.store,
-                model_for=make_model_for(settings),
+                model_for=make_model_for(settings, deps.model_settings),
                 checkpointer=saver,
                 settings=settings,
             )
@@ -95,13 +103,14 @@ def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
     deps.worlds = deps.worlds or WorldRegistry(data / "worlds.json")
     deps.threads = deps.threads or ThreadRegistry(data / "threads.sqlite")
     deps.promptlog = deps.promptlog or PromptLog(data / "prompts.sqlite")
+    deps.model_settings = deps.model_settings or ModelSettings(data / "model_settings.json", settings)
     app.state.settings = settings
     app.state.deps = deps
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["*"],
     )
 
