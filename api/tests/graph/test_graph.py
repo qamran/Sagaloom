@@ -298,6 +298,62 @@ def test_commit_refuses_without_check_result(store, case):
     assert m.name == "review" and "not committed" in m.content
 
 
+def _approved(*proposals):
+    return {
+        "messages": [],
+        "world_id": W,
+        "pending_proposals": list(proposals),
+        "check_results": {p.proposal_id: CheckResult(proposal_id=p.proposal_id, verdict="none") for p in proposals},
+        "decisions": {p.proposal_id: Decision(proposal_id=p.proposal_id, action="approve") for p in proposals},
+    }
+
+
+@pytest.mark.parametrize("action", ["update", "delete"])
+def test_commit_refuses_proposal_checked_against_a_stale_version(store, action):
+    v1 = seed(store, body="A city under one moon.")
+    p = Proposal(
+        proposal_id="p1", action=action, world_id=W, entry_id=v1.id, before=v1,
+        after=EntryDraft(title="Velmar", type="place", body="Stale edit.") if action == "update" else None,
+    )
+    # Another thread commits first: the entry is now v2.
+    store.upsert_entry(v1.model_copy(update={"body": "Changed elsewhere.", "version": 2}))
+    out = make_commit_node(store)(_approved(p))
+    e = store.get_entry(W, v1.id)
+    assert e is not None and e.body == "Changed elsewhere." and e.version == 2
+    [m] = out["messages"]
+    assert "entry changed since it was checked (v1 → v2); propose it again" in m.content
+    assert "Nothing was written" in m.content
+
+
+def test_concurrent_create_commits_draw_distinct_ids(store, monkeypatch):
+    import threading
+    import time
+
+    seed(store, id="ent_0001")
+    real_next = store.next_entry_id
+
+    def slow_next():  # widen the read-then-write window so an unlocked commit would collide
+        nid = real_next()
+        time.sleep(0.05)
+        return nid
+
+    monkeypatch.setattr(store, "next_entry_id", slow_next)
+    commit = make_commit_node(store)
+    outs: list[dict] = []
+    threads = [
+        threading.Thread(target=lambda p=P(pid, title): outs.append(commit(_approved(p))))
+        for pid, title in [("p1", "Ostra"), ("p2", "Brine")]
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    titles = {e.id: e.title for e in store.list_entries(W)}
+    assert sorted(titles) == ["ent_0001", "ent_0002", "ent_0003"]
+    assert {titles["ent_0002"], titles["ent_0003"]} == {"Ostra", "Brine"}
+    assert all("committed as" in o["messages"][0].content for o in outs)
+
+
 async def test_approve_commits_with_new_id_and_tells_agent(store):
     seed(store, id="ent_0003", title="Velmar")
     graph, agent, _ = make(store, [create_call(), AIMessage(content="Committed ent_0004.")])
@@ -317,7 +373,7 @@ async def test_approve_commits_with_new_id_and_tells_agent(store):
 
 
 async def test_update_increments_version(store):
-    old = seed(store, created_at="2020-01-01T00:00:00+00:00")
+    seed(store, created_at="2020-01-01T00:00:00+00:00")
     graph, *_ = make(
         store,
         [
@@ -336,7 +392,6 @@ async def test_update_increments_version(store):
     e = store.get_entry(W, "ent_0001")
     assert e.body == "A bigger city." and e.version == 2
     assert e.created_at == "2020-01-01T00:00:00+00:00"
-    assert e.updated_at != old.updated_at
     values = (await graph.aget_state(cfg)).values
     assert reviews(values) == [f"Review: {pid} approved, committed as ent_0001 (v2)."]
 

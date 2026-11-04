@@ -2,6 +2,7 @@
 not been checked and approved (R18.3)."""
 
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -193,7 +194,18 @@ class _CommitFailed(Exception):
     pass
 
 
+# `commit` is a sync node, so LangGraph runs it in an executor thread. Two threads (chat tabs) on
+# the same world can commit at once: the lock makes "pick the next id, then upsert" and "re-read,
+# compare versions, then write" atomic, so neither a create nor an update is silently overwritten.
+_COMMIT_LOCK = threading.Lock()
+
+
 def _apply(store, p: Proposal) -> str:
+    with _COMMIT_LOCK:
+        return _apply_locked(store, p)
+
+
+def _apply_locked(store, p: Proposal) -> str:
     pid = p.proposal_id
     if p.action == "create":
         if p.after is None:
@@ -206,6 +218,12 @@ def _apply(store, p: Proposal) -> str:
     current = store.get_entry(p.world_id, p.entry_id) if p.entry_id else None
     if current is None:
         raise _CommitFailed(f"entry {p.entry_id} no longer exists")
+    if p.before is not None and current.version != p.before.version:
+        # Approved against a stale `before`: writing it would undo the other change unflagged.
+        raise _CommitFailed(
+            f"entry changed since it was checked (v{p.before.version} → v{current.version}); "
+            "propose it again"
+        )
     if p.action == "delete":
         store.delete_entry(p.world_id, current.id)
         return f"Review: {pid} approved, deleted {current.id}."
