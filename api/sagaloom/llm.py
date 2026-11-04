@@ -19,7 +19,11 @@ class OpenRouterChat(ChatOpenAI):
 
 
 def make_chat_model(
-    settings: Settings, *, model: str | None = None, temperature: float = 0.0
+    settings: Settings,
+    *,
+    model: str | None = None,
+    temperature: float = 0.0,
+    provider: str | None = None,
 ) -> OpenRouterChat:
     return OpenRouterChat(
         model=model or settings.chat_model,
@@ -30,7 +34,7 @@ def make_chat_model(
         timeout=60,
         stream_usage=True,
         extra_body={
-            "provider": {"order": settings.provider_order, "allow_fallbacks": False},
+            "provider": {"order": [provider] if provider else settings.provider_order, "allow_fallbacks": False},
             "usage": {"include": True},
         },
     )

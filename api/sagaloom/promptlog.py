@@ -34,6 +34,7 @@ class PromptRecord(BaseModel):
     run_id: str
     provider: str
     model: str
+    role: str | None = None
     params: dict = Field(default_factory=dict)
     request: dict  # {messages: [{role, content, name?, tool_calls?}], tools: [schema]}
     # {content, tool_calls, prompt_tokens, completion_tokens, cost_usd, latency_ms}
@@ -110,16 +111,16 @@ class PromptLog:
 
 
     def usage_by_model(self) -> "builtins.list[dict]":
-        """Calls, tokens and cost per model over every recorded call (Studio usage panel)."""
+        """Calls, tokens and cost per (role, model) over every recorded call (Studio usage panel)."""
         with closing(self._connect()) as conn:
             rows = conn.execute("SELECT record FROM prompt_log").fetchall()
-        agg: dict[str, dict] = {}
+        agg: dict[tuple, dict] = {}
         for (raw,) in rows:
             rec = PromptRecord.model_validate_json(raw)
             r = rec.response or {}
             a = agg.setdefault(
-                rec.model,
-                {"model": rec.model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+                (rec.role, rec.model),
+                {"role": rec.role, "model": rec.model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
             )
             a["calls"] += 1
             a["prompt_tokens"] += int(r.get("prompt_tokens") or 0)
@@ -219,6 +220,7 @@ class PromptLogHandler(AsyncCallbackHandler):
             run_id=self.turn_id,
             provider=provider,
             model=model,
+            role=(metadata or {}).get("role"),
             params=self._clean(params),
             request=request,
             started_at=datetime.now(UTC).isoformat(),

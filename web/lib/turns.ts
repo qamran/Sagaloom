@@ -6,6 +6,7 @@ export interface LlmCall {
   id: string;
   provider: string;
   model: string;
+  role?: string | null;
   params: Record<string, unknown>;
   messages: PromptMessage[];
   tools: unknown[];
@@ -43,6 +44,7 @@ export function callFromRecord(r: PromptRecord): LlmCall {
     id: r.id,
     provider: r.provider,
     model: r.model,
+    role: r.role ?? null,
     params: r.params ?? {},
     messages: r.request?.messages ?? [],
     tools: r.request?.tools ?? [],
@@ -83,6 +85,7 @@ export function viewFromEvents(t: TurnEvents): TurnView {
           id: str(d.id, `call-${calls.length}`),
           provider: str(d.provider, "openrouter"),
           model: str(d.model, "unknown"),
+          role: typeof d.role === "string" ? d.role : null,
           params: (d.params as Record<string, unknown>) ?? {},
           messages: list<PromptMessage>(d.messages),
           tools: list<unknown>(d.tools),

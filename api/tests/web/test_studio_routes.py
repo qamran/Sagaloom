@@ -91,6 +91,7 @@ async def test_switching_judge_model_shows_in_next_prompt_record(store, tmp_path
     await env.send(tid1, "Add the Velmar docks")
     first = (await env.client.get(f"/api/threads/{tid1}/llm-log")).json()
     assert len(first) == 2 and first[-1]["model"] == "openai/gpt-6-luna"
+    assert first[-1]["role"] == "judge"
 
     r = await env.client.put("/api/settings/models", json={"role": "judge", "model": "openai/gpt-6.1-terra"})
     assert r.status_code == 200

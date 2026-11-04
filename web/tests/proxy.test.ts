@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GET, PUT } from "../app/api/proxy/[...path]/route";
+import { GET, POST, PUT } from "../app/api/proxy/[...path]/route";
 
 describe("secret-injecting proxy", () => {
   beforeEach(() => {
@@ -45,5 +45,27 @@ describe("secret-injecting proxy", () => {
     expect(init.body).toBe('{"role":"judge","model":"openai/gpt-6.1-terra"}');
     expect(new Headers(init.headers).get("x-sagaloom-secret")).toBe(process.env.API_SHARED_SECRET);
     expect(res.status).toBe(200);
+  });
+});
+
+describe("proxy path hardening", () => {
+  beforeEach(() => {
+    process.env.API_URL = "http://api.test";
+    process.env.API_SHARED_SECRET = "s3cret-for-test";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([["."], [".."], ["%2e%2e"], ["%2E"]])("rejects the dot segment %s with 400 for every method", async (seg) => {
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    for (const handler of [GET, POST, PUT]) {
+      const res = await handler(new Request("http://localhost:3000/api/proxy/x", { method: "POST" }), {
+        params: Promise.resolve({ path: ["threads", seg, "messages"] }),
+      });
+      expect(res.status).toBe(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -2,181 +2,217 @@
  {
   "id": "anthropic/claude-haiku-4.5",
   "price_in": 1.0,
-  "price_out": 5.0
+  "price_out": 5.0,
+  "provider": "anthropic"
  },
  {
   "id": "anthropic/claude-haiku-5.5",
   "price_in": 0.1,
-  "price_out": 0.5
+  "price_out": 0.5,
+  "provider": "anthropic"
  },
  {
   "id": "anthropic/claude-opus-4.7",
   "price_in": 5.0,
-  "price_out": 25.0
+  "price_out": 25.0,
+  "provider": "anthropic"
  },
  {
   "id": "anthropic/claude-sonnet-5.5",
   "price_in": 2.0,
-  "price_out": 10.0
+  "price_out": 10.0,
+  "provider": "anthropic"
  },
  {
   "id": "deepseek/deepseek-v4-flash",
   "price_in": 0.091,
-  "price_out": 0.182
+  "price_out": 0.182,
+  "provider": "deepinfra"
  },
  {
   "id": "deepseek/deepseek-v4-pro",
   "price_in": 1.6,
-  "price_out": 3.2
+  "price_out": 3.2,
+  "provider": "deepinfra"
  },
  {
   "id": "deepseek/deepseek-v4.1-flash",
   "price_in": 0.045,
-  "price_out": 0.5
+  "price_out": 0.5,
+  "provider": "deepinfra"
  },
  {
   "id": "google/gemini-2.5-flash",
   "price_in": 0.3,
-  "price_out": 2.5
+  "price_out": 2.5,
+  "provider": "google-ai-studio"
  },
  {
   "id": "google/gemini-2.5-flash-lite",
   "price_in": 0.1,
-  "price_out": 0.4
+  "price_out": 0.4,
+  "provider": "google-ai-studio"
  },
  {
   "id": "google/gemini-3.1-flash-lite",
   "price_in": 0.25,
-  "price_out": 1.5
+  "price_out": 1.5,
+  "provider": "google-ai-studio"
  },
  {
   "id": "google/gemini-3.5-flash-lite",
   "price_in": 0.3,
-  "price_out": 2.5
+  "price_out": 2.5,
+  "provider": "google-ai-studio"
  },
  {
   "id": "google/gemini-3.7-flash",
   "price_in": 0.75,
-  "price_out": 3.75
+  "price_out": 3.75,
+  "provider": "google-ai-studio"
  },
  {
   "id": "google/gemini-3.8-flash",
   "price_in": 0.825,
-  "price_out": 4.125
+  "price_out": 4.125,
+  "provider": "google-ai-studio"
  },
  {
   "id": "google/gemma-4-31b-it",
   "price_in": 0.2,
-  "price_out": 0.4
+  "price_out": 0.4,
+  "provider": "deepinfra"
  },
  {
   "id": "minimax/minimax-m2.7",
   "price_in": 0.3,
-  "price_out": 1.2
+  "price_out": 1.2,
+  "provider": "minimax"
  },
  {
   "id": "mistralai/mistral-large-4-0",
   "price_in": 0.7,
-  "price_out": 2.1
+  "price_out": 2.1,
+  "provider": "mistral"
  },
  {
   "id": "openai/gpt-4.1-mini",
   "price_in": 0.4,
-  "price_out": 1.6
+  "price_out": 1.6,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-4o",
   "price_in": 2.5,
-  "price_out": 10.0
+  "price_out": 10.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-4o-2024-11-20",
   "price_in": 2.5,
-  "price_out": 10.0
+  "price_out": 10.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-4o-mini",
   "price_in": 0.15,
-  "price_out": 0.6
+  "price_out": 0.6,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5-mini",
   "price_in": 0.25,
-  "price_out": 2.0
+  "price_out": 2.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5-nano",
   "price_in": 0.05,
-  "price_out": 0.4
+  "price_out": 0.4,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.2",
   "price_in": 1.75,
-  "price_out": 14.0
+  "price_out": 14.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.4",
   "price_in": 2.5,
-  "price_out": 15.0
+  "price_out": 15.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.4-mini",
   "price_in": 0.75,
-  "price_out": 4.5
+  "price_out": 4.5,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.4-nano",
   "price_in": 0.2,
-  "price_out": 1.25
+  "price_out": 1.25,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.5",
   "price_in": 5.0,
-  "price_out": 30.0
+  "price_out": 30.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.6-luna",
   "price_in": 0.2,
-  "price_out": 1.2
+  "price_out": 1.2,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.6-sol",
   "price_in": 4.0,
-  "price_out": 20.0
+  "price_out": 20.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-5.6-terra",
   "price_in": 2.0,
-  "price_out": 12.0
+  "price_out": 12.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-6-luna",
   "price_in": 0.1,
-  "price_out": 0.5
+  "price_out": 0.5,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-6-sol",
   "price_in": 2.0,
-  "price_out": 10.0
+  "price_out": 10.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-6.1-sol",
   "price_in": 2.0,
-  "price_out": 10.0
+  "price_out": 10.0,
+  "provider": "openai"
  },
  {
   "id": "openai/gpt-6.1-terra",
   "price_in": 1.0,
-  "price_out": 5.0
+  "price_out": 5.0,
+  "provider": "openai"
  },
  {
   "id": "x-ai/grok-4.5",
   "price_in": 2.0,
-  "price_out": 6.0
+  "price_out": 6.0,
+  "provider": "xai"
  },
  {
   "id": "z-ai/glm-5.2",
   "price_in": 0.006,
-  "price_out": 6.8
+  "price_out": 6.8,
+  "provider": "z-ai"
  }
 ]

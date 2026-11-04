@@ -102,3 +102,39 @@ def test_allowlist_has_prices(tmp_path):
     allowed = make_settings(tmp_path).allowed_models
     assert len(allowed) == 36 and all(m.price_in >= 0 and m.price_out >= 0 for m in allowed)
     assert "openai/gpt-6-luna" in {m.id for m in allowed}
+
+
+def test_make_model_for_pins_the_provider_of_the_selected_model(tmp_path):
+    from sagaloom.web.app import make_model_for
+
+    s = make_settings(tmp_path)
+    ms = ModelSettings(tmp_path / "model_settings.json", s)
+    model_for = make_model_for(s, ms)
+    assert model_for("judge").extra_body["provider"]["order"] == ["openai"]  # Luna
+    ms.set_model("judge", "anthropic/claude-sonnet-5.5")
+    assert model_for("judge").extra_body["provider"] == {"order": ["anthropic"], "allow_fallbacks": False}
+    ms.set_model("judge", "google/gemini-3.8-flash")
+    assert model_for("judge").extra_body["provider"]["order"] == ["google-ai-studio"]
+    assert model_for("agent").extra_body["provider"]["order"] == ["openai"]
+
+
+def test_every_allowlisted_model_has_a_provider(tmp_path):
+    assert all(m.provider for m in make_settings(tmp_path).allowed_models)
+
+
+def test_gemini_key_set_is_consistent_and_false_for_an_empty_key(tmp_path):
+    s = make_settings(tmp_path, gemini_api_key="")
+    assert card(build_feature_map(s, AppDeps()), "multi_provider").status == "off"
+    assert providers_status(s)[1].key_set is False
+    s2 = make_settings(tmp_path, gemini_api_key=GEMINI_KEY)
+    assert card(build_feature_map(s2, AppDeps()), "multi_provider").status == "configured"
+    assert providers_status(s2)[1].key_set is True
+
+
+def test_model_for_tags_the_role_on_the_model(tmp_path):
+    from sagaloom.web.app import make_model_for
+
+    s = make_settings(tmp_path)
+    model_for = make_model_for(s, ModelSettings(tmp_path / "ms.json", s))
+    assert model_for("judge").metadata["role"] == "judge"
+    assert model_for("extractor").metadata["role"] == "extractor"

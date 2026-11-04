@@ -41,6 +41,12 @@ function Content({ text }: { text: string }) {
   );
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  agent: "Agent",
+  judge: "Contradiction judge",
+  extractor: "Fact extractor",
+  guard: "Input guard",
+};
 const ROLE_COLOR: Record<string, string> = { system: "text-myth", user: "text-[#9FE0BF]", assistant: "text-[#a9d3ff]" };
 
 function Messages({ call }: { call: LlmCall }) {
@@ -110,7 +116,7 @@ function CallCard({ call, index, defaultOpen }: { call: LlmCall; index: number; 
   const [tab, setTab] = useState<"Request" | "Response" | "Raw JSON">("Request");
   const [copyError, setCopyError] = useState(false);
   const r = call.response;
-  const role = call.tools.length > 0 ? "Agent" : "Structured call";
+  const role = (call.role && ROLE_LABEL[call.role]) || (call.tools.length > 0 ? "Agent" : "Structured call");
   const params = Object.entries(call.params)
     .filter(([k]) => ["temperature", "max_tokens", "reasoning_effort"].includes(k))
     .map(([k, v]) => `${k} ${String(v)}`);

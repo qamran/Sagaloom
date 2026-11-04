@@ -171,6 +171,7 @@ export interface ProviderStatus {
 }
 
 export interface ModelUsage {
+  role?: string | null;
   model: string;
   calls: number;
   prompt_tokens: number;
@@ -221,6 +222,7 @@ export interface PromptRecord {
   run_id: string;
   provider: string;
   model: string;
+  role?: string | null;
   params: Record<string, unknown>;
   request: { messages: PromptMessage[]; tools: unknown[] };
   response: LlmResponse | null;

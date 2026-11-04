@@ -1,5 +1,14 @@
 import type { StudioData } from "@/lib/types";
 
+const ROLE_SHORT: Record<string, string> = { agent: "Agent", judge: "Judge", extractor: "Extractor", guard: "Guard" };
+
+/** "Judge (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
+export function usageLabel(role: string | null | undefined, model: string): string {
+  const short = (model.split("/").pop() ?? model).replace(/^gpt-[\d.]+-/, "");
+  const name = short.charAt(0).toUpperCase() + short.slice(1);
+  return role && ROLE_SHORT[role] ? `${ROLE_SHORT[role]} (${name})` : model;
+}
+
 const n = (v: number) => v.toLocaleString("en-US");
 
 /** Usage (R20.4): totals over every recorded model call, and the cost split by model. */
@@ -32,9 +41,9 @@ export function UsagePanel({ usage }: { usage: StudioData["usage"] }) {
           <p className="m-0 text-[13px] text-muted-foreground">No model calls yet. Send a chat message first.</p>
         )}
         {usage.by_model.map((m) => (
-          <div key={m.model} className="flex flex-col gap-1 text-xs">
+          <div key={`${m.role ?? ""}|${m.model}`} className="flex flex-col gap-1 text-xs">
             <div className="flex justify-between gap-2">
-              <span className="font-mono">{m.model}</span>
+              <span className="font-mono">{usageLabel(m.role, m.model)}</span>
               <span className="text-muted-foreground">
                 {m.calls} {m.calls === 1 ? "call" : "calls"} · {n(m.prompt_tokens)} → {n(m.completion_tokens)} tok ·{" "}
                 <span className="text-foreground">${m.cost_usd.toFixed(4)}</span>

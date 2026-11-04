@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FeatureMap } from "@/components/FeatureMap";
+import { UsagePanel, usageLabel } from "@/components/UsagePanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { putModel } from "@/lib/api";
 import type { FeatureCardData, ModelsPayload, ProviderStatus } from "@/lib/types";
@@ -81,5 +82,25 @@ describe("ProvidersPanel", () => {
     await userEvent.selectOptions(select, "openai/gpt-6.1-terra");
     expect(await screen.findByRole("alert")).toHaveTextContent(/not saved/i);
     expect(select.value).toBe("openai/gpt-6-luna");
+  });
+});
+
+describe("UsagePanel", () => {
+  it("groups cost by role and model", () => {
+    expect(usageLabel("judge", "openai/gpt-6-luna")).toBe("Judge (Luna)");
+    expect(usageLabel(null, "openai/gpt-6-luna")).toBe("openai/gpt-6-luna");
+    render(
+      <UsagePanel
+        usage={{
+          prompt_tokens: 3, completion_tokens: 1, cost_usd: 0.001,
+          by_model: [
+            { role: "judge", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 2, completion_tokens: 1, cost_usd: 0.0006 },
+            { role: "agent", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 1, completion_tokens: 0, cost_usd: 0.0004 },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("Judge (Luna)")).toBeInTheDocument();
+    expect(screen.getByText("Agent (Luna)")).toBeInTheDocument();
   });
 });

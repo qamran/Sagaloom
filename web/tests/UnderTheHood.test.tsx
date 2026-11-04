@@ -96,4 +96,13 @@ describe("UnderTheHood", () => {
     await user.click(screen.getByRole("button", { name: "Raw JSON" }));
     expect(screen.getByTestId("raw-json")).toHaveTextContent('"model": "openai/gpt-6-luna"');
   });
+
+  it("labels a call from its role, and falls back when the role is missing", () => {
+    const withRole = { ...turn, calls: [{ ...turn.calls[0], role: "judge" }] };
+    const { unmount } = render(<UnderTheHood turn={withRole} onClose={() => {}} />);
+    expect(screen.getByText("Contradiction judge")).toBeInTheDocument();
+    unmount();
+    render(<UnderTheHood turn={turn} onClose={() => {}} />);
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+  });
 });

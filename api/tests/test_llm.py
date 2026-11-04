@@ -76,3 +76,8 @@ def test_non_streamed_result_keeps_cost():
     msg = AIMessage(content="x", response_metadata={"token_usage": {
         "prompt_tokens": 10, "completion_tokens": 5, "cost": 0.5}})
     assert extract_usage(msg, s).cost_usd == 0.5
+
+
+def test_chat_model_provider_param_pins_that_provider_without_fallbacks():
+    m = make_chat_model(_settings(), model="anthropic/claude-sonnet-5.5", provider="anthropic")
+    assert m.extra_body["provider"] == {"order": ["anthropic"], "allow_fallbacks": False}

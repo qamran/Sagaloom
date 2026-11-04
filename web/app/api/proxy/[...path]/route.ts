@@ -2,8 +2,20 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 
+function decodeSafe(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
 async function forward(req: Request, ctx: Ctx): Promise<Response> {
   const { path } = await ctx.params;
+  // A dot segment would let a request climb out of /api (the URL parser resolves it).
+  if (path.some((seg) => ["", ".", ".."].includes(decodeSafe(seg)) && seg !== "")) {
+    return new Response("bad path", { status: 400 });
+  }
   const base = process.env.API_URL ?? "http://localhost:8000";
   const search = new URL(req.url).search;
   const url = `${base}/api/${path.map(encodeURIComponent).join("/")}${search}`;

@@ -43,15 +43,23 @@ def make_model_for(settings: Settings, model_settings: ModelSettings, factory=No
     if factory is None:
         from sagaloom.llm import make_chat_model
 
+        providers = {m.id: m.provider for m in settings.allowed_models}
+
         def factory(role: str, model: str):
-            return make_chat_model(settings, model=model)
+            # Pinned to the provider that serves this model, with no fallbacks (R11.G7, R22).
+            return make_chat_model(settings, model=model, provider=providers.get(model))
 
     built: dict[tuple[str, str], Any] = {}
 
     def model_for(role: str):
         key = (role, model_settings.get_model_settings()[role])
         if key not in built:
-            built[key] = factory(*key)
+            m = factory(*key)
+            try:  # the prompt log reads the role from the model's metadata
+                m.metadata = {**(getattr(m, "metadata", None) or {}), "role": role}
+            except Exception:
+                pass
+            built[key] = m
         return built[key]
 
     return model_for

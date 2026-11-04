@@ -16,6 +16,7 @@ class AllowedModel(BaseModel):
     id: str
     price_in: float  # USD per 1M input tokens
     price_out: float  # USD per 1M output tokens
+    provider: str = "openai"  # OpenRouter provider slug the model is pinned to (R11.G7)
 
 
 def load_allowed_models(path: Path = ALLOWED_MODELS_FILE) -> list[AllowedModel]:

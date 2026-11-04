@@ -41,6 +41,12 @@ class ProviderStatus(BaseModel):
     notice: str | None = None
 
 
+def gemini_key_set(settings: Settings) -> bool:
+    """A non-empty key; the value itself is never used."""
+    key = settings.gemini_api_key
+    return key is not None and bool(key.get_secret_value())
+
+
 def langsmith_live() -> bool:
     """R20.5: live only when tracing is on and a key is present (values are never returned)."""
     return os.environ.get("LANGSMITH_TRACING") == "true" and bool(os.environ.get("LANGSMITH_API_KEY"))
@@ -61,7 +67,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             pass
     project = os.environ.get("LANGSMITH_PROJECT")
     ls_live = langsmith_live()
-    gemini_set = settings.gemini_api_key is not None
+    gemini_set = gemini_key_set(settings)
     prompt = "/chat?prompt="
     return [
         FeatureCard(
@@ -184,7 +190,7 @@ def providers_status(settings: Settings, mapping: dict[str, str] | None = None) 
         ),
         ProviderStatus(
             name="Gemini",
-            key_set=settings.gemini_api_key is not None and bool(settings.gemini_api_key.get_secret_value()),
+            key_set=gemini_key_set(settings),
             role="demo only, not used for real calls",
             models=[ProviderModel(id=GEMINI_MODEL, role="demo")],
             notice=GEMINI_NOTICE,
