@@ -132,6 +132,7 @@ class CanonStore:
                         if f.status != "secret"
                     ],
                     score=1 - dist,
+                    trusted=e.trusted,
                 )
             )
         return sorted(hits, key=lambda h: h.score, reverse=True)

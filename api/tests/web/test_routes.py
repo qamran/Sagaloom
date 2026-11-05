@@ -323,6 +323,27 @@ async def test_startup_seeds_velmar_once(store, tmp_path, make_env):
     assert len(store.list_entries(VELMAR_ID)) == n
 
 
+async def test_startup_builds_the_wiki_client_and_passes_it_to_the_graph(store, tmp_path, make_env, monkeypatch):
+    import sagaloom.graph.build as build_module
+    from sagaloom.web.app import create_app
+    from sagaloom.wiki.client import WikiClient
+
+    env = make_env()
+    seen: dict = {}
+    monkeypatch.setattr(build_module, "build_graph", lambda **kw: seen.update(kw) or "graph")
+    deps = AppDeps(
+        store=store, worlds=env.deps.worlds, threads=env.deps.threads, settings=env.settings,
+        promptlog=env.deps.promptlog, model_settings=env.deps.model_settings,
+        dev_settings=env.deps.dev_settings, seed_dir=None,
+    )
+    app = create_app(env.settings, deps)
+    async with app.router.lifespan_context(app):
+        pass
+    assert isinstance(deps.wiki, WikiClient)
+    assert deps.wiki.cache_dir == env.settings.data_dir / "cache" / "wiki"
+    assert seen["wiki"] is deps.wiki and deps.graph == "graph"
+
+
 # ---------- fix round 1 ----------
 
 

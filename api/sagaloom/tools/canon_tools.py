@@ -6,22 +6,31 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from pydantic import BaseModel, Field, ValidationError
 
 from sagaloom.check.contradiction import check_proposal
-from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal, Status
+from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal, SearchHit, Status
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
+from sagaloom.text import message_text
 from sagaloom.tools.facts import draft_facts
+from sagaloom.tools.reference import NAME as REFERENCE_TOOL
+from sagaloom.tools.reference import make_reference_tool
+from sagaloom.wiki.client import WikiClient
 
 log = logging.getLogger(__name__)
 
+UNTRUSTED_LABEL = "untrusted source"
+
 _WorldId = Annotated[str, InjectedState("world_id")]
 _CallId = Annotated[str, InjectedToolCallId]
+# The thread's messages, read to set provenance from the turn. Defaults to None only so the tool
+# can be invoked directly in tests; the ToolNode always injects it.
+_Messages = Annotated[list | None, InjectedState("messages")]
 
 
 class SearchCanonArgs(BaseModel):
@@ -56,8 +65,12 @@ class CreateOrUpdateArgs(BaseModel):
             "change only the values the author changed."
         )
     )
+    source_url: str | None = Field(
+        default=None, description="Optional: the reference URL this proposal is based on."
+    )
     world_id: _WorldId
     tool_call_id: _CallId
+    messages: _Messages = None
 
 
 class CheckContradictionArgs(BaseModel):
@@ -80,6 +93,14 @@ def _bad_fields(e: ValidationError) -> str:
     return f"Invalid fields: {', '.join(bad)}. {e.errors()[0]['msg']}"
 
 
+def _hit(h: SearchHit) -> dict[str, Any]:
+    """An untrusted entry is labelled as such when retrieved (R13.7)."""
+    d = h.model_dump()
+    if not h.trusted:
+        d["label"] = UNTRUSTED_LABEL
+    return d
+
+
 def _keep_secret_facts(before: Entry, proposed: list[Fact]) -> list[Fact]:
     """The agent never sees secret facts (nor any fact of a secret entry), so an update that
     omits one cannot mean to delete it: carry over every such fact whose key the proposal does
@@ -90,7 +111,56 @@ def _keep_secret_facts(before: Entry, proposed: list[Fact]) -> list[Fact]:
     return [*proposed, *kept]
 
 
-def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) -> list[BaseTool]:
+def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
+    """(whether `real_world_reference` answered in this turn, the URLs it returned). The turn is
+    everything after the author's last message (an unnamed HumanMessage; review notes are named)."""
+    turn: list = []
+    for m in reversed(messages or []):
+        if isinstance(m, HumanMessage) and not m.name:
+            break
+        turn.append(m)
+    called = False
+    urls: list[str] = []
+    for m in reversed(turn):
+        if not (isinstance(m, ToolMessage) and m.name == REFERENCE_TOOL):
+            continue
+        called = True
+        text = message_text(m.content)
+        try:  # the payload sits between the wrapper's first and last line
+            payload = json.loads(text.split("\n", 1)[1].rsplit("\n", 1)[0])
+        except (IndexError, ValueError):
+            continue  # an error result: it still taints the turn, but has no URLs
+        if not isinstance(payload, dict):
+            continue
+        for r in payload.get("results") or []:
+            url = r.get("url") if isinstance(r, dict) else None
+            if isinstance(url, str) and url not in urls:
+                urls.append(url)
+    return called, urls
+
+
+def reference_urls_this_turn(messages: list) -> list[str]:
+    """The URLs `real_world_reference` returned in this turn; empty if it was not called."""
+    return _reference_turn(messages)[1]
+
+
+def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]:
+    """Server-set provenance for a chat proposal (R11.4.6). Any `real_world_reference` result in
+    this turn taints it (fail closed, even an error result). The agent may pick which of the
+    turn's URLs it used; anything else it names is ignored."""
+    called, urls = _reference_turn(messages)
+    if not called:
+        return {"source": "user", "source_url": None, "licence": None, "trusted": True}
+    url = source_url if source_url in urls else (urls[0] if urls else None)
+    return {"source": "reference", "source_url": url, "licence": None, "trusted": False}
+
+
+def make_tools(
+    store,
+    extractor_llm: BaseChatModel,
+    judge_llm: BaseChatModel,
+    wiki: WikiClient | None = None,
+) -> list[BaseTool]:
     @tool("search_canon", args_schema=SearchCanonArgs)
     async def search_canon(
         query: str,
@@ -108,7 +178,7 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
             if not hits:
                 payload = {"results": [], "reason": "no matching canon in this world"}
             else:
-                payload = {"results": [h.model_dump() for h in hits]}
+                payload = {"results": [_hit(h) for h in hits]}
             return wrap_untrusted(_json(payload), "search_canon")
         except Exception as e:
             log.warning("search_canon failed", exc_info=True)
@@ -126,10 +196,14 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
         status: Status | None = None,
         aliases: list[str] | None = None,
         facts: list[Fact] | None = None,
+        source_url: str | None = None,
+        messages: _Messages = None,
     ) -> Command:
         """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
-        queues a proposal that is contradiction-checked and shown to the author for approval."""
+        queues a proposal that is contradiction-checked and shown to the author for approval.
+        Pass `facts` as short key/value claims, or omit them to have them drafted from the body."""
         try:
+            prov = _provenance(messages, source_url)
             before = None
             after = None
             if action in ("update", "delete"):
@@ -156,6 +230,7 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
                         status=status or "canon",
                         aliases=aliases or [],
                         facts=facts or [],
+                        **prov,
                     )
                 except ValidationError as e:
                     return _err(tool_call_id, _bad_fields(e))
@@ -170,6 +245,7 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
                         status=status if status is not None else before.status,
                         aliases=aliases if aliases is not None else before.aliases,
                         facts=facts if facts is not None else before.facts,
+                        **prov,  # combined with the stored entry's at commit (fail closed)
                     )
                 except ValidationError as e:
                     return _err(tool_call_id, _bad_fields(e))
@@ -230,4 +306,7 @@ def make_tools(store, extractor_llm: BaseChatModel, judge_llm: BaseChatModel) ->
             log.warning("check_contradiction failed", exc_info=True)
             return _json({"error": f"contradiction check failed: {e}"})
 
-    return [search_canon, create_or_update_entry, check_contradiction]
+    tools: list[BaseTool] = [search_canon, create_or_update_entry, check_contradiction]
+    if wiki is not None:
+        tools.append(make_reference_tool(wiki))
+    return tools

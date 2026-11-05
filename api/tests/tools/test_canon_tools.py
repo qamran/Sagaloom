@@ -235,7 +235,30 @@ async def test_injected_args_hidden_from_llm_schema(store):
     for t in ts.values():
         props = t.tool_call_schema.model_json_schema()["properties"]
         assert "world_id" not in props and "tool_call_id" not in props
+        assert "messages" not in props
+        assert not {"source", "trusted", "licence"} & set(props)
         assert t.description
+    props = ts["create_or_update_entry"].tool_call_schema.model_json_schema()["properties"]
+    assert props["source_url"]["description"] == "Optional: the reference URL this proposal is based on."
+    assert "facts" in ts["create_or_update_entry"].description
+
+
+async def test_untrusted_hit_is_labelled(store):
+    store.upsert_entry(entry())
+    store.upsert_entry(entry(id="ent_0002", title="Ostra", source="reference", trusted=False))
+    ts, *_ = tools_for(store)
+    out = await ts["search_canon"].ainvoke({"query": "city", "world_id": W})
+    hits = {h["id"]: h for h in json.loads(out.split("\n", 1)[1].rsplit("\n", 1)[0])["results"]}
+    assert hits["ent_0002"]["trusted"] is False
+    assert hits["ent_0002"]["label"] == "untrusted source"
+    assert hits["ent_0001"]["trusted"] is True
+    assert "label" not in hits["ent_0001"]
+
+
+def test_search_hit_carries_trusted(store):
+    store.upsert_entry(entry(trusted=False))
+    [hit] = store.search(W, "city")
+    assert hit.trusted is False
 
 
 async def test_check_contradiction_failure_returns_error_not_exception(store, monkeypatch):

@@ -51,6 +51,14 @@ class EntryDraft(BaseModel):
     status: Status = "canon"
     aliases: list[str] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
+    # Provenance (R2.S, R11.4.6): set by the server, never by the agent's tool arguments.
+    source: Source = "user"
+    source_url: str | None = None
+    licence: str | None = None
+    trusted: bool = True
+
+
+PROVENANCE_FIELDS = ("source", "source_url", "licence", "trusted")
 
 
 class World(BaseModel):
@@ -75,6 +83,7 @@ class SearchHit(BaseModel):
     snippet: str
     facts: list[HitFact] = Field(default_factory=list)  # non-secret facts only
     score: float
+    trusted: bool = True
 
 
 FlagKind = Literal["conflict", "retcon", "note"]

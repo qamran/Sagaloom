@@ -18,6 +18,7 @@ from sagaloom.store.threads import ThreadRegistry
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
 from sagaloom.web.routes import router
+from sagaloom.wiki.client import WikiClient
 
 # api/sagaloom/web/app.py -> repo root
 SEED_DIR = Path(__file__).resolve().parents[3] / "seed" / "velmar"
@@ -36,6 +37,7 @@ class AppDeps:
     promptlog: PromptLog | None = None
     model_settings: ModelSettings | None = None
     dev_settings: DevSettingsStore | None = None
+    wiki: WikiClient | None = None  # the shared MediaWiki client (R11.4.8)
     seed_dir: Path | None = SEED_DIR
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
 
@@ -82,6 +84,8 @@ async def _open_runtime(app: FastAPI):
 
             client = chromadb.PersistentClient(path=str(settings.data_dir / "chroma"))
             deps.store = CanonStore(client, make_embeddings(settings))
+        if deps.wiki is None:
+            deps.wiki = WikiClient(Path(settings.data_dir) / "cache" / "wiki")
         if deps.graph is None:
             from sagaloom.graph.build import build_graph, sqlite_checkpointer
 
@@ -92,6 +96,7 @@ async def _open_runtime(app: FastAPI):
                 checkpointer=saver,
                 settings=settings,
                 dev=deps.dev_settings.get,
+                wiki=deps.wiki,
             )
         if deps.seed_dir is not None:
             await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)

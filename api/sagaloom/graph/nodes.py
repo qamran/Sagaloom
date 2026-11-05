@@ -19,7 +19,7 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
-from sagaloom.models import CheckResult, Decision, Entry, Flag, Proposal
+from sagaloom.models import PROVENANCE_FIELDS, CheckResult, Decision, Entry, EntryDraft, Flag, Proposal
 from sagaloom.settings_store import DevSettings
 from sagaloom.store.canon import DuplicateTitleError
 from sagaloom.text import message_text
@@ -230,7 +230,9 @@ def approval_gate(state: SagaState) -> Command[Literal["check", "commit"]]:
     for d in decisions:
         p = by_id[d.proposal_id]
         if d.action == "edit":
-            replaced.append(p.model_copy(update={"after": d.edited}))
+            # The edited draft comes from the client: provenance stays the server's (R2.S).
+            keep = {k: getattr(p.after, k) for k in PROVENANCE_FIELDS}
+            replaced.append(p.model_copy(update={"after": d.edited.model_copy(update=keep)}))
             stale[p.proposal_id] = None
         elif d.action == "save_as_myth":
             after = apply_save_as_myth(p, checks[p.proposal_id], d.told_by)
@@ -255,6 +257,17 @@ class _CommitFailed(Exception):
 # the same world can commit at once: the lock makes "pick the next id, then upsert" and "re-read,
 # compare versions, then write" atomic, so neither a create nor an update is silently overwritten.
 _COMMIT_LOCK = threading.Lock()
+
+
+def _merged_provenance(current: Entry, draft: EntryDraft) -> dict:
+    """Provenance fails closed across updates (R2.S): once untrusted, always untrusted, and a
+    non-`user` source is never downgraded to `user`."""
+    return {
+        "trusted": current.trusted and draft.trusted,
+        "source": current.source if draft.source == "user" else draft.source,
+        "source_url": draft.source_url or current.source_url,
+        "licence": draft.licence or current.licence,
+    }
 
 
 def _apply(store, p: Proposal) -> str:
@@ -290,6 +303,7 @@ def _apply_locked(store, p: Proposal) -> str:
         {
             **current.model_dump(),
             **p.after.model_dump(),
+            **_merged_provenance(current, p.after),
             "version": current.version + 1,  # created_at is kept; upsert refreshes updated_at
         }
     )

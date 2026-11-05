@@ -4,6 +4,7 @@ import itertools
 import uuid
 from typing import Any
 
+import httpx
 import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -24,6 +25,7 @@ from sagaloom.guard import BLOCK_COPY, GUARD_POLICY, GuardVerdict
 from sagaloom.models import CheckResult, Decision, Entry, EntryDraft, Fact, Proposal
 from sagaloom.settings_store import DevSettings
 from sagaloom.tools.facts import FactList
+from sagaloom.wiki.client import WikiClient
 
 W = "w1"
 S = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s")
@@ -88,7 +90,7 @@ def tc(name: str, args: dict, call_id: str | None = None) -> AIMessage:
     )
 
 
-def create_call(title="Ostra", body="A port.", facts=None) -> AIMessage:
+def create_call(title="Ostra", body="A port.", facts=None, **extra) -> AIMessage:
     return tc(
         "create_or_update_entry",
         {
@@ -97,6 +99,7 @@ def create_call(title="Ostra", body="A port.", facts=None) -> AIMessage:
             "type": "place",
             "body": body,
             "facts": facts if facts is not None else [{"key": "harbour", "value": "deep"}],
+            **extra,
         },
     )
 
@@ -781,3 +784,152 @@ async def test_tool_args_validated_before_tool_runs(store):
     assert [m.status for m in tool_msgs] == ["error"]
     assert not values.get("pending_proposals")
     assert extractor.calls == 0
+
+
+# ---------- provenance (R2.S, R11.4.6) ----------
+
+REF_URLS = ["https://en.wikipedia.org/wiki/Silk_Road", "https://en.wikipedia.org/wiki/Venice"]
+
+
+def fake_wiki(tmp_path) -> WikiClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/w/api.php":
+            return httpx.Response(
+                200, json={"query": {"search": [{"title": "Silk Road"}, {"title": "Venice"}]}}
+            )
+        return httpx.Response(200, json={"extract": "Some reference text."})
+
+    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler))
+
+
+def ref_call() -> AIMessage:
+    return tc("real_world_reference", {"query": "trade routes", "max_results": 2})
+
+
+def update_call(body: str, **extra) -> AIMessage:
+    return tc(
+        "create_or_update_entry",
+        {"action": "update", "entry_id": "ent_0001", "body": body,
+         "facts": [{"key": "moons", "value": "One"}], **extra},
+    )
+
+
+def provenance(draft) -> tuple:
+    return (draft.source, draft.trusted, draft.source_url)
+
+
+async def pending_after(graph, cfg) -> EntryDraft:
+    [p] = (await graph.aget_state(cfg)).values["pending_proposals"]
+    return p.after
+
+
+async def test_reference_proposal_is_tainted(store, tmp_path):
+    graph, *_ = make(
+        store, [ref_call(), create_call(), AIMessage(content="ok")], wiki=fake_wiki(tmp_path)
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("Make a port like Venice"), cfg)
+    after = await pending_after(graph, cfg)
+    assert after.source == "reference" and after.trusted is False
+    assert after.source_url in REF_URLS
+    await run(graph, resume({"proposal_id": await only_pid(graph, cfg), "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert (e.source, e.trusted, e.source_url, e.licence) == ("reference", False, after.source_url, None)
+
+
+async def test_plain_proposal_is_user_trusted(store, tmp_path):
+    seed(store, id="ent_0009", title="Brine", body="A port.")
+    graph, *_ = make(
+        store,
+        [tc("search_canon", {"query": "port"}), create_call(source_url=REF_URLS[0])],
+        wiki=fake_wiki(tmp_path),
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
+
+
+async def test_reference_taint_is_turn_scoped(store, tmp_path):
+    graph, *_ = make(
+        store,
+        [ref_call(), AIMessage(content="Venice traded salt."), create_call()],
+        wiki=fake_wiki(tmp_path),
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("What was Venice like?"), cfg)
+    assert not (await graph.aget_state(cfg)).values.get("pending_proposals")
+    await run(graph, {"messages": [HumanMessage(content="Add Ostra")]}, cfg)
+    assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
+
+
+@pytest.mark.parametrize(
+    ("given", "stored"),
+    [("https://evil.example", REF_URLS[0]), (REF_URLS[1], REF_URLS[1]), (None, REF_URLS[0])],
+)
+async def test_agent_source_url_must_be_from_turn(store, tmp_path, given, stored):
+    extra = {"source_url": given} if given else {}
+    graph, *_ = make(store, [ref_call(), create_call(**extra)], wiki=fake_wiki(tmp_path))
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    assert provenance(await pending_after(graph, cfg)) == ("reference", False, stored)
+
+
+async def test_trusted_fails_closed_across_updates(store, tmp_path):
+    seed(store)
+    graph, *_ = make(
+        store,
+        [ref_call(), update_call("A city like Venice."), AIMessage(content="ok"),
+         update_call("A city of canals."), AIMessage(content="ok")],
+        wiki=fake_wiki(tmp_path),
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("Make Velmar like Venice"), cfg)
+    await run(graph, resume({"proposal_id": await only_pid(graph, cfg), "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert (e.version, e.source, e.trusted, e.source_url) == (2, "reference", False, REF_URLS[0])
+
+    await run(graph, {"messages": [HumanMessage(content="Add canals to Velmar")]}, cfg)
+    assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
+    await run(graph, resume({"proposal_id": await only_pid(graph, cfg), "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert e.body == "A city of canals."
+    assert (e.version, e.source, e.trusted, e.source_url) == (3, "reference", False, REF_URLS[0])
+
+
+def test_commit_never_downgrades_official_source(store):
+    v1 = seed(store, source="official", source_url="https://w.example/Velmar", licence="CC BY-SA 3.0", trusted=False)
+    p = Proposal(
+        proposal_id="p1", action="update", world_id=W, entry_id=v1.id, before=v1,
+        after=EntryDraft(title="Velmar", type="place", body="Edited by the author."),
+    )
+    make_commit_node(store)(_approved(p))
+    e = store.get_entry(W, v1.id)
+    assert e.body == "Edited by the author."
+    assert (e.source, e.trusted, e.source_url, e.licence) == (
+        "official", False, "https://w.example/Velmar", "CC BY-SA 3.0"
+    )
+
+
+async def test_edit_decision_cannot_reset_provenance(store, tmp_path):
+    graph, *_ = make(
+        store, [ref_call(), create_call(), AIMessage(content="ok")], wiki=fake_wiki(tmp_path)
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    edited = {
+        **EntryDraft(title="Ostra", type="place", body="Edited.").model_dump(),
+        "source": "user", "trusted": True, "source_url": "https://evil.example", "licence": "MIT",
+    }
+    await run(graph, resume({"proposal_id": pid, "action": "edit", "edited": edited}), cfg)
+    after = await pending_after(graph, cfg)
+    assert after.body == "Edited."
+    assert (*provenance(after), after.licence) == ("reference", False, REF_URLS[0], None)
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert (e.body, e.source, e.trusted, e.source_url) == ("Edited.", "reference", False, REF_URLS[0])
+
+
+def test_system_prompt_keeps_reference_out_of_canon():
+    assert "real_world_reference" in SYSTEM
+    assert "reference, not canon" in SYSTEM

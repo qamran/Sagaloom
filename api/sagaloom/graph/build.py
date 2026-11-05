@@ -33,6 +33,7 @@ from sagaloom.graph.nodes import (
 from sagaloom.graph.state import SagaState
 from sagaloom.settings_store import DevSettings
 from sagaloom.tools.canon_tools import make_tools
+from sagaloom.wiki.client import WikiClient
 
 RECURSION_LIMIT = 25
 
@@ -44,8 +45,11 @@ def build_graph(
     checkpointer,
     settings: Settings,
     dev: Callable[[], DevSettings] = DevSettings,
+    wiki: WikiClient | None = None,
 ) -> CompiledStateGraph:
-    tools = make_tools(store, RoleModel(model_for, "extractor"), RoleModel(model_for, "judge"))
+    tools = make_tools(
+        store, RoleModel(model_for, "extractor"), RoleModel(model_for, "judge"), wiki=wiki
+    )
     g = StateGraph(SagaState)
     g.add_node("guard", make_guard_node(model_for, dev))
     g.add_node("agent", make_agent_node(model_for, tools, dev))
