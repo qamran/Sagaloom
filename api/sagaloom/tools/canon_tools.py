@@ -124,7 +124,7 @@ def _keep_secret_facts(before: Entry, proposed: list[Fact]) -> list[Fact]:
 
 
 def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
-    """(whether `real_world_reference` returned a successful reference payload in this turn, the
+    """(whether `real_world_reference` returned a successful, non-empty reference payload in this turn, the
     URLs it returned). The turn is everything after the author's last message (an unnamed
     HumanMessage; review notes are named). An error result, a validation error or an unparseable
     message brings no reference text in, so it does not count."""
@@ -150,8 +150,8 @@ def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
         if not isinstance(payload, dict) or payload.get("label") != "reference":
             continue
         results = payload.get("results")
-        if not isinstance(results, list):
-            continue
+        if not isinstance(results, list) or not results:
+            continue  # an empty lookup brought no reference text in, so it does not taint
         called = True
         for r in results:
             url = r.get("url") if isinstance(r, dict) else None

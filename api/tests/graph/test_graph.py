@@ -864,6 +864,17 @@ async def test_reference_taint_is_turn_scoped(store, tmp_path):
     assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
 
 
+async def test_empty_reference_lookup_does_not_taint(store, tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"query": {"search": []}})
+
+    wiki = WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler))
+    graph, *_ = make(store, [ref_call(), create_call()], wiki=wiki)
+    cfg = run_config("t1", W)
+    await run(graph, start("Make a port like Atlantis"), cfg)
+    assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
+
+
 @pytest.mark.parametrize(
     ("given", "stored"),
     [("https://evil.example", REF_URLS[0]), (REF_URLS[1], REF_URLS[1]), (None, REF_URLS[0])],
