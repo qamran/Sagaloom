@@ -16,6 +16,7 @@ from sagaloom.seed import ensure_first_run
 from sagaloom.settings_store import DevSettingsStore
 from sagaloom.store.threads import ThreadRegistry
 from sagaloom.store.worlds import WorldRegistry
+from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
 from sagaloom.web.routes import router
 
 # api/sagaloom/web/app.py -> repo root
@@ -106,7 +107,13 @@ def make_require_secret(secret: str):
     return require_secret
 
 
-def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
+def create_app(
+    settings: Settings,
+    deps: AppDeps | None = None,
+    *,
+    max_body_bytes: int = 1_000_000,
+    rate_limits: dict[str, Any] | None = None,
+) -> FastAPI:
     validate_role_models(settings)
     app = FastAPI(title="Sagaloom", lifespan=_open_runtime)
     data = Path(settings.data_dir)
@@ -120,6 +127,10 @@ def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.deps = deps
 
+    # add_middleware puts the newest outermost: CORS wraps the limiters, so their 413/429
+    # responses still carry CORS headers, and the rate limit counts requests the body cap rejects.
+    app.add_middleware(BodyLimitMiddleware, max_bytes=max_body_bytes)
+    app.add_middleware(RateLimitMiddleware, **(rate_limits or {}))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],

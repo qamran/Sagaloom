@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -766,3 +766,18 @@ async def test_blocked_message_removed_and_next_turn_clean(store):
     [seen] = agent.seen
     assert not any("developer mode" in str(m.content) for m in seen)
     assert any(m.content == "How many moons?" for m in seen)
+
+
+async def test_tool_args_validated_before_tool_runs(store):
+    """R16.4: the arguments are checked against the tool's schema before it runs."""
+    agent = ScriptedChat(script=iter([tc("create_or_update_entry", {"type": "spaceship"})]))
+    extractor = StubLLM(FactList(facts=[Fact(key="k", value="v")]))
+    roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])), "extractor": extractor, "guard": safe_guard()}
+    graph = build_graph(store=store, model_for=roles.__getitem__, checkpointer=InMemorySaver(), settings=S)
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    values = (await graph.aget_state(cfg)).values
+    tool_msgs = [m for m in values["messages"] if isinstance(m, ToolMessage)]
+    assert [m.status for m in tool_msgs] == ["error"]
+    assert not values.get("pending_proposals")
+    assert extractor.calls == 0
