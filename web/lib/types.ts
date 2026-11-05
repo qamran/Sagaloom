@@ -245,6 +245,15 @@ export interface DevSettings {
   agent_max_tokens: number | null;
   agent_system_prompt: string | null;
   guard_enabled: boolean;
+  /** null means every tool; the core tools are on whatever this lists. */
+  enabled_tools: string[] | null;
+}
+
+export interface ToolInfo {
+  name: string;
+  description: string;
+  core: boolean;
+  enabled: boolean;
 }
 
 export interface SettingsPayload {

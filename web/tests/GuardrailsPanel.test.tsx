@@ -9,7 +9,7 @@ import type { SettingsPayload } from "@/lib/types";
 vi.mock("@/lib/api", () => ({ putSettings: vi.fn(), getGuardLog: vi.fn() }));
 
 const payload: SettingsPayload = {
-  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled: true },
+  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled: true, enabled_tools: null },
   defaults: { agent_system_prompt: "x" },
   guard_policy: "You are the input guard.",
 };

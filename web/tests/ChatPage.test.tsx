@@ -26,7 +26,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const settings = (guard_enabled: boolean): SettingsPayload => ({
-  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled },
+  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled, enabled_tools: null },
   defaults: { agent_system_prompt: "x" },
   guard_policy: "p",
 });

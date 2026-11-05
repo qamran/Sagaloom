@@ -7,6 +7,7 @@ import { FeatureMap } from "@/components/FeatureMap";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { ToolsPanel } from "@/components/ToolsPanel";
 import { UsagePanel } from "@/components/UsagePanel";
 import { getModels, getSettings, getStudio } from "@/lib/api";
 
@@ -14,6 +15,7 @@ const SECTIONS = [
   ["feature-map", "Feature map"],
   ["agent-graph", "Agent graph"],
   ["models", "Models and providers"],
+  ["tools", "Tools"],
   ["guardrails", "Guardrails"],
   ["settings", "Settings"],
   ["usage", "Usage"],
@@ -77,6 +79,7 @@ function Studio() {
                 </p>
               )}
             </div>
+            <ToolsPanel />
             {dev.data ? (
               <>
                 <GuardrailsPanel payload={dev.data} />

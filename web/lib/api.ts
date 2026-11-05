@@ -5,6 +5,7 @@ import type {
   ModelsPayload,
   PromptRecord,
   SettingsPatch,
+  ToolInfo,
   SettingsPayload,
   StudioData,
   ThreadState,
@@ -67,6 +68,7 @@ export const getLlmLog = (threadId: string) =>
 export const getSettings = () => request<SettingsPayload>("/settings");
 export const putSettings = (patch: SettingsPatch) =>
   request<SettingsPayload>("/settings", { method: "PUT", body: JSON.stringify(patch) });
+export const getTools = () => request<ToolInfo[]>("/tools");
 export const getGuardLog = (limit = 20) => request<GuardLogRow[]>(`/guard/log?limit=${limit}`);
 
 /** The Markdown zip download for a world (R11.5.4), through the proxy. */
