@@ -16,13 +16,13 @@ from pydantic import ValidationError
 
 from sagaloom.check.contradiction import check_proposal
 from sagaloom.check.myth import apply_save_as_myth
-from sagaloom.config import Settings
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
 from sagaloom.models import CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.settings_store import DevSettings
 from sagaloom.store.canon import DuplicateTitleError
+from sagaloom.web.sse import _text
 
 log = logging.getLogger(__name__)
 
@@ -73,20 +73,32 @@ def route_after_guard(state: SagaState) -> Literal["agent", "__end__"]:
 # ---------- input guard ----------
 
 
+def _unchecked_run(msgs: list) -> list[HumanMessage]:
+    """The author's messages since the last non-author message. Normally just the new one, but a
+    turn cancelled during the guard leaves its message in history unclassified, so it is checked
+    (and removed if blocked) together with the next one."""
+    run: list[HumanMessage] = []
+    for m in reversed(msgs):
+        if not isinstance(m, HumanMessage) or m.name:
+            break
+        run.append(m)
+    return run[::-1]
+
+
 def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSettings):
     """Classifies the author's new message before the agent sees it (R13.1). Fails closed: any
     error blocks the message. A blocked message is removed from the history, so an injection
     never sits in what the agent reads on later turns, and replaced by the guard's notice."""
 
     async def guard(state: SagaState) -> dict:
-        msgs = state.get("messages") or []
-        human = msgs[-1] if msgs else None
-        if not isinstance(human, HumanMessage) or human.name:
-            return {"guard_verdict": "safe"}  # only the author's own new message is classified
+        run = _unchecked_run(state.get("messages") or [])
+        if not run:
+            return {"guard_verdict": "safe"}  # only the author's own messages are classified
         if not dev().guard_enabled:
             return {"guard_verdict": "off"}
+        text = "\n\n".join(_text(m.content) for m in run)  # one call for the whole run
         try:
-            verdict = (await classify(model_for("guard"), _content_text(human.content))).verdict
+            verdict = (await classify(model_for("guard"), text)).verdict
         except Exception as exc:
             log.warning("guard failed, blocking the message: %s", type(exc).__name__)
             verdict = "error"
@@ -94,25 +106,20 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
             return {"guard_verdict": "safe"}
         return {
             "guard_verdict": verdict,
-            "messages": [RemoveMessage(id=human.id), AIMessage(name="guard", content=BLOCK_COPY[verdict])],
+            "messages": [
+                *(RemoveMessage(id=m.id) for m in run),
+                AIMessage(name="guard", content=BLOCK_COPY[verdict]),
+            ],
         }
 
     return guard
-
-
-def _content_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
-    return str(content)
 
 
 # ---------- agent ----------
 
 
 def make_agent_node(
-    model_for: ModelFor, tools: list[BaseTool], settings: Settings, dev: Callable[[], DevSettings] = DevSettings
+    model_for: ModelFor, tools: list[BaseTool], dev: Callable[[], DevSettings] = DevSettings
 ):
     async def agent(state: SagaState, config: RunnableConfig) -> dict:
         d = dev()  # read every turn, so a settings change applies from the next one

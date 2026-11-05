@@ -48,7 +48,7 @@ def build_graph(
     tools = make_tools(store, RoleModel(model_for, "extractor"), RoleModel(model_for, "judge"))
     g = StateGraph(SagaState)
     g.add_node("guard", make_guard_node(model_for, dev))
-    g.add_node("agent", make_agent_node(model_for, tools, settings, dev))
+    g.add_node("agent", make_agent_node(model_for, tools, dev))
     g.add_node("tools", ToolNode(tools, handle_tool_errors=True))
     g.add_node("check", make_check_node(store, model_for))
     g.add_node("approval_gate", approval_gate, destinations=("check", "commit"))

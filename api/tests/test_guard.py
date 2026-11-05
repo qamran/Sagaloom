@@ -2,6 +2,7 @@
 
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import ValidationError
 
 from sagaloom.guard import BLOCK_COPY, GUARD_POLICY, GuardVerdict, classify
 
@@ -36,6 +37,8 @@ def test_policy_names_the_blocked_classes_and_fiction_rule():
     p = GUARD_POLICY.lower()
     for phrase in ["weapons", "drugs", "attacks", "minors", "real people", "override", "fiction"]:
         assert phrase in p, phrase
+    assert "delete every entry" not in p  # the eval's own prompt must not be the policy's example
+    assert "delete ostra" in p  # plain edit requests are named safe
     for dark in ["war", "murder", "genocide", "torture", "dark magic", "cults"]:
         assert dark in p, dark
     assert "untrusted_data" in p and "never" in p
@@ -59,7 +62,7 @@ async def test_classify_accepts_a_dict_reply():
 
 @pytest.mark.parametrize("reply", [None, {"reason": "no verdict"}, {"verdict": "maybe", "reason": "x"}])
 async def test_classify_raises_on_invalid_output(reply):
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, ValidationError)):
         await classify(StubGuard(reply), "x")
 
 
