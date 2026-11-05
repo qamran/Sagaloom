@@ -5,7 +5,7 @@ import json
 import threading
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 class DevSettings(BaseModel):
@@ -23,6 +23,13 @@ class DevSettingsPatch(BaseModel):
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool | None = None
     reset_system_prompt: bool = False
+
+    @model_validator(mode="after")
+    def _no_null_for_required(self):
+        for name in ("agent_temperature", "guard_enabled"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self
 
 
 class DevSettingsStore:
@@ -51,8 +58,8 @@ class DevSettingsStore:
     def update(self, patch: DevSettingsPatch) -> DevSettings:
         with self._lock:
             data = self.get().model_dump()
-            changes = patch.model_dump(exclude_unset=True, exclude={"reset_system_prompt"})
-            data.update({k: v for k, v in changes.items() if v is not None})
+            for name in patch.model_fields_set - {"reset_system_prompt"}:
+                data[name] = getattr(patch, name)  # an explicit null clears a nullable field
             if patch.reset_system_prompt:
                 data["agent_system_prompt"] = None
             merged = DevSettings(**data)

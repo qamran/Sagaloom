@@ -19,9 +19,9 @@ from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph, run_config
 from sagaloom.graph.nodes import make_commit_node
 from sagaloom.graph.prompts import SYSTEM
-from sagaloom.settings_store import DevSettings
 from sagaloom.graph.state import merge_dict, merge_proposals
 from sagaloom.models import CheckResult, Decision, Entry, EntryDraft, Fact, Proposal, Usage
+from sagaloom.settings_store import DevSettings
 from sagaloom.tools.facts import FactList
 
 W = "w1"

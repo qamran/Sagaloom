@@ -19,8 +19,8 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.config import Settings
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
-from sagaloom.settings_store import DevSettings
 from sagaloom.models import CheckResult, Decision, Entry, Flag, Proposal
+from sagaloom.settings_store import DevSettings
 from sagaloom.store.canon import DuplicateTitleError
 from sagaloom.usage import extract_usage
 

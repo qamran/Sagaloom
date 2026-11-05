@@ -32,3 +32,24 @@ def test_store_ignores_invalid_fields(tmp_path):
     assert got.agent_max_tokens == 512
     path.write_text("not json", encoding="utf-8")
     assert DevSettingsStore(path).get() == DevSettings()
+
+
+def test_explicit_null_clears_max_tokens(tmp_path):
+    store = DevSettingsStore(tmp_path / "settings.json")
+    assert store.update(DevSettingsPatch(agent_max_tokens=512)).agent_max_tokens == 512
+    store.update(DevSettingsPatch(agent_max_tokens=None))
+    assert store.get().agent_max_tokens is None
+
+
+def test_explicit_null_clears_system_prompt(tmp_path):
+    store = DevSettingsStore(tmp_path / "settings.json")
+    store.update(DevSettingsPatch(agent_system_prompt="Custom."))
+    store.update(DevSettingsPatch(agent_system_prompt=None))
+    assert store.get().agent_system_prompt is None
+
+
+def test_unsent_fields_stay_unchanged(tmp_path):
+    store = DevSettingsStore(tmp_path / "settings.json")
+    store.update(DevSettingsPatch(agent_max_tokens=512))
+    store.update(DevSettingsPatch(guard_enabled=False))
+    assert store.get().agent_max_tokens == 512

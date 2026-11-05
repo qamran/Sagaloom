@@ -43,3 +43,28 @@ async def test_put_rejects_uneditable_field(make_env):
 async def test_settings_need_the_secret(make_env):
     env = make_env()
     assert (await env.client.get("/api/settings", headers={"x-sagaloom-secret": "nope"})).status_code == 401
+
+
+async def test_put_needs_the_secret(make_env):
+    env = make_env()
+    r = await env.client.put("/api/settings", json={"agent_temperature": 0.5}, headers={"x-sagaloom-secret": "nope"})
+    assert r.status_code == 401
+
+
+async def test_put_null_clears_max_tokens(make_env):
+    env = make_env()
+    await env.client.put("/api/settings", json={"agent_max_tokens": 512})
+    r = await env.client.put("/api/settings", json={"agent_max_tokens": None})
+    assert r.status_code == 200
+    assert r.json()["settings"]["agent_max_tokens"] is None
+    assert (await env.client.get("/api/settings")).json()["settings"]["agent_max_tokens"] is None
+
+
+async def test_put_null_temperature_rejected(make_env):
+    env = make_env()
+    assert (await env.client.put("/api/settings", json={"agent_temperature": None})).status_code == 422
+
+
+async def test_put_null_guard_enabled_rejected(make_env):
+    env = make_env()
+    assert (await env.client.put("/api/settings", json={"guard_enabled": None})).status_code == 422
