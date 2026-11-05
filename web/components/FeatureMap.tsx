@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { FeatureCardData } from "@/lib/types";

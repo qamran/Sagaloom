@@ -22,7 +22,7 @@ from sagaloom.guard import BLOCK_COPY, classify
 from sagaloom.models import CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.settings_store import DevSettings
 from sagaloom.store.canon import DuplicateTitleError
-from sagaloom.web.sse import _text
+from sagaloom.text import message_text
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
             return {"guard_verdict": "safe"}  # only the author's own messages are classified
         if not dev().guard_enabled:
             return {"guard_verdict": "off"}
-        text = "\n\n".join(_text(m.content) for m in run)  # one call for the whole run
+        text = "\n\n".join(message_text(m.content) for m in run)  # one call for the whole run
         try:
             verdict = (await classify(model_for("guard"), text)).verdict
         except Exception as exc:

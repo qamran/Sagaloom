@@ -17,6 +17,7 @@ from sagaloom.models import Decision, Entry, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch
+from sagaloom.text import message_text
 from sagaloom.tools.canon_tools import make_tools
 from sagaloom.web.sse import run_turn_events, sse_response
 
@@ -50,18 +51,10 @@ def _thread(request: Request, thread_id: str):
     return info
 
 
-def _text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
-    return str(content)
-
-
 def message_dict(m: BaseMessage) -> dict:
     """{role, content, name?, tool_calls?}; `review` is the author's decision note (R18.6) and
     `guard` the input guard's notice in place of a blocked message (R13.1)."""
-    out: dict[str, Any] = {"content": _text(m.content)}
+    out: dict[str, Any] = {"content": message_text(m.content)}
     if isinstance(m, HumanMessage):
         out = {"role": "review" if m.name == "review" else "user", **out}
         if m.name:

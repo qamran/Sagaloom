@@ -1,5 +1,7 @@
 """The input guard classifier (R13.1). No real LLM calls."""
 
+import httpx
+import openai
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
@@ -68,3 +70,45 @@ async def test_classify_raises_on_invalid_output(reply):
 
 def test_long_reason_is_truncated_not_rejected():
     assert len(GuardVerdict(verdict="safe", reason="a" * 500).reason) == 200
+
+
+class SequenceGuard(StubGuard):
+    """Replies in order; an Exception in the list is raised."""
+
+    def __init__(self, replies):
+        super().__init__(None)
+        self.replies = list(replies)
+
+    async def ainvoke(self, messages, config=None):
+        self.prompts.append(messages)
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def _api_error() -> openai.APIError:
+    return openai.APIError("boom", request=httpx.Request("POST", "http://x"), body=None)
+
+
+async def test_classify_retries_once_after_an_api_error():
+    stub = SequenceGuard([_api_error(), GuardVerdict(verdict="safe", reason="ok")])
+    out = await classify(stub, "x")
+    assert out.verdict == "safe" and len(stub.prompts) == 2
+
+
+async def test_classify_retries_once_after_an_invalid_reply():
+    stub = SequenceGuard([None, GuardVerdict(verdict="injection", reason="override")])
+    out = await classify(stub, "x")
+    assert out.verdict == "injection" and len(stub.prompts) == 2
+
+
+async def test_classify_raises_after_two_failures():
+    stub = SequenceGuard([_api_error(), _api_error()])
+    with pytest.raises(openai.APIError):
+        await classify(stub, "x")
+    assert len(stub.prompts) == 2
+    bad = SequenceGuard([None, {"verdict": "maybe", "reason": "x"}])
+    with pytest.raises((ValueError, ValidationError)):
+        await classify(bad, "x")
+    assert len(bad.prompts) == 2

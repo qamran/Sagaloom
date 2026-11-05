@@ -20,6 +20,7 @@ from sse_starlette import EventSourceResponse
 from starlette.background import BackgroundTask
 
 from sagaloom.models import Usage
+from sagaloom.text import message_text
 
 log = logging.getLogger(__name__)
 
@@ -33,17 +34,6 @@ Event = dict[str, Any]  # {"event": name, "data": dict}
 
 def _ev(name: str, data: dict | None = None) -> Event:
     return {"event": name, "data": data or {}}
-
-
-def _text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            b.get("text", "") if isinstance(b, dict) else (b if isinstance(b, str) else "")
-            for b in content
-        )
-    return ""
 
 
 def _drain(queue: asyncio.Queue | None) -> list[Event]:
@@ -72,7 +62,7 @@ def _update_events(node: str, upd: Any) -> list[Event]:
         msgs = item.get("messages") or []
         for m in msgs if isinstance(msgs, list) else [msgs]:
             if node == "guard" and isinstance(m, AIMessage) and m.name == "guard":
-                if text := _text(m.content):
+                if text := message_text(m.content):
                     events.append(_ev("token", {"text": text}))
             elif isinstance(m, AIMessage) and m.tool_calls:
                 events += [_ev("tool_call", {"name": c["name"], "args": c["args"]}) for c in m.tool_calls]
@@ -80,7 +70,7 @@ def _update_events(node: str, upd: Any) -> list[Event]:
                 events.append(
                     _ev(
                         "tool_result",
-                        {"name": m.name or "", "summary": _text(m.content)[:SUMMARY_CHARS]},
+                        {"name": m.name or "", "summary": message_text(m.content)[:SUMMARY_CHARS]},
                     )
                 )
     return events
@@ -109,7 +99,7 @@ async def run_turn_events(
                 if (
                     isinstance(chunk, (AIMessageChunk, AIMessage))
                     and meta.get("langgraph_node") == "agent"
-                    and (text := _text(chunk.content))
+                    and (text := message_text(chunk.content))
                 ):
                     yield _ev("token", {"text": text})
             elif mode == "updates":

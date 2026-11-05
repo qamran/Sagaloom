@@ -11,7 +11,7 @@ export function CourseChip({ card, label }: { card: FeatureCardId; label: string
     <Link
       href={`/studio?card=${card}#feature-map`}
       aria-label={`Course note: ${label}`}
-      className="inline-flex items-center rounded-full border border-myth bg-panel-3 px-2 py-px text-[11px] text-myth no-underline hover:bg-panel-2 hover:text-myth hover:no-underline"
+      className="inline-flex items-center normal-case tracking-normal rounded-full border border-myth bg-panel-3 px-2 py-px text-[11px] text-myth no-underline hover:bg-panel-2 hover:text-myth hover:no-underline"
     >
       {label}
     </Link>
