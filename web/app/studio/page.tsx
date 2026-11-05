@@ -1,6 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { FeatureMap } from "@/components/FeatureMap";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
@@ -18,7 +20,8 @@ const SECTIONS = [
 ];
 
 /** The Developer page (R20.4): kept apart from the author's screens. */
-export default function StudioPage() {
+function Studio() {
+  const highlight = useSearchParams().get("card") ?? undefined;
   const studio = useQuery({ queryKey: ["studio"], queryFn: getStudio });
   const models = useQuery({ queryKey: ["settings", "models"], queryFn: getModels });
   const dev = useQuery({ queryKey: ["settings"], queryFn: getSettings });
@@ -49,7 +52,7 @@ export default function StudioPage() {
         {studio.data && (
           <>
             <div id="feature-map" className="scroll-mt-4">
-              <FeatureMap features={studio.data.features} />
+              <FeatureMap features={studio.data.features} highlight={highlight} />
             </div>
             <section
               id="agent-graph"
@@ -65,7 +68,7 @@ export default function StudioPage() {
                 {studio.data.mermaid || "The graph is not available."}
               </pre>
             </section>
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div>
               {models.data ? (
                 <ProvidersPanel providers={studio.data.providers} models={models.data} />
               ) : (
@@ -89,5 +92,13 @@ export default function StudioPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function StudioPage() {
+  return (
+    <Suspense fallback={<p className="m-0 p-6 text-muted-foreground">Loading Studio…</p>}>
+      <Studio />
+    </Suspense>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import type { FeatureCardData } from "@/lib/types";
 
 const BADGE: Record<FeatureCardData["status"], { label: string; cls: string; summary: string }> = {
@@ -23,7 +24,11 @@ function TryLink({ href }: { href: string }) {
 }
 
 /** The feature map (R20.5): one card per brief requirement and bonus task, with its live status. */
-export function FeatureMap({ features }: { features: FeatureCardData[] }) {
+export function FeatureMap({ features, highlight }: { features: FeatureCardData[]; highlight?: string }) {
+  const lit = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    lit.current?.scrollIntoView?.({ block: "center" });
+  }, [highlight, features.length]);
   const count = (s: FeatureCardData["status"]) => features.filter((f) => f.status === s).length;
   return (
     <section aria-label="Feature map" className="flex flex-col gap-3.5">
@@ -44,8 +49,12 @@ export function FeatureMap({ features }: { features: FeatureCardData[] }) {
         {features.map((f) => (
           <article
             key={f.id}
+            ref={f.id === highlight ? lit : undefined}
             aria-label={f.title}
-            className={`flex flex-col gap-1.5 rounded-xl px-4 py-3.5 ${CARD[f.status]}`}
+            data-highlighted={f.id === highlight ? "true" : undefined}
+            className={`flex flex-col gap-1.5 rounded-xl px-4 py-3.5 ${CARD[f.status]} ${
+              f.id === highlight ? "outline outline-2 outline-offset-2 outline-myth" : ""
+            }`}
           >
             <div className="flex items-center gap-2">
               <span className={`rounded-full px-2 py-px text-[11px] font-semibold ${BADGE[f.status].cls}`}>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { getThread } from "@/lib/api";
+import { useCourseNotes } from "@/lib/courseNotes";
 import { useWorld } from "@/lib/world";
 
 const NEW_WORLD = "__new__";
@@ -149,6 +150,22 @@ function CostPill() {
   );
 }
 
+function CourseNotesToggle() {
+  const [on, setOn] = useCourseNotes();
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={() => setOn(!on)}
+      className={`min-h-11 rounded-lg border px-3 text-[13px] sm:min-h-9 ${
+        on ? "border-myth text-myth" : "border-border-strong text-muted-foreground"
+      }`}
+    >
+      Course notes
+    </button>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   return (
@@ -178,6 +195,7 @@ export function Header() {
       </nav>
       <div className="hidden flex-1 sm:block" />
       <CostPill />
+      <CourseNotesToggle />
       <div className="flex items-center gap-2 sm:border-l sm:border-border sm:pl-4">
         <span className="text-[10px] uppercase tracking-[1.2px] text-muted-foreground">
           Developer

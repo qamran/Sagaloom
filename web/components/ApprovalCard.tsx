@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { CourseChip } from "@/components/CourseChip";
 import { EntityChip } from "@/components/EntityChip";
 import { FactList } from "@/components/FactList";
 import { Cite, FactTable, SecretValue, type FactTableRow } from "@/components/FactTable";
@@ -144,6 +145,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
           {clean && <li className={`${BADGE} bg-accent`}>No conflicts found</li>}
         </ul>
         <h3 className="m-0 font-heading text-[17px] font-semibold">Commit to canon?</h3>
+        <CourseChip card="human_in_the_loop" label="Human-in-the-loop · interrupt()" />
         <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground sm:ml-auto">
           {ACTION_LABEL[proposal.action]} ·{" "}
           {type ? <EntityChip type={type} name={title} /> : <span className="text-foreground">{title}</span>}

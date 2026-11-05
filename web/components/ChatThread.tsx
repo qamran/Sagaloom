@@ -1,8 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
+import { CourseChip } from "@/components/CourseChip";
 import { Composer } from "@/components/Composer";
 import { UnderTheHood } from "@/components/UnderTheHood";
 import { getEntries, getLlmLog, getSettings } from "@/lib/api";
@@ -39,10 +40,11 @@ function checkSummary(p: PendingInterrupt): { text: string; warn: boolean } {
   return { text: parts.length ? parts.join(", ") : "no conflicts found", warn };
 }
 
-function ActivityLine({ label, done, warn }: { label: string; done: boolean; warn?: boolean }) {
+function ActivityLine({ label, done, warn, chip }: { label: string; done: boolean; warn?: boolean; chip?: ReactNode }) {
   return (
     <div className={warn ? "text-[#f0b98a]" : undefined}>
       <span aria-hidden="true">{warn ? "!" : done ? "✓" : "…"}</span> {label}
+      {chip && <> {chip}</>}
     </div>
   );
 }
@@ -70,7 +72,10 @@ function Message({ m, done }: { m: ChatMessage; done: boolean }) {
         aria-label="Blocked by the input guard"
         className="max-w-[90%] rounded-lg border border-border bg-panel-2 px-3 py-2 text-[14px] text-muted-foreground"
       >
-        <div className="mb-0.5 text-xs uppercase tracking-[1px] text-accent">Input guard</div>
+        <div className="mb-0.5 flex items-center gap-2 text-xs uppercase tracking-[1px] text-accent">
+          Input guard
+          <CourseChip card="security_guard" label="Guardrail" />
+        </div>
         {m.content}
       </div>
     );
@@ -87,7 +92,12 @@ function Message({ m, done }: { m: ChatMessage; done: boolean }) {
       {m.tool_calls && m.tool_calls.length > 0 && (
         <div className="flex flex-col gap-[5px] pl-0.5 text-xs text-muted-foreground">
           {m.tool_calls.map((c, i) => (
-            <ActivityLine key={`${c.name}-${i}`} label={toolLabel(c.name)} done={done} />
+            <ActivityLine
+              key={`${c.name}-${i}`}
+              label={toolLabel(c.name)}
+              done={done}
+              chip={c.name === "search_canon" ? <CourseChip card="agentic_rag" label="Agentic RAG" /> : undefined}
+            />
           ))}
         </div>
       )}
@@ -101,6 +111,9 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   const bottom = useRef<HTMLDivElement>(null);
   const [hood, setHood] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  // Whether the thread already had messages when first loaded (a restored thread, not a new one).
+  const [restored, setRestored] = useState<boolean | null>(null);
+  if (s.loaded && restored === null) setRestored(s.messages.length > 0);
 
   // The header's cost pill follows this thread.
   useEffect(() => {
@@ -206,6 +219,12 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
               Ask a question, or propose a new fact. Every change is checked against canon and waits for your
               approval.
             </p>
+          </div>
+        )}
+
+        {restored && (
+          <div>
+            <CourseChip card="memory" label="Memory · checkpointer" />
           </div>
         )}
 

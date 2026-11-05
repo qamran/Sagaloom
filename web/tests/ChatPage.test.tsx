@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
@@ -119,5 +119,57 @@ describe("/chat/[threadId]", () => {
     );
     await waitFor(() => expect(getSettings).toHaveBeenCalled());
     expect(screen.queryByRole("status", { name: "Input guard status" })).toBeNull();
+  });
+  const renderThread = (messages: unknown[]) => {
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1",
+      world_id: "w1",
+      messages,
+      pending_interrupt: null,
+      usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatThread threadId="t1" />
+      </QueryClientProvider>,
+    );
+  };
+
+  it("annotates a blocked message with the Guardrail chip", async () => {
+    renderThread([{ role: "guard", content: "blocked", name: "guard" }]);
+    const note = await screen.findByRole("note", { name: "Blocked by the input guard" });
+    expect(within(note).getByRole("link", { name: "Course note: Guardrail" })).toHaveAttribute(
+      "href",
+      "/studio?card=security_guard#feature-map",
+    );
+  });
+
+  it("annotates a canon search with the Agentic RAG chip", async () => {
+    renderThread([
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "", tool_calls: [{ id: "c1", name: "search_canon", args: {} }] },
+      { role: "assistant", content: "Done." },
+    ]);
+    expect(await screen.findByRole("link", { name: "Course note: Agentic RAG" })).toHaveAttribute(
+      "href",
+      "/studio?card=agentic_rag#feature-map",
+    );
+  });
+
+  it("shows one Memory chip at the top of a restored thread", async () => {
+    renderThread([
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "Hello." },
+    ]);
+    const chip = await screen.findByRole("link", { name: "Course note: Memory · checkpointer" });
+    expect(chip).toHaveAttribute("href", "/studio?card=memory#feature-map");
+    expect(screen.getAllByRole("link", { name: /Memory/ })).toHaveLength(1);
+  });
+
+  it("shows no Memory chip on a brand-new thread", async () => {
+    renderThread([]);
+    await screen.findByRole("heading", { name: /Talk to/ });
+    expect(screen.queryByRole("link", { name: /Memory/ })).toBeNull();
   });
 });

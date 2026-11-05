@@ -64,6 +64,14 @@ const ister = {
 } as Entry;
 
 describe("ApprovalCard", () => {
+  it("carries the human-in-the-loop course chip", () => {
+    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.getByRole("link", { name: "Course note: Human-in-the-loop · interrupt()" })).toHaveAttribute(
+      "href",
+      "/studio?card=human_in_the_loop#feature-map",
+    );
+  });
+
   it("ApprovalCard shows Conflict, Retcon and Note badges with entry ids", () => {
     render(
       <ApprovalCard
