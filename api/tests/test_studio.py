@@ -64,7 +64,7 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     assert card(cards, "external_tools").detail == (
         "Wikipedia reference tool; fan-wiki import arrives in Wave 6."
     )
-    assert card(cards, "external_tools").try_href is None
+    assert card(cards, "external_tools").try_href.startswith("/chat?prompt=")
     assert card(cards, "agentic_rag").try_href.startswith("/chat?prompt=")
 
 

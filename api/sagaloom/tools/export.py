@@ -8,11 +8,9 @@ from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel, Field
 
 from sagaloom.store.canon import CanonStore
+from sagaloom.tools.specs import EXPORT_DESCRIPTION as DESCRIPTION
+from sagaloom.tools.specs import EXPORT_TOOL as NAME
 
-DESCRIPTION = """Export this world's canon as a Markdown zip (one file per entry, YAML front matter).
-Read-only. Returns the download path and the number of entries it will hold; tell the
-author to use that link or the "Download as Markdown" button on the Canon page."""
-NAME = "export_world"
 # The browser reaches the API only through the Next proxy.
 PROXY_PREFIX = "/api/proxy"
 

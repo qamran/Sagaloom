@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from sagaloom.config import Settings
+from sagaloom.tools.specs import TOOL_SPECS
 
 EMBED_PRICE_IN = 0.02  # USD per 1M tokens, openai/text-embedding-3-small
 GEMINI_MODEL = "gemini-3.5-flash-lite"
@@ -171,7 +172,9 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             brief_ref="Medium 6",
             req_ids=["R11.G1", "R11.G3"],
             status="live",
-            detail="Five tools. The three core tools are always on; turn the others on or off in Studio.",
+            detail=(
+                f"{len(TOOL_SPECS)} tools. The core tools are always on; turn the others on or off in Studio."
+            ),
             try_href="#tools",
         ),
         FeatureCard(
@@ -181,7 +184,8 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             req_ids=["R11.4", "R11.6"],
             status="live",
             detail="Wikipedia reference tool; fan-wiki import arrives in Wave 6.",
-            try_href=None,
+            try_href=prompt
+            + "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that.",
         ),
     ]
 

@@ -18,14 +18,18 @@ from sagaloom.provenance import merge_provenance
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
 from sagaloom.text import message_text
-from sagaloom.tools.export import DESCRIPTION as EXPORT_DESCRIPTION
-from sagaloom.tools.export import NAME as EXPORT_TOOL
 from sagaloom.tools.export import make_export_tool
 from sagaloom.tools.facts import draft_facts
-from sagaloom.tools.reference import DESCRIPTION as REFERENCE_DESCRIPTION
 from sagaloom.tools.reference import NAME as REFERENCE_TOOL
 from sagaloom.tools.reference import WRAP_SOURCE as REFERENCE_SOURCE
 from sagaloom.tools.reference import make_reference_tool
+from sagaloom.tools.specs import (  # noqa: F401  (TOOL_SPECS and CORE_TOOLS are re-exported)
+    CHECK_DESCRIPTION,
+    CORE_TOOLS,
+    CREATE_DESCRIPTION,
+    SEARCH_DESCRIPTION,
+    TOOL_SPECS,
+)
 from sagaloom.wiki.client import WikiClient
 
 log = logging.getLogger(__name__)
@@ -33,25 +37,6 @@ log = logging.getLogger(__name__)
 UNTRUSTED_LABEL = "untrusted source"
 # How every successful real_world_reference result starts (an error result is not wrapped).
 _REFERENCE_WRAP = wrap_untrusted("", REFERENCE_SOURCE).split("\n", 1)[0]
-
-SEARCH_DESCRIPTION = """Search this world's canon by meaning. Read-only. Returns matching entries (id, title,
-type, status, source, trusted, snippet, score) as untrusted data; an entry with
-trusted=false also carries label "untrusted source". Cite entry ids when you use them."""
-CREATE_DESCRIPTION = """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
-queues a proposal that is contradiction-checked and shown to the author for approval.
-Pass `facts` as short key/value claims, or omit them to have them drafted from the body."""
-CHECK_DESCRIPTION = """Check a hypothetical claim against this world's canon without proposing anything.
-Read-only. Returns a verdict (none, possible, conflict, failed) and any flags."""
-
-CORE_TOOLS = frozenset({"search_canon", "create_or_update_entry", "check_contradiction"})
-# Names and descriptions, readable without building the tool closures (GET /api/tools).
-TOOL_SPECS: list[dict] = [
-    {"name": "search_canon", "description": SEARCH_DESCRIPTION, "core": True},
-    {"name": "create_or_update_entry", "description": CREATE_DESCRIPTION, "core": True},
-    {"name": "check_contradiction", "description": CHECK_DESCRIPTION, "core": True},
-    {"name": EXPORT_TOOL, "description": EXPORT_DESCRIPTION, "core": False},
-    {"name": REFERENCE_TOOL, "description": REFERENCE_DESCRIPTION, "core": False},
-]
 
 _WorldId = Annotated[str, InjectedState("world_id")]
 _CallId = Annotated[str, InjectedToolCallId]

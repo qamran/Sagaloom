@@ -1054,3 +1054,53 @@ async def test_mixed_enabled_and_disabled_calls_keep_call_order(store, tmp_path)
     [p] = values["pending_proposals"]  # the enabled Command still reached the state
     assert p.after.title == "Ostra"
     assert requests == []
+
+
+async def test_invented_tool_name_gets_toolnodes_own_error_not_the_studio_copy(store):
+    graph, agent, _ = make(
+        store, [tc("delete_entry", {"id": "ent_1"}, "call_x"), AIMessage(content="ok")]
+    )
+    cfg = run_config("t-invented", W)
+    await run(graph, start("hi"), cfg)
+    [m] = [x for x in (await graph.aget_state(cfg)).values["messages"] if isinstance(x, ToolMessage)]
+    assert m.status == "error" and m.tool_call_id == "call_x"
+    assert "turned off in Studio" not in m.content
+    assert "not a valid tool" in m.content and "search_canon" in m.content
+    assert len(agent.seen) == 2
+
+
+class BindingChat(ScriptedChat):
+    """Binds the tool schemas into the call params, as the real OpenAI client does."""
+
+    def bind_tools(self, tools, **kwargs):
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+
+        self.bound.append([t.name for t in tools])
+        return self.bind(tools=[convert_to_openai_tool(t) for t in tools])
+
+
+async def test_prompt_record_lists_only_enabled_tools_after_a_toggle(store, tmp_path, monkeypatch):
+    from sagaloom.promptlog import PromptLog, PromptLogHandler
+
+    current = DevSettings()
+    agent = BindingChat(script=iter([AIMessage(content="one"), AIMessage(content="two")]))
+    roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])),
+             "extractor": StubLLM(FactList(facts=[])), "guard": safe_guard()}
+    graph = build_graph(
+        store=store, model_for=roles.__getitem__, checkpointer=InMemorySaver(), settings=S,
+        dev=lambda: current, wiki=fake_wiki(tmp_path),
+    )
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    handler = PromptLogHandler(log, "t-rec", lambda n, d: None, settings=S, secrets=[])
+
+    def cfg():
+        return {**run_config("t-rec", W), "callbacks": [handler]}
+
+    await run(graph, start("hi"), cfg())
+    current = DevSettings(enabled_tools=["export_world"])
+    await run(graph, start("again"), cfg())
+    names = [{t["function"]["name"] for t in rec.request["tools"]}
+             for rec in sorted(log.list("t-rec"), key=lambda r: r.started_at)
+             if rec.role in (None, "agent")]
+    assert names and "real_world_reference" in names[0]
+    assert "real_world_reference" not in names[-1] and "export_world" in names[-1]

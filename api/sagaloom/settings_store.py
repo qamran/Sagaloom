@@ -2,12 +2,15 @@
 change applies from the next turn. Judge, extractor and guard temperatures are not editable."""
 
 import json
+import logging
 import threading
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from sagaloom.tools.canon_tools import CORE_TOOLS, TOOL_SPECS
+from sagaloom.tools.specs import CORE_TOOLS, TOOL_SPECS
+
+log = logging.getLogger(__name__)
 
 ALL_TOOLS = frozenset(spec["name"] for spec in TOOL_SPECS)
 
@@ -75,6 +78,8 @@ class DevSettingsStore:
             try:  # strict, so "yes" is not read as a bool; a bad field keeps its default
                 DevSettings.model_validate({name: saved[name]}, strict=True)
             except ValidationError:
+                if name == "enabled_tools":
+                    log.warning("settings.json lists unknown tools; every tool stays enabled")
                 continue
             good[name] = saved[name]
         return DevSettings(**good)

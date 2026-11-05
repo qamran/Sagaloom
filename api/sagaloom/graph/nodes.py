@@ -167,13 +167,15 @@ def make_tools_node(tools: list[BaseTool], dev: Callable[[], DevSettings] = DevS
     inner = ToolNode(tools, handle_tool_errors=True)
 
     async def tools_node(state: SagaState, config: RunnableConfig):
-        enabled = enabled_tool_names(dev())  # read every turn, like the agent node
+        # Only a real tool that is switched off is refused; an invented name goes to ToolNode,
+        # which answers with its own invalid-name error.
+        disabled = {t.name for t in tools} - enabled_tool_names(dev())  # read every turn
         msgs = list(state.get("messages") or [])
         last = msgs[-1] if msgs else None
         calls = list(getattr(last, "tool_calls", None) or [])
-        if all(c["name"] in enabled for c in calls):
+        if not any(c["name"] in disabled for c in calls):
             return await inner.ainvoke(state, config)
-        kept = [c for c in calls if c["name"] in enabled]
+        kept = [c for c in calls if c["name"] not in disabled]
         merged: dict[str, list] = {}  # call id -> the ToolNode updates that answer it
         leftovers: list = []
         if kept:
@@ -191,7 +193,7 @@ def make_tools_node(tools: list[BaseTool], dev: Callable[[], DevSettings] = DevS
                     leftovers.append(part)
         ordered: list = []
         for c in calls:
-            if c["name"] in enabled:
+            if c["name"] not in disabled:
                 ordered.extend(merged.pop(c["id"], []))
             else:
                 ordered.append(

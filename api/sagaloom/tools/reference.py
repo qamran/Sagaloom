@@ -8,14 +8,12 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, Field
 
 from sagaloom.security import wrap_untrusted
+from sagaloom.tools.specs import REFERENCE_DESCRIPTION as DESCRIPTION
+from sagaloom.tools.specs import REFERENCE_TOOL as NAME
 from sagaloom.wiki.client import WikiClient, search_and_summarise
 
 log = logging.getLogger(__name__)
 
-DESCRIPTION = """Look up real-world history, places or things on Wikipedia for inspiration. Read-only.
-Returns article titles, short summaries and URLs labelled as reference: they are NOT part
-of the world's canon."""
-NAME = "real_world_reference"
 WRAP_SOURCE = "real_world_reference (reference, not canon)"
 
 
