@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import openai
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from sse_starlette import EventSourceResponse
 from starlette.background import BackgroundTask
@@ -52,9 +52,10 @@ def _error_event(exc: Exception) -> Event:
 
 
 def _update_events(node: str, upd: Any) -> list[Event]:
-    """tool_call / tool_result events found in one node's state update, plus the guard's notice:
-    it is built by the guard node rather than streamed by a model, so it arrives here and is
-    sent as the turn's `token` (the notice is the reply)."""
+    """tool_call / tool_result events found in one node's state update, plus two node-built
+    notes: the guard's notice is sent as the turn's `token` (the notice is the reply), and the
+    `remember` node's note as a `tool_result` named `remember` carrying its per-preference
+    results (the event set stays unchanged)."""
     events: list[Event] = []
     for item in upd if isinstance(upd, list) else [upd]:
         if not isinstance(item, dict):
@@ -64,6 +65,17 @@ def _update_events(node: str, upd: Any) -> list[Event]:
             if node == "guard" and isinstance(m, AIMessage) and m.name == "guard":
                 if text := message_text(m.content):
                     events.append(_ev("token", {"text": text}))
+            elif node == "remember" and isinstance(m, HumanMessage) and m.name == "memory":
+                events.append(
+                    _ev(
+                        "tool_result",
+                        {
+                            "name": "remember",
+                            "summary": message_text(m.content),
+                            "memory": list(m.additional_kwargs.get("memory") or []),
+                        },
+                    )
+                )
             elif isinstance(m, AIMessage) and m.tool_calls:
                 events += [_ev("tool_call", {"name": c["name"], "args": c["args"]}) for c in m.tool_calls]
             elif isinstance(m, ToolMessage):

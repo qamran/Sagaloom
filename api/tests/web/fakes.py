@@ -12,6 +12,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
 from langchain_core.runnables import RunnableLambda
 from pydantic import Field
 
@@ -204,8 +205,12 @@ def make_env(store, tmp_path):
             else StubLLM(FactList(facts=[Fact(key="k", value="v")])),
             "guard": guard or StubLLM(guard_reply or GuardVerdict(verdict="safe", reason="ok")),
         }
+        memory = InMemoryStore()  # one Store shared by the graph and the memory routes
         graph = build_graph(
-            store=store, model_for=lambda role: roles[role], checkpointer=InMemorySaver(), settings=settings
+            store=store,
+            model_for=lambda role: roles[role],
+            checkpointer=InMemorySaver(),
+            memory_store=memory,
         )
         worlds = WorldRegistry(tmp_path / "worlds.json")
         worlds.create("World One", world_id=W)
@@ -216,6 +221,7 @@ def make_env(store, tmp_path):
             graph=graph,
             settings=settings,
             promptlog=PromptLog(tmp_path / "prompts.sqlite"),
+            memory=memory,
         )
         app = create_app(settings, deps)
         client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)

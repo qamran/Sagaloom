@@ -75,3 +75,16 @@ async def test_blocked_turn_roundtrips_through_the_strict_saver(store, tmp_path,
             assert notice.content == BLOCK_COPY["unsafe"]
             assert await run(graph, start("How many moons?"), cfg) == ["guard", "agent"]
     assert not [r for r in caplog.records if "msgpack" in r.getMessage().lower() or "unregistered" in r.getMessage().lower()], caplog.text
+
+
+def test_memory_models_roundtrip_through_the_strict_serde(caplog):
+    from sagaloom.graph.build import checkpoint_serde
+    from sagaloom.models import MemoryResult, MemoryUpdate
+
+    serde = checkpoint_serde()
+    for obj in (
+        [MemoryUpdate(key="tone", value="grim")],
+        MemoryResult(key="tone", value="grim", stored=True, note="Remembered: tone → grim"),
+    ):
+        assert serde.loads_typed(serde.dumps_typed(obj)) == obj
+    assert "not in the allowed" not in caplog.text.lower() and "blocked" not in caplog.text.lower()

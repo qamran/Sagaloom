@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from langgraph.store.base import BaseStore
 from pydantic import ValidationError
 
 from sagaloom.config import Settings, load_env_files
@@ -38,6 +39,7 @@ class AppDeps:
     model_settings: ModelSettings | None = None
     dev_settings: DevSettingsStore | None = None
     wiki: WikiClient | None = None  # the shared MediaWiki client (R11.4.8)
+    memory: BaseStore | None = None  # long-term author preferences (R10.2)
     seed_dir: Path | None = SEED_DIR
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
 
@@ -90,13 +92,21 @@ async def _open_runtime(app: FastAPI):
             from sagaloom.graph.build import build_graph, sqlite_checkpointer
 
             saver = await stack.enter_async_context(sqlite_checkpointer(settings))
+            if deps.memory is None:
+                # Same exit stack and event loop as the checkpointer (#30).
+                from langgraph.store.sqlite.aio import AsyncSqliteStore
+
+                deps.memory = await stack.enter_async_context(
+                    AsyncSqliteStore.from_conn_string(str(Path(settings.data_dir) / "store.sqlite"))
+                )
+                await deps.memory.setup()
             deps.graph = build_graph(
                 store=deps.store,
                 model_for=make_model_for(settings, deps.model_settings),
                 checkpointer=saver,
-                settings=settings,
                 dev=deps.dev_settings.get,
                 wiki=deps.wiki,
+                memory_store=deps.memory,
             )
         if deps.seed_dir is not None:
             await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)
@@ -139,7 +149,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],
-        allow_methods=["GET", "POST", "PUT"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
 

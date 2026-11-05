@@ -138,3 +138,24 @@ class Usage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cost_usd: float = 0.0
+
+
+# Long-term author preferences (R10.2, spec §3.5). Here rather than in `sagaloom.memory` so the
+# strict checkpoint serde, which allows every class defined in this module, covers them.
+PreferenceKey = Literal["tone", "genre", "banned_tropes", "notes"]
+
+
+class MemoryUpdate(BaseModel):
+    """A preference the agent asked to remember; the `remember` node gates and writes it."""
+
+    key: PreferenceKey
+    value: str
+
+
+class MemoryResult(BaseModel):
+    """What the `remember` node did with one update; `note` is the exact chat copy."""
+
+    key: str
+    value: str
+    stored: bool
+    note: str

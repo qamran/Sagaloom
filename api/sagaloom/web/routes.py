@@ -14,7 +14,8 @@ from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.guard import GUARD_POLICY, parse_verdict
-from sagaloom.models import Decision, Entry, Usage, World
+from sagaloom.memory import CAP, count_items, forget, read_preferences
+from sagaloom.models import Decision, Entry, PreferenceKey, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
@@ -53,13 +54,17 @@ def _thread(request: Request, thread_id: str):
 
 
 def message_dict(m: BaseMessage) -> dict:
-    """{role, content, name?, tool_calls?}; `review` is the author's decision note (R18.6) and
+    """{role, content, name?, tool_calls?, memory?}; `review` is the author's decision note
+    (R18.6), `memory` the `remember` node's note with one result per preference (R10.2), and
     `guard` the input guard's notice in place of a blocked message (R13.1)."""
     out: dict[str, Any] = {"content": message_text(m.content)}
     if isinstance(m, HumanMessage):
-        out = {"role": "review" if m.name == "review" else "user", **out}
+        role = {"review": "review", "memory": "memory"}.get(m.name or "", "user")
+        out = {"role": role, **out}
         if m.name:
             out["name"] = m.name
+        if role == "memory":
+            out["memory"] = list(m.additional_kwargs.get("memory") or [])
     elif isinstance(m, AIMessage):
         # The input guard's notice for a blocked message (R13.1), like the `review` pattern.
         out = {"role": "guard" if m.name == "guard" else "assistant", **out}
@@ -180,6 +185,47 @@ def export_world(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------- long-term memory (R10.2) ----------
+
+CHECKPOINT_FILE = "data/checkpoints.sqlite"
+
+
+def _memory_world(request: Request, world_id: str):
+    d = _deps(request)
+    if d.worlds.get(world_id) is None:
+        raise HTTPException(status_code=404, detail="world not found")
+    if d.memory is None:
+        raise HTTPException(status_code=503, detail="memory is not available")
+    return d
+
+
+def _memory_payload(d, world_id: str, prefs: dict) -> dict:
+    return {
+        "preferences": prefs,
+        "count": count_items(prefs),
+        "cap": CAP,
+        "short_term": {
+            "threads": len(d.threads.list(world_id)),
+            "checkpoint_file": CHECKPOINT_FILE,
+        },
+    }
+
+
+@router.get("/worlds/{world_id}/memory")
+async def get_memory(world_id: str, request: Request) -> dict:
+    d = _memory_world(request, world_id)
+    return _memory_payload(d, world_id, await read_preferences(d.memory, world_id))
+
+
+@router.delete("/worlds/{world_id}/memory")
+async def delete_memory(
+    world_id: str, key: PreferenceKey, request: Request, item: str | None = None
+) -> dict:
+    """Undo or delete: one list item when `item` is given, else the whole key. Idempotent."""
+    d = _memory_world(request, world_id)
+    return _memory_payload(d, world_id, await forget(d.memory, world_id, key, item))
 
 
 # ---------- threads ----------

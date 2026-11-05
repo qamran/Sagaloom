@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from langgraph.graph.message import add_messages
 
-from sagaloom.models import CheckResult, Decision, Proposal
+from sagaloom.models import CheckResult, Decision, MemoryUpdate, Proposal
 
 Role = Literal["agent", "judge", "extractor", "guard"]
 GuardVerdictValue = Literal["safe", "unsafe", "injection", "error", "off"]
@@ -41,6 +41,14 @@ def merge_dict(left: dict | None, right: dict | None) -> dict:
     return out
 
 
+def merge_memory(left: list[MemoryUpdate] | None, right: list[MemoryUpdate] | None) -> list:
+    """Reducer for `memory_updates`. Pure. A list appends (parallel `remember_preference` calls in
+    one AI message all arrive); None resets it to [] (the `remember` node clears what it read)."""
+    if right is None:
+        return []
+    return [*(left or []), *right]
+
+
 class SagaState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
     world_id: str
@@ -52,3 +60,6 @@ class SagaState(TypedDict, total=False):
     # This turn's input-guard result (R13.1); `off` when the guard is switched off in Studio.
     # Token usage is not kept in state: the prompt log is the only usage source (R12).
     guard_verdict: GuardVerdictValue
+    # Preferences queued by `remember_preference` this step; only the `remember` node writes
+    # them to the Store, after the verbatim gate (R10.2), and then clears the list.
+    memory_updates: Annotated[list[MemoryUpdate], merge_memory]

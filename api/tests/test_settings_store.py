@@ -82,7 +82,7 @@ def test_core_tools_are_enabled_even_when_omitted():
     core = {"search_canon", "create_or_update_entry", "check_contradiction"}
     assert enabled_tool_names(DevSettings(enabled_tools=[])) == core
     assert enabled_tool_names(DevSettings(enabled_tools=["export_world"])) == core | {"export_world"}
-    assert enabled_tool_names(DevSettings()) == core | {"export_world", "real_world_reference"}
+    assert enabled_tool_names(DevSettings()) == core | {"export_world", "real_world_reference", "remember_preference"}
 
 
 def test_tool_specs_match_the_built_tools():

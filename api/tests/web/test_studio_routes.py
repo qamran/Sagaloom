@@ -41,7 +41,6 @@ def build_switchable_env(store, tmp_path) -> Env:
         store=store,
         model_for=make_model_for(settings, ms, factory),
         checkpointer=InMemorySaver(),
-        settings=settings,
     )
     worlds = WorldRegistry(tmp_path / "worlds.json")
     worlds.create("World One", world_id=W)

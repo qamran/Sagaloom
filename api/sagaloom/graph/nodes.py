@@ -18,6 +18,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END
 from langgraph.prebuilt import ToolNode
+from langgraph.store.base import BaseStore
 from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
@@ -26,6 +27,7 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
+from sagaloom.memory import apply_updates, read_preferences, render_preferences
 from sagaloom.models import PROVENANCE_FIELDS, CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.provenance import merge_provenance
 from sagaloom.settings_store import DevSettings, enabled_tool_names
@@ -64,7 +66,16 @@ def route_after_agent(state: SagaState) -> Literal["tools", "__end__"]:
     return END
 
 
-def route_after_tools(state: SagaState) -> Literal["check", "agent"]:
+def route_after_tools(state: SagaState) -> Literal["remember", "check", "agent"]:
+    """Queued preferences go to `remember` first (spec §3.5: after `check` they would be lost
+    when the turn pauses at the gate, which resumes through `commit -> agent`). Otherwise as
+    `route_after_remember`."""
+    if state.get("memory_updates"):  # older checkpoints have no such key
+        return "remember"
+    return route_after_remember(state)
+
+
+def route_after_remember(state: SagaState) -> Literal["check", "agent"]:
     """Any proposal not yet checked AND decided goes to `check` (and from there the gate)."""
     checks = state.get("check_results") or {}
     decisions = state.get("decisions") or {}
@@ -127,7 +138,10 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
 
 
 def make_agent_node(
-    model_for: ModelFor, tools: list[BaseTool], dev: Callable[[], DevSettings] = DevSettings
+    model_for: ModelFor,
+    tools: list[BaseTool],
+    dev: Callable[[], DevSettings] = DevSettings,
+    memory_store: BaseStore | None = None,
 ):
     async def agent(state: SagaState, config: RunnableConfig) -> dict:
         d = dev()  # read every turn, so a settings change applies from the next one
@@ -137,7 +151,13 @@ def make_agent_node(
         enabled = enabled_tool_names(d)
         bound = [t for t in tools if t.name in enabled]
         llm = model_for("agent").bind_tools(bound).bind(**params)
-        system = SystemMessage(content=d.agent_system_prompt or SYSTEM)
+        base = d.agent_system_prompt or SYSTEM
+        # Read on every call, so a preference stored in any thread of this world applies from
+        # the next call. Author-stated (gated by `remember`), so it may sit in the system prompt.
+        world_id = state.get("world_id")
+        prefs = await read_preferences(memory_store, world_id) if memory_store and world_id else {}
+        block = render_preferences(prefs)
+        system = SystemMessage(content=base + ("\n\n" + block if block else ""))
         reply = await llm.ainvoke([system, *state.get("messages", [])], config)
         return {"messages": [reply]}
 
@@ -212,6 +232,42 @@ def make_tools_node(tools: list[BaseTool], dev: Callable[[], DevSettings] = DevS
         return [u if isinstance(u, Command) else {"messages": [u]} for u in ordered]
 
     return tools_node
+
+
+# ---------- remember ----------
+
+
+def _author_text(msgs: list) -> str:
+    """The latest message the author typed: an unnamed HumanMessage (review and memory notes are
+    named). Retrieved text arrives in ToolMessages, so it can never be this message."""
+    for m in reversed(msgs):
+        if isinstance(m, HumanMessage) and m.name is None:
+            return message_text(m.content)
+    return ""
+
+
+def make_remember_node(memory_store: BaseStore):
+    """The only writer of preferences (R18.2). No approval gate: preferences are not canon, and
+    every write is shown in chat and undoable. The verbatim gate in `apply_updates` is the
+    injection defence (R10.2)."""
+
+    async def remember(state: SagaState) -> dict:
+        updates = list(state.get("memory_updates") or [])
+        results = await apply_updates(
+            memory_store, state["world_id"], updates, _author_text(state.get("messages") or [])
+        )
+        return {
+            "memory_updates": None,
+            "messages": [
+                HumanMessage(
+                    name="memory",
+                    content="\n".join(r.note for r in results),
+                    additional_kwargs={"memory": [r.model_dump() for r in results]},
+                )
+            ],
+        }
+
+    return remember
 
 
 # ---------- check ----------

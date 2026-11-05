@@ -20,6 +20,7 @@ from sagaloom.store.canon import norm
 from sagaloom.text import message_text
 from sagaloom.tools.export import make_export_tool
 from sagaloom.tools.facts import draft_facts
+from sagaloom.tools.memory import make_memory_tool
 from sagaloom.tools.reference import NAME as REFERENCE_TOOL
 from sagaloom.tools.reference import WRAP_SOURCE as REFERENCE_SOURCE
 from sagaloom.tools.reference import make_reference_tool
@@ -324,6 +325,7 @@ def make_tools(
 
     tools: list[BaseTool] = [search_canon, create_or_update_entry, check_contradiction]
     tools.append(make_export_tool(store))
+    tools.append(make_memory_tool())
     if wiki is not None:
         tools.append(make_reference_tool(wiki))
     return tools

@@ -241,7 +241,7 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
     tools = (await env.client.get("/api/tools")).json()
     assert {t["name"] for t in tools} == {
         "search_canon", "create_or_update_entry", "check_contradiction",
-        "export_world", "real_world_reference",
+        "export_world", "real_world_reference", "remember_preference",
     }
     assert all(t["description"] for t in tools)
     assert all(t["enabled"] for t in tools)
@@ -250,7 +250,7 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
     }
     await env.client.put("/api/settings", json={"enabled_tools": []})
     off = {t["name"] for t in (await env.client.get("/api/tools")).json() if not t["enabled"]}
-    assert off == {"export_world", "real_world_reference"}
+    assert off == {"export_world", "real_world_reference", "remember_preference"}
 
 
 async def test_studio_endpoint_shape(make_env):
@@ -358,6 +358,12 @@ async def test_startup_builds_the_wiki_client_and_passes_it_to_the_graph(store, 
     assert isinstance(deps.wiki, WikiClient)
     assert deps.wiki.cache_dir == env.settings.data_dir / "cache" / "wiki"
     assert seen["wiki"] is deps.wiki and deps.graph == "graph"
+    # The preferences Store is opened on the same stack and handed to both graph and routes.
+    from langgraph.store.sqlite.aio import AsyncSqliteStore
+
+    assert isinstance(deps.memory, AsyncSqliteStore) and seen["memory_store"] is deps.memory
+    assert (env.settings.data_dir / "store.sqlite").exists()
+    assert "settings" not in seen
 
 
 # ---------- fix round 1 ----------

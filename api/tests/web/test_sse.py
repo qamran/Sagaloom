@@ -135,3 +135,29 @@ async def test_benign_message_left_by_a_cancelled_guard_reaches_the_agent(make_e
     [seen] = env.agent.seen
     texts = [m.content for m in seen if isinstance(m, HumanMessage)]
     assert texts == ["Add a harbour town called Ostra", "How many moons?"]
+
+
+# ---------- the remember node's note (R10.2) ----------
+
+
+def test_remember_note_becomes_one_tool_result():
+    from sagaloom.web.sse import _update_events
+
+    items = [
+        {"key": "tone", "value": "grim", "stored": True, "note": "Remembered: tone → grim"},
+        {"key": "notes", "value": "x", "stored": False, "note": "Not remembered: it wasn't something the author said (notes: x)"},
+    ]
+    note = HumanMessage(
+        name="memory",
+        content="\n".join(i["note"] for i in items),
+        additional_kwargs={"memory": items},
+    )
+    events = _update_events("remember", {"memory_updates": None, "messages": [note]})
+    assert events == [
+        {
+            "event": "tool_result",
+            "data": {"name": "remember", "summary": note.content, "memory": items},
+        }
+    ]
+    # A review note from another node is still not an event.
+    assert _update_events("commit", {"messages": [HumanMessage(name="review", content="r")]}) == []
