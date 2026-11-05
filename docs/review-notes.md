@@ -48,3 +48,16 @@ Rule used here: start with the cheapest option that works (prompt), add retrieva
 | The author states lore as a plain assertion ("Velmar has three moons ...") | The system prompt tells the agent to propose it, keeping existing fact keys, so it is checked and gated instead of answered with "that conflicts". An eval holds this at 9 of 10 runs; the model can still occasionally just answer | `graph/prompts.py`, `test_declarative_statement_is_proposed` |
 | Browser connection drops mid-turn | The chat shows "Connection lost. Reconnecting..." and reloads the thread state, including a pending approval card | `useAgentStream` |
 | API keys in logs or the UI | Prompts are redacted before they are stored; the browser only talks to the proxy, which adds the shared secret | `promptlog.py`, `app/api/proxy` |
+
+## 5. The input guard (Wave 1)
+
+**Why a graph node, not middleware.** The guard is the first node of the graph (`guard` -> `agent`). Being a node means it runs inside the same checkpointed state as everything else, its call is recorded like any other (Under the hood shows its prompt and verdict), and routing is explicit: the conditional edge after `guard` sends a safe turn to `agent` and a blocked one straight to `END`. HTTP middleware sees only a request body, not the thread, so it could not classify the right messages, remove a message from history, or leave a notice in the conversation. It would also be invisible in the graph diagram.
+
+**Why it fails closed.** The guard is a security gate, so when it cannot decide (the model errors, times out, or returns something that does not parse) the message is blocked and the author is told the check could not run. Failing open would let anything through exactly when the system is degraded, which is when an attacker would want it. The cost is an occasional false block, which the author can fix by resending.
+
+**Why blocked messages are removed.** If a blocked message stayed in the checkpointed history, the agent would read it on every later turn, so one injection attempt would keep poisoning the thread. The node removes the run with `RemoveMessage` and adds a guard notice (`AIMessage(name="guard")`) in its place. The price is limitation F6: after a refresh the author sees only the notice, not their original text.
+
+**The cancellation case.** A turn can be cancelled or interrupted after the author message was saved, and the author can then send several messages before the agent has answered. Classifying only the latest message would let an earlier unchecked one reach the agent. So the guard classifies the whole trailing run: every author message since the last non-author message. If any of them is blocked, the whole run is removed. The guard has no tools, so a prompt injection aimed at it can at worst change its own verdict, and a changed verdict cannot trigger a write.
+
+**Policy.** It is fiction-aware: dark themes in a story ("the cult sacrifices prisoners at the solstice") pass, while real-world harm instructions and attempts to override the agent's rules are blocked. `tests/eval/test_guard_eval.py` scores 15 of 15 and must stay at all of them.
+
