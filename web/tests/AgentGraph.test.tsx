@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => ({ getThreads: vi.fn(), getLastRun: vi.fn() }));
 let search = "";
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(search) }));
 
-const SRC = "graph TD;\n\tguard --> router;\n";
+const SRC = "graph TD;\n\tguard(guard)\n\trouter(router)\n\tguard --> router;\n";
 const wrap = (ui: React.ReactNode) =>
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -67,5 +67,18 @@ describe("AgentGraph", () => {
     mermaidMock.render.mockRejectedValue(new Error("boom"));
     const { container } = wrap(<AgentGraph mermaid={SRC} />);
     await waitFor(() => expect(container.querySelector("pre")?.textContent).toContain("guard --> router"));
+  });
+
+  it("falls back to the first thread when ?thread= is not in the list", async () => {
+    search = "thread=gone";
+    wrap(<AgentGraph mermaid={SRC} />);
+    await waitFor(() => expect(getLastRun).toHaveBeenCalledWith("t1"));
+    expect(await screen.findByRole("combobox")).toHaveValue("t1");
+  });
+
+  it("says when the run is waiting for approval", async () => {
+    vi.mocked(getLastRun).mockResolvedValue({ thread_id: "t1", nodes: ["guard", "approval_gate"], paused: true });
+    wrap(<AgentGraph mermaid={SRC} />);
+    expect(await screen.findByText("Last run: guard → approval_gate (waiting for approval)")).toBeInTheDocument();
   });
 });

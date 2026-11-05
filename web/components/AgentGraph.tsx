@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getLastRun, getThreads } from "@/lib/api";
@@ -11,11 +11,16 @@ export function AgentGraph({ mermaid }: { mermaid: string }) {
   const wanted = useSearchParams().get("thread");
   const threads = useQuery({ queryKey: ["threads"], queryFn: getThreads });
   const [picked, setPicked] = useState<string | null>(null);
-  const threadId = picked ?? wanted ?? threads.data?.[0]?.thread_id ?? null;
+  const ids = threads.data?.map((t) => t.thread_id) ?? [];
+  const first = ids[0] ?? null;
+  const pick = [picked, wanted].find((id) => id && ids.includes(id));
+  // An unknown ?thread= falls back to the first thread. While the list loads, trust the URL.
+  const threadId = pick ?? (threads.data ? first : (wanted ?? null));
   const run = useQuery({
     queryKey: ["last-run", threadId],
     queryFn: () => getLastRun(threadId as string),
     enabled: !!threadId,
+    placeholderData: keepPreviousData,
   });
   const nodes = run.data?.nodes;
   const [svg, setSvg] = useState<string | null>(null);

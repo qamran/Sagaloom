@@ -537,7 +537,7 @@ async def test_mode_on_user_message(make_env):
     assert "mode" not in message_dict(noted)  # only the author's own messages carry a mode
 
 
-async def test_runs_last_edge_cases(make_env, store):
+async def test_runs_last_edge_cases(make_env):
     env = make_env([create_call(), AIMessage(content="Saved it.")])
     assert (await env.client.get("/api/threads/nope/runs/last")).status_code == 404
     tid = await env.new_thread()

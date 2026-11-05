@@ -3,7 +3,6 @@
 from typing import Any
 
 
-
 async def last_run_nodes(graph: Any, thread_id: str) -> dict:
     """{"nodes": [...], "paused": bool} for the thread's newest run.
 
