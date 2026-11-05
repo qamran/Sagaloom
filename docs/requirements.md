@@ -434,39 +434,46 @@ This section defines how the graph enforces R4.2 (a check on every write) and R5
 
 ### Graph
 
-```
-START → route_entry ──(import)──→ check (R18.10)
-              │ (chat)
-              ▼
-            guard ──(blocked)──→ END (explain why)
-              │
-              ▼
-            router → agent (LLM with tools bound)
-                   │
-         ┌─────────┴──────────┐
-     no tool call          tool call
-         │                    ▼
-        END                 tools
-                              │
-               ┌──────────────┴───────────────┐
-        no new proposal              proposal(s) created
-               │                              ▼
-               └──→ agent                   check
-                                              ▼
-                                        approval_gate  (interrupt)
-                                     ┌────────┼─────────┐
-                                  approve    edit     reject
-                                     ▼        ▼         ▼
-                                  commit    check     agent ("rejected")
-                                     ▼
-                              route_after_commit
-                        chat → agent ("committed <id>")
-                        import → END
+The diagram is the compiled graph's own `draw_mermaid()` output (R18.9); dashed edges are conditional. The `route_entry` and `route_after_commit` routers (R18.10) arrive with Import in Wave 5, so this diagram has no import branch yet: until then a chat turn starts at `guard` and `commit` always returns to `agent`.
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	guard(guard)
+	router(router)
+	agent(agent)
+	tools(tools)
+	remember(remember)
+	check(check)
+	approval_gate(approval_gate)
+	commit(commit)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> guard;
+	agent -.-> __end__;
+	agent -.-> tools;
+	approval_gate -.-> check;
+	approval_gate -.-> commit;
+	check --> approval_gate;
+	commit --> agent;
+	guard -.-> __end__;
+	guard -.-> router;
+	remember -.-> agent;
+	remember -.-> check;
+	router --> agent;
+	tools -.-> agent;
+	tools -.-> check;
+	tools -.-> remember;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
 ```
 
 `remember_preference` (R10.2) is the one tool call that does not go to `check`: when `tools` leaves preferences in `memory_updates`, the graph goes to `remember` first, and `remember` then goes to `check` (if there are unchecked proposals) or back to `agent`.
-
-This ASCII diagram does not draw `remember`. Wave 3 replaces it with the `draw_mermaid` output (R18.9).
 
 ### State
 

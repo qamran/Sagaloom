@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
-// The exit demo (M1, then the Wave 1 input guard), end to end, against the real seed and real models.
+// The exit demo (M1, then Waves 1 to 3), end to end, against the real seed and real models.
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
 const scripted: { name: string; draft: { body: string } }[] = JSON.parse(fs.readFileSync(SEED, "utf-8"));
 const SORN_TEXT = scripted.find((s) => s.name === "captain_sorn")!.draft.body;
@@ -10,6 +10,19 @@ const THREE_MOONS = "Velmar has three moons that rise together at the solstice."
 
 const card = (page: Page, title: string) => page.getByRole("region", { name: `Review proposal: ${title}` });
 const log = (page: Page) => page.getByRole("log", { name: "Conversation" });
+
+// With the router in edit mode, the agent often proposes a follow-on change next to the one a step is about
+// (the three-moons claim also updates Ister's entry). The decisions are sent together, so a step that decides
+// one card rejects the others, which it is not about.
+async function rejectOthers(page: Page) {
+  const open = page
+    .getByRole("region", { name: /^Review proposal:/ })
+    .filter({ has: page.getByRole("button", { name: "Reject" }) });
+  for (let i = 0; i < 5 && (await open.count()) > 0; i++) {
+    await open.first().getByRole("button", { name: "Reject" }).click();
+    await page.waitForTimeout(500);
+  }
+}
 
 async function send(page: Page, text: string) {
   const composer = page.getByLabel("Message Sagaloom");
@@ -37,6 +50,7 @@ test("M1 exit demo", async ({ page }) => {
   await expect(conflict.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toBeVisible();
   await expect(conflict.locator('a[href="/canon/ent_0012"]').first()).toBeVisible();
   await conflict.getByRole("button", { name: "Reject" }).click();
+  await rejectOthers(page);
   await expect(log(page)).toContainText(/rejected by the author/);
 
   // 4. A clean proposal: no Conflict badge. Approve it, then find it in Canon.
@@ -61,6 +75,7 @@ test("M1 exit demo", async ({ page }) => {
   // on the card, and canon still says "Moons: One" after approval. Asserts the outcome, not one fact row:
   // the agent may name the drafted fact differently from run to run.
   await card(page, "Sky of Velmar").getByRole("button", { name: "Save as myth" }).click();
+  await rejectOthers(page);
   const mythCard = card(page, "Sky of Velmar");
   await expect(mythCard.getByRole("region", { name: "Drafted facts" }).getByText("myth", { exact: true }).first()).toBeVisible();
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
@@ -233,4 +248,64 @@ test("M1 exit demo", async ({ page }) => {
   await expect(refSwitch).toHaveAttribute("aria-checked", "false");
   await refSwitch.click();
   await expect(refSwitch).toHaveAttribute("aria-checked", "true");
+
+  // ---- Wave 3: long-term memory, the router and the agent graph ----
+  const REMEMBER = "Remember: keep the tone grim, and I never want chosen-one prophecies.";
+  const newThread = async () => {
+    await page.goto("/studio");
+    await page.getByRole("link", { name: "Chat", exact: true }).click();
+    await expect(page).toHaveURL(/\/chat\/[^/]+/);
+  };
+  const currentThread = () => decodeURIComponent(new URL(page.url()).pathname.split("/").pop()!);
+
+  // 18. A preference in the author's own words: two Remembered chips and the Memory chip.
+  await newThread();
+  await send(page, REMEMBER);
+  await expect(log(page)).toContainText("Remembered: tone → grim");
+  await expect(log(page)).toContainText("Remembered: banned_tropes → chosen-one prophecies");
+  await expect(log(page).getByRole("link", { name: "Course note: Memory · store" }).first()).toBeVisible();
+  await settle(page);
+  await rejectAll(page);
+  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  const rememberErrors = await log(page).getByRole("alert").allTextContents();
+  expect(rememberErrors, `the remember turn ended in an error: ${rememberErrors.join(" | ")}`).toEqual([]);
+
+  // 19. A new thread: the preferences reach the agent's system prompt, and the router picked a mode.
+  await newThread();
+  const legendThread = currentThread();
+  await send(page, "Suggest a founding legend for Velmar.");
+  const modeChip = log(page).getByRole("link", { name: /^Course note: Router · (brainstorm|query|edit)$/ });
+  await expect(modeChip).toBeVisible();
+  const mode = (await modeChip.getAttribute("aria-label"))!.replace("Course note: Router · ", "");
+  console.log(`demo step 19: the router chose mode "${mode}" for the legend request`);
+  await settle(page);
+  await rejectAll(page);
+  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  const legendErrors = await log(page).getByRole("alert").allTextContents();
+  expect(legendErrors, `the legend turn ended in an error: ${legendErrors.join(" | ")}`).toEqual([]);
+  const records = await (await page.request.get(`/api/proxy/threads/${encodeURIComponent(legendThread)}/llm-log`)).json();
+  const agentSystems: string[] = records
+    .filter((r: { role: string | null }) => r.role === "agent")
+    .map((r: { request: { messages: { role: string; content: unknown }[] } }) =>
+      String(r.request.messages.find((m) => m.role === "system")?.content ?? ""),
+    );
+  expect(agentSystems.length).toBeGreaterThan(0);
+  expect(agentSystems.some((c) => c.includes("- tone: grim") && c.includes("- banned_tropes: chosen-one prophecies"))).toBe(true);
+
+  // 20. Studio -> Agent graph: the last run of that thread is highlighted (guard, router, agent).
+  await page.goto(`/studio?thread=${encodeURIComponent(legendThread)}#agent-graph`);
+  const graph = page.getByRole("region", { name: "Agent graph" });
+  await expect(graph.getByText(/^Last run: /)).toContainText(/guard.*router.*agent/);
+  const diagram = graph.getByLabel("Agent graph diagram");
+  await expect.poll(() => diagram.locator(".lastrun").count()).toBeGreaterThanOrEqual(3);
+  fs.mkdirSync("test-results", { recursive: true });
+  await diagram.screenshot({ path: "test-results/agent-graph-dark.png" });
+
+  // 21. Studio -> Memory: delete both preferences so later steps and re-runs start clean.
+  const memory = page.getByRole("region", { name: "Memory" });
+  await memory.scrollIntoViewIfNeeded();
+  await expect(memory.getByText("tone", { exact: true })).toBeVisible();
+  await memory.getByRole("button", { name: "Delete tone: grim" }).click();
+  await memory.getByRole("button", { name: "Delete banned_tropes: chosen-one prophecies" }).click();
+  await expect(memory.getByText("No preferences yet.")).toBeVisible();
 });

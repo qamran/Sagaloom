@@ -1,7 +1,8 @@
 # Exit demo (Playwright)
 
 `exit-demo.spec.ts` walks the whole product end to end: M1 (ask, conflict, Save as myth, Under the hood),
-Wave 1 (input guard) and Wave 2 (reference tool, Markdown export, tool toggles).
+Wave 1 (input guard), Wave 2 (reference tool, Markdown export, tool toggles) and Wave 3 (long-term memory,
+the router mode chip, the highlighted agent graph).
 
 Run it from `web/`:
 
