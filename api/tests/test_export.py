@@ -8,7 +8,7 @@ import zipfile
 import yaml
 
 from sagaloom.export import entry_filename, export_markdown
-from sagaloom.models import Entry, Fact
+from sagaloom.models import Entry, Fact, Link
 from sagaloom.seed import VELMAR_ID, load_seed
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.tools.export import make_export_tool
@@ -90,7 +90,37 @@ async def test_export_world_tool_is_read_only(store):
     assert tool.name == "export_world"
     assert "world_id" not in tool.tool_call_schema.model_json_schema()["properties"]
     out = json.loads(await tool.ainvoke({"world_id": "w"}))
-    assert out == {"download": "/api/worlds/w/export?format=md", "entries": 2}
+    assert out == {"download": "/api/proxy/worlds/w/export?format=md", "entries": 2}
     out = json.loads(await tool.ainvoke({"world_id": "w", "exclude_secrets": True}))
-    assert out == {"download": "/api/worlds/w/export?format=md&exclude_secrets=true", "entries": 1}
+    assert out == {"download": "/api/proxy/worlds/w/export?format=md&exclude_secrets=true", "entries": 1}
     assert store.list_entries("w") == before
+
+
+def test_exclude_secrets_scrubs_references_to_secret_entries():
+    secret = entry(1, "Heir", status="secret")
+    keep = entry(
+        2, "Throne",
+        links=[Link(target_id="ent_0001", relation="secret heir of"), Link(target_id="ent_0003", relation="near")],
+        facts=[Fact(key="ruler", value="Mara", refs=["ent_0001", "ent_0003"], told_by="ent_0001")],
+    )
+    raw = export_markdown([secret, keep], exclude_secrets=True)
+    files = read_zip(raw)
+    blob = "\n".join(files) + "\n".join(files.values())
+    assert "ent_0001" not in blob and "secret heir of" not in blob
+    meta, _ = split(next(iter(files.values())))
+    assert meta["links"] == [{"target_id": "ent_0003", "relation": "near"}]
+    assert meta["facts"][0]["refs"] == ["ent_0003"] and meta["facts"][0]["told_by"] is None
+    full = read_zip(export_markdown([secret, keep], exclude_secrets=False))
+    assert "secret heir of" in "\n".join(full.values())
+
+
+def test_front_matter_round_trips_adversarial_text():
+    e = entry(
+        1, "a: b", aliases=["--- x"], facts=[Fact(key="k", value="x\n---\nevil: 1")]
+    )
+    text = next(iter(read_zip(export_markdown([e], exclude_secrets=False)).values()))
+    meta, body = split(text)
+    assert "evil" not in meta
+    assert meta["title"] == "a: b" and meta["aliases"] == ["--- x"]
+    assert meta["facts"][0]["value"] == "x\n---\nevil: 1"
+    assert body.strip() == "Body."
