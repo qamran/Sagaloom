@@ -307,6 +307,21 @@ describe("useAgentStream", () => {
     expect(result.current.pending?.proposals).toHaveLength(1);
   });
 
+  it.each([
+    [429, "Too many requests. Wait a moment and try again."],
+    [413, "That message is too large."],
+  ])("shows the %i copy when the API refuses the request", async (status, copy) => {
+    getThreadMock.mockResolvedValue(thread());
+    fetchMock.mockResolvedValue(errorResponse(status, status === 429 ? "rate limited" : "request too large"));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toBe(copy);
+  });
+
   it("collects one decision per proposal and submits them together, in pending order", async () => {
     getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_a", "p_b") }));
     // After the decision turn the thread is re-read (review notes are not streamed).

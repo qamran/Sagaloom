@@ -24,6 +24,9 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   headers.set("x-sagaloom-secret", process.env.API_SHARED_SECRET ?? "");
   const contentType = req.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
+  // The API rate-limits per client: pass the caller's address along when the platform set one.
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
 

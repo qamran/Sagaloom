@@ -211,6 +211,8 @@ export function useAgentStream(threadId: string): AgentStream {
           }
           if (res.status === 409 && detail === "approval pending") setError(PENDING_FIRST);
           else if (res.status === 409 && detail === "no pending approval") setError("This change was already decided.");
+          else if (res.status === 429) setError("Too many requests. Wait a moment and try again.");
+          else if (res.status === 413) setError("That message is too large.");
           else if (res.status === 422) setError(detail || "That decision was not accepted.");
           else setError(UNREACHABLE);
           // The card or the conversation may be stale: re-read the thread.

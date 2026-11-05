@@ -26,6 +26,19 @@ describe("secret-injecting proxy", () => {
     expect(await res.text()).toBe('[{"id":1}]');
   });
 
+  it("forwards the incoming x-forwarded-for header, and sends none when absent", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = { params: Promise.resolve({ path: ["worlds"] }) };
+
+    await GET(new Request("http://localhost:3000/api/proxy/worlds", { headers: { "x-forwarded-for": "9.9.9.9" } }), ctx);
+    await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx);
+
+    const [[, withIp], [, without]] = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(new Headers(withIp.headers).get("x-forwarded-for")).toBe("9.9.9.9");
+    expect(new Headers(without.headers).has("x-forwarded-for")).toBe(false);
+  });
+
   it("forwards PUT with its JSON body and the secret", async () => {
     const fetchMock = vi.fn(async () => new Response('{"mapping":{}}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
