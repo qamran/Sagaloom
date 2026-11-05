@@ -59,14 +59,18 @@ def _text(content: Any) -> str:
 
 
 def message_dict(m: BaseMessage) -> dict:
-    """{role, content, name?, tool_calls?}; `review` is the author's decision note (R18.6)."""
+    """{role, content, name?, tool_calls?}; `review` is the author's decision note (R18.6) and
+    `guard` the input guard's notice in place of a blocked message (R13.1)."""
     out: dict[str, Any] = {"content": _text(m.content)}
     if isinstance(m, HumanMessage):
         out = {"role": "review" if m.name == "review" else "user", **out}
         if m.name:
             out["name"] = m.name
     elif isinstance(m, AIMessage):
-        out = {"role": "assistant", **out}
+        # The input guard's notice for a blocked message (R13.1), like the `review` pattern.
+        out = {"role": "guard" if m.name == "guard" else "assistant", **out}
+        if m.name == "guard":
+            out["name"] = m.name
         if m.tool_calls:
             out["tool_calls"] = [
                 {"id": c.get("id"), "name": c["name"], "args": c["args"]} for c in m.tool_calls

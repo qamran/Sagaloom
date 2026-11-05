@@ -18,6 +18,7 @@ from pydantic import Field
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
+from sagaloom.guard import GuardVerdict
 from sagaloom.models import Fact
 from sagaloom.promptlog import PromptLog
 from sagaloom.store.threads import ThreadRegistry
@@ -185,7 +186,9 @@ class Env:
 
 @pytest.fixture
 def make_env(store, tmp_path):
-    def build(script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False) -> Env:
+    def build(
+        script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None
+    ) -> Env:
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
         )
@@ -198,7 +201,7 @@ def make_env(store, tmp_path):
             "extractor": FakeExtractor(metadata={"role": "extractor"})
             if real_extractor
             else StubLLM(FactList(facts=[Fact(key="k", value="v")])),
-            "guard": agent,
+            "guard": StubLLM(guard_reply or GuardVerdict(verdict="safe", reason="ok")),
         }
         graph = build_graph(
             store=store, model_for=lambda role: roles[role], checkpointer=InMemorySaver(), settings=settings

@@ -4,10 +4,10 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from langgraph.graph.message import add_messages
 
-from sagaloom.models import CheckResult, Decision, Proposal, Usage
-from sagaloom.usage import add_usage
+from sagaloom.models import CheckResult, Decision, Proposal
 
 Role = Literal["agent", "judge", "extractor", "guard"]
+GuardVerdictValue = Literal["safe", "unsafe", "injection", "error", "off"]
 
 
 def merge_proposals(left: list[Proposal] | None, right: Any) -> list[Proposal]:
@@ -49,4 +49,6 @@ class SagaState(TypedDict, total=False):
     # Only approve/reject are stored; edit and save_as_myth are applied at the gate
     # and the proposal is asked about again after its re-check.
     decisions: Annotated[dict[str, Decision], merge_dict]
-    token_usage: Annotated[Usage, add_usage]
+    # This turn's input-guard result (R13.1); `off` when the guard is switched off in Studio.
+    # Token usage is not kept in state: the prompt log is the only usage source (R12).
+    guard_verdict: GuardVerdictValue

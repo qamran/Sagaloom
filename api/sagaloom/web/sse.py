@@ -20,7 +20,6 @@ from sse_starlette import EventSourceResponse
 from starlette.background import BackgroundTask
 
 from sagaloom.models import Usage
-from sagaloom.usage import add_usage
 
 log = logging.getLogger(__name__)
 
@@ -62,18 +61,20 @@ def _error_event(exc: Exception) -> Event:
     return _ev("error", {"message": UNEXPECTED, "retryable": True})
 
 
-def _update_events(node: str, upd: Any) -> tuple[list[Event], Usage]:
-    """tool_call / tool_result events and the token usage found in one node's state update."""
+def _update_events(node: str, upd: Any) -> list[Event]:
+    """tool_call / tool_result events found in one node's state update, plus the guard's notice:
+    it is built by the guard node rather than streamed by a model, so it arrives here and is
+    sent as the turn's `token` (the notice is the reply)."""
     events: list[Event] = []
-    usage = Usage()
     for item in upd if isinstance(upd, list) else [upd]:
         if not isinstance(item, dict):
             continue
-        if isinstance(item.get("token_usage"), Usage):
-            usage = add_usage(usage, item["token_usage"])
         msgs = item.get("messages") or []
         for m in msgs if isinstance(msgs, list) else [msgs]:
-            if isinstance(m, AIMessage) and m.tool_calls:
+            if node == "guard" and isinstance(m, AIMessage) and m.name == "guard":
+                if text := _text(m.content):
+                    events.append(_ev("token", {"text": text}))
+            elif isinstance(m, AIMessage) and m.tool_calls:
                 events += [_ev("tool_call", {"name": c["name"], "args": c["args"]}) for c in m.tool_calls]
             elif isinstance(m, ToolMessage):
                 events.append(
@@ -82,7 +83,7 @@ def _update_events(node: str, upd: Any) -> tuple[list[Event], Usage]:
                         {"name": m.name or "", "summary": _text(m.content)[:SUMMARY_CHARS]},
                     )
                 )
-    return events, usage
+    return events
 
 
 async def run_turn_events(
@@ -91,15 +92,12 @@ async def run_turn_events(
     config: dict,
     *,
     extra: asyncio.Queue | None = None,
-    usage_fn: Callable[[], tuple[Usage, Usage]] | None = None,
+    usage_fn: Callable[[], tuple[Usage, Usage]],
 ) -> AsyncIterator[Event]:
     """Run the graph and yield SSE events. `extra` carries events produced outside the graph
     stream (the prompt-capture handler's llm_request / llm_response). `usage_fn` returns
-    (turn, total) from the prompt log, which counts every model call; without it the agent-only
-    state usage is used."""
+    (turn, total) from the prompt log, which counts every model call (R12)."""
     try:
-        before = (await graph.aget_state(config)).values.get("token_usage") or Usage()
-        turn = Usage()
         started: dict[str, float] = {}
         async for mode, payload in graph.astream(
             input_or_command, config, stream_mode=["messages", "updates", "debug"]
@@ -120,9 +118,7 @@ async def run_turn_events(
                         for it in upd:
                             yield _ev("interrupt", dict(it.value))
                         continue
-                    events, usage = _update_events(node, upd)
-                    turn = add_usage(turn, usage)
-                    for ev in events:
+                    for ev in _update_events(node, upd):
                         yield ev
             elif mode == "debug":
                 kind, body = payload.get("type"), payload.get("payload") or {}
@@ -135,10 +131,7 @@ async def run_turn_events(
                     yield _ev("node", {"name": body["name"], "phase": "end", "ms": ms})
         for ev in _drain(extra):
             yield ev
-        if usage_fn is not None:
-            turn, total = usage_fn()
-        else:
-            total = add_usage(before, turn)
+        turn, total = usage_fn()
         yield _ev("usage", {"turn": turn.model_dump(), "total": total.model_dump()})
         yield _ev("done")
     except asyncio.CancelledError:

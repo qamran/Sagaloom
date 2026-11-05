@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END
@@ -19,10 +19,10 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.config import Settings
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
+from sagaloom.guard import BLOCK_COPY, classify
 from sagaloom.models import CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.settings_store import DevSettings
 from sagaloom.store.canon import DuplicateTitleError
-from sagaloom.usage import extract_usage
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +66,48 @@ def route_after_tools(state: SagaState) -> Literal["check", "agent"]:
     return "agent"
 
 
+def route_after_guard(state: SagaState) -> Literal["agent", "__end__"]:
+    return "agent" if state.get("guard_verdict") in ("safe", "off") else END
+
+
+# ---------- input guard ----------
+
+
+def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSettings):
+    """Classifies the author's new message before the agent sees it (R13.1). Fails closed: any
+    error blocks the message. A blocked message is removed from the history, so an injection
+    never sits in what the agent reads on later turns, and replaced by the guard's notice."""
+
+    async def guard(state: SagaState) -> dict:
+        msgs = state.get("messages") or []
+        human = msgs[-1] if msgs else None
+        if not isinstance(human, HumanMessage) or human.name:
+            return {"guard_verdict": "safe"}  # only the author's own new message is classified
+        if not dev().guard_enabled:
+            return {"guard_verdict": "off"}
+        try:
+            verdict = (await classify(model_for("guard"), _content_text(human.content))).verdict
+        except Exception as exc:
+            log.warning("guard failed, blocking the message: %s", type(exc).__name__)
+            verdict = "error"
+        if verdict == "safe":
+            return {"guard_verdict": "safe"}
+        return {
+            "guard_verdict": verdict,
+            "messages": [RemoveMessage(id=human.id), AIMessage(name="guard", content=BLOCK_COPY[verdict])],
+        }
+
+    return guard
+
+
+def _content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
+    return str(content)
+
+
 # ---------- agent ----------
 
 
@@ -80,7 +122,7 @@ def make_agent_node(
         llm = model_for("agent").bind_tools(tools).bind(**params)
         system = SystemMessage(content=d.agent_system_prompt or SYSTEM)
         reply = await llm.ainvoke([system, *state.get("messages", [])], config)
-        return {"messages": [reply], "token_usage": extract_usage(reply, settings)}
+        return {"messages": [reply]}
 
     return agent
 

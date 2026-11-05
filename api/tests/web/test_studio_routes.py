@@ -2,12 +2,13 @@
 
 import itertools
 
-from fakes import HEADERS, KEY, SECRET, W, Env, FakeJudge, ScriptedChat, create_call
+from fakes import HEADERS, KEY, SECRET, W, Env, FakeJudge, ScriptedChat, StubLLM, create_call
 from httpx import ASGITransport, AsyncClient
 from langgraph.checkpoint.memory import InMemorySaver
 
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
+from sagaloom.guard import GuardVerdict
 from sagaloom.model_settings import ModelSettings
 from sagaloom.models import Entry
 from sagaloom.promptlog import PromptLog
@@ -32,6 +33,8 @@ def build_switchable_env(store, tmp_path) -> Env:
 
     def factory(role, model):
         built.append((role, model))
+        if role == "guard":
+            return StubLLM(GuardVerdict(verdict="safe", reason="ok"))
         return NamedJudge(model_name=model) if role == "judge" else agent
 
     graph = build_graph(
