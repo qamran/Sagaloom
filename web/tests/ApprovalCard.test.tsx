@@ -303,4 +303,34 @@ describe("ApprovalCard", () => {
     expect(approve).not.toHaveClass("bg-accent");
     expect(approve).toHaveClass("border-border-strong");
   });
+
+  it("shows the reference source line with the Wikipedia URL as a safe link", () => {
+    const url = "https://en.wikipedia.org/wiki/Venice";
+    const ref: Proposal = {
+      ...update,
+      after: { ...update.after!, source: "reference", source_url: url, licence: null, trusted: false },
+    };
+    render(<ApprovalCard proposal={ref} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.getByText("Source: reference (Wikipedia)")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: url });
+    expect(link).toHaveAttribute("href", url);
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("shows the reference source line without a link when no URL was kept", () => {
+    const ref: Proposal = {
+      ...update,
+      after: { ...update.after!, source: "reference", source_url: null, licence: null, trusted: false },
+    };
+    render(<ApprovalCard proposal={ref} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.getByText("Source: reference (Wikipedia)")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /wikipedia\.org/ })).not.toBeInTheDocument();
+  });
+
+  it("shows no source line for the author's own proposal", () => {
+    const own: Proposal = { ...update, after: { ...update.after!, source: "user", source_url: null, trusted: true } };
+    render(<ApprovalCard proposal={own} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/Source: reference/)).not.toBeInTheDocument();
+  });
 });

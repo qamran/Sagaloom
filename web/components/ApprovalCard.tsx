@@ -198,6 +198,21 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
                 {type ? TYPE_LABEL[type] : "Entry"} · {proposal.after.status}
               </div>
               <div className="font-heading text-lg font-semibold">{proposal.after.title}</div>
+              {proposal.after.source === "reference" && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>Source: reference (Wikipedia)</span>
+                  {proposal.after.source_url && /^https:\/\//.test(proposal.after.source_url) && (
+                    <a
+                      href={proposal.after.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-accent underline underline-offset-2"
+                    >
+                      {proposal.after.source_url}
+                    </a>
+                  )}
+                </div>
+              )}
               {proposal.after.body && (
                 <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-[#e3dfd5]">
                   {proposal.after.body}

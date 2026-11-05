@@ -43,6 +43,11 @@ export interface EntryDraft {
   status: Status;
   aliases: string[];
   facts: Fact[];
+  /** Provenance, set by the server (R2.S, R11.4.6). Optional so older payloads still parse. */
+  source?: Source;
+  source_url?: string | null;
+  licence?: string | null;
+  trusted?: boolean;
 }
 
 export interface World {

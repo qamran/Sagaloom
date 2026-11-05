@@ -18,6 +18,7 @@ const TOOL_LABEL: Record<string, string> = {
   search_canon: "Searched canon",
   create_or_update_entry: "Drafted a proposal",
   check_contradiction: "Checked facts",
+  real_world_reference: "Looking it up on Wikipedia",
 };
 const toolLabel = (name: string) => TOOL_LABEL[name] ?? `Used ${name.replaceAll("_", " ")}`;
 
