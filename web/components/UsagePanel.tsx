@@ -4,8 +4,10 @@ const ROLE_SHORT: Record<string, string> = { agent: "Agent", judge: "Judge", ext
 
 /** "Judge (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
 export function usageLabel(role: string | null | undefined, model: string): string {
-  const short = (model.split("/").pop() ?? model).replace(/^gpt-[\d.]+-/, "");
-  const name = short.charAt(0).toUpperCase() + short.slice(1);
+  const bare = model.split("/").pop() ?? model;
+  const gpt = /^gpt-[\d.]+-/.test(bare); // "gpt-6-luna" reads as "Luna"; other vendors keep their id
+  const short = gpt ? bare.replace(/^gpt-[\d.]+-/, "") : bare;
+  const name = gpt ? short.charAt(0).toUpperCase() + short.slice(1) : short;
   return role && ROLE_SHORT[role] ? `${ROLE_SHORT[role]} (${name})` : model;
 }
 

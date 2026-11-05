@@ -65,7 +65,14 @@ describe("ProvidersPanel", () => {
     });
     render(<ProvidersPanel providers={providers} models={models} />);
     const select = screen.getByLabelText("Model for the contradiction judge") as HTMLSelectElement;
-    expect([...select.options].map((o) => o.value)).toEqual(["openai/gpt-6-luna", "openai/gpt-6.1-terra"]);
+    expect([...select.options].map((o) => o.value)).toEqual([
+      "openai/gpt-6-luna",
+      "openai/gpt-6.1-terra",
+      "gemini-3.5-flash-lite",
+    ]);
+    const gem = screen.getAllByRole("option", { name: "gemini-3.5-flash-lite (Gemini, demo only)" });
+    expect(gem).toHaveLength(3);
+    expect(gem.every((o) => (o as HTMLOptionElement).disabled)).toBe(true);
 
     await userEvent.selectOptions(select, "openai/gpt-6.1-terra");
     expect(putModel).toHaveBeenCalledWith("judge", "openai/gpt-6.1-terra");
@@ -90,6 +97,7 @@ describe("UsagePanel", () => {
     expect(usageLabel("judge", "openai/gpt-6-luna")).toBe("Judge (Luna)");
     expect(usageLabel(null, "openai/gpt-6-luna")).toBe("openai/gpt-6-luna");
     expect(usageLabel("router", "openai/gpt-6-luna")).toBe("Router (Luna)");
+    expect(usageLabel("judge", "anthropic/claude-sonnet-5-5")).toBe("Judge (claude-sonnet-5-5)");
     render(
       <UsagePanel
         usage={{

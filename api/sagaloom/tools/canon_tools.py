@@ -3,9 +3,8 @@
 import json
 import logging
 import uuid
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
@@ -32,6 +31,9 @@ from sagaloom.tools.specs import (  # noqa: F401  (TOOL_SPECS and CORE_TOOLS are
     TOOL_SPECS,
 )
 from sagaloom.wiki.client import WikiClient
+
+if TYPE_CHECKING:
+    from sagaloom.graph.nodes import ChatModelLike
 
 log = logging.getLogger(__name__)
 
@@ -179,8 +181,8 @@ def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]
 
 def make_tools(
     store,
-    extractor_llm: BaseChatModel,
-    judge_llm: BaseChatModel,
+    extractor_llm: "ChatModelLike",
+    judge_llm: "ChatModelLike",
     wiki: WikiClient | None = None,
 ) -> list[BaseTool]:
     @tool("search_canon", args_schema=SearchCanonArgs, description=SEARCH_DESCRIPTION)

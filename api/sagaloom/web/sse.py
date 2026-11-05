@@ -43,9 +43,33 @@ def _drain(queue: asyncio.Queue | None) -> list[Event]:
     return out
 
 
+GEMINI_HOST = "generativelanguage.googleapis.com"
+GEMINI_ERRORS = {
+    429: "Gemini's free tier is out of requests right now.",
+    503: "Gemini is overloaded right now.",
+}
+
+
+def gemini_error_event(exc: Exception) -> dict | None:
+    """The error data for a Gemini 429/503, with the offer to go back to OpenRouter; None for
+    anything else (including OpenRouter errors)."""
+    if not isinstance(exc, openai.APIStatusError) or exc.status_code not in GEMINI_ERRORS:
+        return None
+    if exc.response.request.url.host != GEMINI_HOST:
+        return None
+    return {
+        "message": GEMINI_ERRORS[exc.status_code],
+        "retryable": False,
+        "switch_back": "openrouter",
+        "switch_back_label": "Switch back to OpenRouter",
+    }
+
+
 def _error_event(exc: Exception) -> Event:
     if isinstance(exc, GraphRecursionError):
         return _ev("error", {"message": TOO_MANY_STEPS, "retryable": False})
+    if (gemini := gemini_error_event(exc)) is not None:
+        return _ev("error", gemini)
     if isinstance(exc, openai.APIError):  # connection, timeout, status and rate-limit errors
         return _ev("error", {"message": MODEL_UNAVAILABLE, "retryable": True})
     return _ev("error", {"message": UNEXPECTED, "retryable": True})

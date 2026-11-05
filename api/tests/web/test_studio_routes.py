@@ -127,3 +127,16 @@ async def test_studio_returns_features_providers_mermaid_and_no_keys(make_env):
     assert isinstance(body["usage"]["by_model"], list)
     for secret in ("AIza-GEMINI-SECRET-123", KEY, SECRET):
         assert secret not in r.text
+
+
+async def test_gemini_never_in_model_for(make_env):
+    env = make_env()
+    r = await env.client.put(
+        "/api/settings/models", json={"role": "agent", "model": "gemini-3.5-flash-lite"}
+    )
+    assert r.status_code == 422
+    import inspect
+
+    import sagaloom.web.app as app_mod
+
+    assert "make_gemini_model" not in inspect.getsource(app_mod)

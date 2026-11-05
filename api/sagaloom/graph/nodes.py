@@ -5,7 +5,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
@@ -41,9 +41,18 @@ log = logging.getLogger(__name__)
 ModelFor = Callable[[Role], BaseChatModel]
 
 
+class ChatModelLike(Protocol):
+    """The slice of a chat model that the tools and the contradiction check use."""
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> Any: ...
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any: ...
+    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any: ...
+
+
 class RoleModel:
     """Resolves `model_for(role)` on every use, so a per-role model switch takes effect on
-    the next call even though the tools are built once."""
+    the next call even though the tools are built once. It forwards attributes instead of
+    subclassing BaseChatModel, which is why the parameters it fills are typed `ChatModelLike`."""
 
     def __init__(self, model_for: ModelFor, role: Role):
         self._model_for = model_for

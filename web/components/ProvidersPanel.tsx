@@ -10,6 +10,9 @@ const ROLES: { role: ModelRole; label: string; aria: string }[] = [
   { role: "extractor", label: "Fact extractor", aria: "Model for the fact extractor" },
 ];
 
+const GEMINI_OPTION_ID = "gemini-3.5-flash-lite";
+const GEMINI_OPTION_LABEL = "gemini-3.5-flash-lite (Gemini, demo only)";
+
 const fmt = (n: number | null | undefined) => (n == null ? "n/a" : n.toFixed(2));
 
 const HEAD = "bg-[#1A1F1D] px-2.5 py-[7px] text-[11px] uppercase tracking-[0.8px] text-muted-foreground";
@@ -89,6 +92,11 @@ export function ProvidersPanel({ providers, models }: { providers: ProviderStatu
                       {m.id}
                     </option>
                   ))}
+                  {gemini && (
+                    <option value={GEMINI_OPTION_ID} disabled>
+                      {GEMINI_OPTION_LABEL}
+                    </option>
+                  )}
                 </select>
               </div>
               <div className={CELL}>{p ? `${fmt(p.price_in)} · ${fmt(p.price_out)}` : "n/a"}</div>

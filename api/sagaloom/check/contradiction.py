@@ -1,7 +1,7 @@
 """Contradiction check (R11.3): facts first, then prose; fails closed (R11.3.7)."""
 
 import logging
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -14,6 +14,9 @@ from sagaloom.check.retcon import detect_retcons
 from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Flag, Proposal
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
+
+if TYPE_CHECKING:
+    from sagaloom.graph.nodes import ChatModelLike
 
 log = logging.getLogger(__name__)
 
@@ -247,7 +250,7 @@ def _failed(proposal: Proposal, draft: EntryDraft, retcons: list[Flag]) -> Check
     return CheckResult(proposal_id=proposal.proposal_id, verdict="failed", flags=[*retcons, notice])
 
 
-async def check_proposal(store, proposal: Proposal, judge: BaseChatModel) -> CheckResult:
+async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> CheckResult:
     if proposal.action == "delete":
         return dependency_check(store, proposal)
     draft = proposal.after

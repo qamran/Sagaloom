@@ -3,6 +3,8 @@
 import asyncio
 import json
 
+import pytest
+
 from langchain_core.messages import AIMessage, HumanMessage
 
 from sagaloom.graph.build import run_config
@@ -161,3 +163,33 @@ def test_remember_note_becomes_one_tool_result():
     ]
     # A review note from another node is still not an event.
     assert _update_events("commit", {"messages": [HumanMessage(name="review", content="r")]}) == []
+
+
+async def test_openrouter_error_unchanged():
+    import httpx
+    import openai
+
+    from sagaloom.web.sse import MODEL_UNAVAILABLE, _error_event
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(429, json={"error": {"message": "x"}}))
+    )
+    oa = openai.AsyncOpenAI(api_key="k", base_url="https://openrouter.ai/api/v1", max_retries=0, http_client=client)
+    with pytest.raises(openai.APIStatusError) as info:
+        await oa.chat.completions.create(model="m", messages=[{"role": "user", "content": "hi"}])
+    ev = _error_event(info.value)
+    assert ev["data"] == {"message": MODEL_UNAVAILABLE, "retryable": True}
+
+
+def test_gemini_error_becomes_an_error_event_with_switch_back():
+    import httpx
+    import openai
+
+    from sagaloom.web.sse import _error_event
+
+    req = httpx.Request("POST", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+    exc = openai.RateLimitError("x", response=httpx.Response(429, request=req), body=None)
+    ev = _error_event(exc)
+    assert ev["event"] == "error"
+    assert ev["data"]["message"] == "Gemini's free tier is out of requests right now."
+    assert ev["data"]["switch_back"] == "openrouter"

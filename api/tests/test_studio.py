@@ -56,7 +56,7 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     live = {c.id for c in cards if c.status == "live"}
     assert live == {
         "agent_purpose", "agentic_rag", "human_in_the_loop", "router", "memory", "token_cost",
-        "security_guard", "tools", "external_tools",
+        "security_guard", "tools", "external_tools", "multi_provider",
     }
     router = card(cards, "router")
     assert (router.brief_ref, router.req_ids, router.status) == ("Sprint topic", ["R6.5"], "live")
@@ -72,9 +72,18 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
 
 
 def test_feature_map_multi_provider_follows_gemini_key(tmp_path):
-    assert card(build_feature_map(make_settings(tmp_path), AppDeps()), "multi_provider").status == "off"
+    off = card(build_feature_map(make_settings(tmp_path), AppDeps()), "multi_provider")
+    assert off.status == "live" and off.brief_ref == "Medium 7"
+    assert off.detail == (
+        "Per-role model switching across OpenRouter vendors. Gemini direct is not configured."
+    )
     s = make_settings(tmp_path, gemini_api_key=GEMINI_KEY)
-    assert card(build_feature_map(s, AppDeps()), "multi_provider").status == "configured"
+    on = card(build_feature_map(s, AppDeps()), "multi_provider")
+    assert on.status == "live"
+    assert on.detail == (
+        "Per-role model switching across OpenRouter vendors. Gemini direct is configured for show only: "
+        "never selectable, never called."
+    )
 
 
 def test_providers_status_never_contains_key_values_and_marks_gemini_demo_only(tmp_path):
@@ -135,10 +144,10 @@ def test_every_allowlisted_model_has_a_provider(tmp_path):
 
 def test_gemini_key_set_is_consistent_and_false_for_an_empty_key(tmp_path):
     s = make_settings(tmp_path, gemini_api_key="")
-    assert card(build_feature_map(s, AppDeps()), "multi_provider").status == "off"
+    assert "not configured" in card(build_feature_map(s, AppDeps()), "multi_provider").detail
     assert providers_status(s)[1].key_set is False
     s2 = make_settings(tmp_path, gemini_api_key=GEMINI_KEY)
-    assert card(build_feature_map(s2, AppDeps()), "multi_provider").status == "configured"
+    assert "configured for show only" in card(build_feature_map(s2, AppDeps()), "multi_provider").detail
     assert providers_status(s2)[1].key_set is True
 
 

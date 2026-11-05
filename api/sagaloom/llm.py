@@ -1,6 +1,10 @@
+import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from sagaloom.config import Settings
+from sagaloom.studio import GEMINI_MODEL
+
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 class OpenRouterChat(ChatOpenAI):
@@ -37,6 +41,26 @@ def make_chat_model(
             "provider": {"order": [provider] if provider else settings.provider_order, "allow_fallbacks": False},
             "usage": {"include": True},
         },
+    )
+
+
+def make_gemini_model(
+    settings: Settings, *, http_async_client: httpx.AsyncClient | None = None
+) -> ChatOpenAI:
+    """Gemini over its OpenAI-compatible endpoint. Configured-only (R11.G9): nothing at runtime
+    calls this, `make_model_for` never returns it and the allowlist never lists it; only the
+    tests build it, with a fake key and a mock transport. No retries, so a 429 or 503 is one
+    request."""
+    key = settings.gemini_api_key
+    if key is None or not key.get_secret_value():
+        raise ValueError("GEMINI_API_KEY is not set")
+    return ChatOpenAI(
+        model=GEMINI_MODEL,
+        base_url=GEMINI_BASE_URL,
+        api_key=key.get_secret_value(),
+        max_retries=0,
+        timeout=60,
+        http_async_client=http_async_client,
     )
 
 

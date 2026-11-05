@@ -153,11 +153,12 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             title="Multi-model, multi-provider",
             brief_ref="Medium 7",
             req_ids=["R11.G8", "R11.G9", "R11.G10"],
-            status="configured" if gemini_set else "off",
-            detail=(
-                "OpenRouter models per role. A Gemini key is present, demo only: Sagaloom never calls it."
+            status="live",
+            detail="Per-role model switching across OpenRouter vendors. "
+            + (
+                "Gemini direct is configured for show only: never selectable, never called."
                 if gemini_set
-                else "OpenRouter models per role. The Gemini provider is not configured (the full feature is M2)."
+                else "Gemini direct is not configured."
             ),
             try_href="#models",
         ),

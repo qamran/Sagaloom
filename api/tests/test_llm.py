@@ -81,3 +81,71 @@ def test_non_streamed_result_keeps_cost():
 def test_chat_model_provider_param_pins_that_provider_without_fallbacks():
     m = make_chat_model(_settings(), model="anthropic/claude-sonnet-5.5", provider="anthropic")
     assert m.extra_body["provider"] == {"order": ["anthropic"], "allow_fallbacks": False}
+
+
+# ---------- Gemini: configured-only; every test uses a fake key and a MockTransport ----------
+
+import httpx
+import openai
+import pytest
+
+from sagaloom.llm import GEMINI_BASE_URL, make_gemini_model
+from sagaloom.web.sse import gemini_error_event
+
+
+def _gemini_settings(**kw):
+    return _settings(gemini_api_key="test", **kw)
+
+
+def _mock_client(status: int):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(status, json={"error": {"message": "nope"}})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler)), seen
+
+
+def test_gemini_model_config():
+    m = make_gemini_model(_gemini_settings())
+    assert GEMINI_BASE_URL == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert m.openai_api_base == GEMINI_BASE_URL
+    assert m.model_name == "gemini-3.5-flash-lite"
+    assert m.max_retries == 0
+    assert not m.extra_body
+
+
+def test_gemini_model_needs_a_key():
+    with pytest.raises(ValueError, match="GEMINI_API_KEY is not set"):
+        make_gemini_model(_settings())
+
+
+@pytest.mark.parametrize(
+    "status,copy",
+    [
+        (429, "Gemini's free tier is out of requests right now."),
+        (503, "Gemini is overloaded right now."),
+    ],
+)
+async def test_gemini_errors_once(status, copy):
+    client, seen = _mock_client(status)
+    model = make_gemini_model(_gemini_settings(), http_async_client=client)
+    with pytest.raises(openai.APIStatusError) as info:
+        await model.ainvoke("hi")
+    assert len(seen) == 1
+    assert seen[0].url.host == "generativelanguage.googleapis.com"
+    assert gemini_error_event(info.value) == {
+        "message": copy,
+        "retryable": False,
+        "switch_back": "openrouter",
+        "switch_back_label": "Switch back to OpenRouter",
+    }
+
+
+async def test_gemini_other_status_is_not_special():
+    client, _ = _mock_client(500)
+    model = make_gemini_model(_gemini_settings(), http_async_client=client)
+    with pytest.raises(openai.APIStatusError) as info:
+        await model.ainvoke("hi")
+    assert gemini_error_event(info.value) is None
