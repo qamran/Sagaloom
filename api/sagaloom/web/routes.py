@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -192,9 +193,6 @@ def export_world(
 
 # ---------- long-term memory (R10.2) ----------
 
-CHECKPOINT_FILE = "data/checkpoints.sqlite"
-
-
 def _memory_world(request: Request, world_id: str):
     d = _deps(request)
     if d.worlds.get(world_id) is None:
@@ -204,14 +202,14 @@ def _memory_world(request: Request, world_id: str):
     return d
 
 
-def _memory_payload(d, world_id: str, prefs: dict) -> dict:
+def _memory_payload(d, settings, world_id: str, prefs: dict) -> dict:
     return {
         "preferences": prefs,
         "count": count_items(prefs),
         "cap": CAP,
         "short_term": {
             "threads": len(d.threads.list(world_id)),
-            "checkpoint_file": CHECKPOINT_FILE,
+            "checkpoint_file": (Path(settings.data_dir) / "checkpoints.sqlite").as_posix(),
         },
     }
 
@@ -219,7 +217,7 @@ def _memory_payload(d, world_id: str, prefs: dict) -> dict:
 @router.get("/worlds/{world_id}/memory")
 async def get_memory(world_id: str, request: Request) -> dict:
     d = _memory_world(request, world_id)
-    return _memory_payload(d, world_id, await read_preferences(d.memory, world_id))
+    return _memory_payload(d, request.app.state.settings, world_id, await read_preferences(d.memory, world_id))
 
 
 @router.delete("/worlds/{world_id}/memory")
@@ -228,7 +226,7 @@ async def delete_memory(
 ) -> dict:
     """Undo or delete: one list item when `item` is given, else the whole key. Idempotent."""
     d = _memory_world(request, world_id)
-    return _memory_payload(d, world_id, await forget(d.memory, world_id, key, item))
+    return _memory_payload(d, request.app.state.settings, world_id, await forget(d.memory, world_id, key, item))
 
 
 # ---------- threads ----------

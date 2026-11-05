@@ -1200,6 +1200,42 @@ async def test_remember_turn_returns_to_agent(store):
     assert tool_msgs[0].content == "Queued: tone → grim. It is stored only if the author said it."
 
 
+async def test_queued_echo_is_capped(store):
+    graph, *_ = make(
+        store, [calls(remember("notes", "x" * 500)), AIMessage(content="Noted.")]
+    )
+    cfg = run_config("t-mem-cap", W)
+    await run(graph, start("Remember " + "x" * 500), cfg)
+    values = (await graph.aget_state(cfg)).values
+    [tool_msg] = [m for m in values["messages"] if isinstance(m, ToolMessage)]
+    assert tool_msg.content == f"Queued: notes → {'x' * 200}. It is stored only if the author said it."
+
+
+class FailingStore(InMemoryStore):
+    async def aput(self, *args, **kwargs):
+        raise OSError("database is locked")
+
+
+async def test_remember_store_failure_is_recorded_not_raised(store):
+    mem = FailingStore()
+    graph, *_ = make(
+        store, [calls(remember("tone", "grim")), AIMessage(content="Noted.")], memory_store=mem
+    )
+    cfg = run_config("t-mem-fail", W)
+    nodes = await run(graph, start(DEMO), cfg)
+    assert nodes == ["guard", "router", "agent", "tools", "remember", "agent"]  # the turn completes
+    values = (await graph.aget_state(cfg)).values
+    assert values["messages"][-1].content == "Noted."
+    assert not values.get("memory_updates")  # cleared: no stale queue for the next turn
+    note = "Not remembered: memory is unavailable right now (tone)"
+    [msg] = memory_notes(values)
+    assert msg.content == note  # key only, no value
+    assert msg.additional_kwargs["memory"] == [
+        {"key": "tone", "value": "grim", "stored": False, "note": note}
+    ]
+    assert await mem.asearch(("preferences", W)) == []  # nothing stored
+
+
 async def test_preference_and_proposal_same_turn(store):
     mem = InMemoryStore()
     graph, *_ = make(

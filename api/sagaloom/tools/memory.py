@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
+from sagaloom.memory import MAX_CHARS
 from sagaloom.models import MemoryUpdate, PreferenceKey
 from sagaloom.tools.specs import MEMORY_DESCRIPTION as DESCRIPTION
 from sagaloom.tools.specs import MEMORY_TOOL as NAME
@@ -28,7 +29,7 @@ def make_memory_tool() -> BaseTool:
     async def remember_preference(key: PreferenceKey, value: str, tool_call_id: _CallId) -> Command:
         # The ToolMessage answers this call id; without it the next agent call would carry a
         # dangling tool_call.
-        text = f"Queued: {key} → {value}. It is stored only if the author said it."
+        text = f"Queued: {key} → {value[:MAX_CHARS]}. It is stored only if the author said it."
         return Command(
             update={
                 "memory_updates": [MemoryUpdate(key=key, value=value)],

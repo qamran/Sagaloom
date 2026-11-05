@@ -3,6 +3,8 @@ from sagaloom.llm import make_chat_model, make_embeddings
 
 
 def _settings(**kw):
+    # gemini_api_key=None by default: init kwargs outrank a GEMINI_API_KEY exported in the shell.
+    kw.setdefault("gemini_api_key", None)
     return Settings(_env_file=None, openrouter_api_key="test-key", api_shared_secret="s",
                     web_origin="http://localhost:3000", **kw)
 

@@ -12,12 +12,15 @@ from fakes import HEADERS, W
 DEMO = "Remember: keep the tone grim, and I never want chosen-one prophecies."
 
 
-def empty_payload(threads: int = 0) -> dict:
+def empty_payload(env, threads: int = 0) -> dict:
     return {
         "preferences": {},
         "count": 0,
         "cap": 20,
-        "short_term": {"threads": threads, "checkpoint_file": "data/checkpoints.sqlite"},
+        "short_term": {
+            "threads": threads,
+            "checkpoint_file": (env.settings.data_dir / "checkpoints.sqlite").as_posix(),
+        },
     }
 
 
@@ -33,13 +36,13 @@ async def seed_prefs(env) -> None:
 
 async def test_get_memory_empty_and_counts_this_worlds_threads(make_env):
     env = make_env()
-    assert (await env.client.get(f"/api/worlds/{W}/memory")).json() == empty_payload()
+    assert (await env.client.get(f"/api/worlds/{W}/memory")).json() == empty_payload(env)
     await env.new_thread()
     await env.new_thread()
     env.deps.threads.create("another-world")
     r = await env.client.get(f"/api/worlds/{W}/memory")
     assert r.status_code == 200
-    assert r.json() == empty_payload(threads=2)
+    assert r.json() == empty_payload(env, threads=2)
 
 
 async def test_get_memory_lists_preferences_and_count(make_env):
@@ -69,9 +72,9 @@ async def test_delete_is_idempotent_and_validated(make_env):
     env = make_env()
     url = f"/api/worlds/{W}/memory"
     r = await env.client.delete(url, params={"key": "genre"})
-    assert r.status_code == 200 and r.json() == empty_payload()
+    assert r.status_code == 200 and r.json() == empty_payload(env)
     r = await env.client.delete(url, params={"key": "notes", "item": "never set"})
-    assert r.status_code == 200 and r.json() == empty_payload()
+    assert r.status_code == 200 and r.json() == empty_payload(env)
     assert (await env.client.delete(url)).status_code == 422
     assert (await env.client.delete(url, params={"key": "mood"})).status_code == 422
 

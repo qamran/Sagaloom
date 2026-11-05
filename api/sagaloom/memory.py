@@ -105,6 +105,10 @@ def _one_line(raw: str) -> bool:
     )
 
 
+def unavailable_note(key: str) -> str:
+    return f"Not remembered: memory is unavailable right now ({key})"
+
+
 def _invalid(key: str) -> str:
     return f"Not remembered: preferences must be one line of at most {MAX_CHARS} characters ({key})"
 
@@ -191,6 +195,8 @@ def agent_note(r: MemoryResult) -> str:
         return f"Not remembered: it wasn't something the author said ({r.key})"
     if r.note == _full(r.key, r.value):
         return f"Not remembered: memory is full ({CAP} preferences) ({r.key})"
+    if r.note == unavailable_note(r.key):
+        return r.note  # names the key only
     return _invalid(r.key)  # every other refusal names the key only
 
 
