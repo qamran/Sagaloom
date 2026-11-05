@@ -19,6 +19,7 @@ from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph, run_config
 from sagaloom.graph.nodes import make_commit_node
 from sagaloom.graph.prompts import SYSTEM
+from sagaloom.settings_store import DevSettings
 from sagaloom.graph.state import merge_dict, merge_proposals
 from sagaloom.models import CheckResult, Decision, Entry, EntryDraft, Fact, Proposal, Usage
 from sagaloom.tools.facts import FactList
@@ -35,6 +36,7 @@ class ScriptedChat(BaseChatModel):
 
     script: Any
     seen: list = Field(default_factory=list)
+    seen_kwargs: list = Field(default_factory=list)
 
     @property
     def _llm_type(self) -> str:
@@ -45,6 +47,7 @@ class ScriptedChat(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         self.seen.append(list(messages))
+        self.seen_kwargs.append(kwargs)
         step = next(self.script, None)
         if step is None:
             msg = AIMessage(content="(nothing more)")
@@ -97,7 +100,7 @@ def create_call(title="Ostra", body="A port.", facts=None) -> AIMessage:
     )
 
 
-def make(store, script, judge_reply=None, saver=None):
+def make(store, script, judge_reply=None, saver=None, **build_kwargs):
     agent = ScriptedChat(script=iter(script))
     judge = StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[]))
     extractor = StubLLM(FactList(facts=[Fact(key="k", value="v")]))
@@ -107,6 +110,7 @@ def make(store, script, judge_reply=None, saver=None):
         model_for=lambda role: roles[role],
         checkpointer=saver if saver is not None else InMemorySaver(),
         settings=S,
+        **build_kwargs,
     )
     return graph, agent, judge
 
@@ -611,6 +615,23 @@ async def test_short_term_memory_recalls_earlier_turn_same_thread_only(store):
     assert any("Ember" in m.content for m in seen)
     await run(graph, start("What is my dragon called?"), run_config("thread-b", W))
     assert not any("Ember" in m.content for m in agent.seen[-1])
+
+
+async def test_agent_uses_dev_settings(store):
+    dev = DevSettings(agent_temperature=0.7, agent_max_tokens=512, agent_system_prompt="Custom.")
+    graph, agent, _ = make(store, [AIMessage(content="ok")], dev=lambda: dev)
+    await run(graph, start("hi"), run_config("t-dev", W))
+    assert agent.seen[0][0].content == "Custom."
+    assert agent.seen_kwargs[0]["temperature"] == 0.7
+    assert agent.seen_kwargs[0]["max_tokens"] == 512
+
+
+async def test_agent_default_dev_settings(store):
+    graph, agent, _ = make(store, [AIMessage(content="ok")])
+    await run(graph, start("hi"), run_config("t-dev0", W))
+    assert agent.seen[0][0].content == SYSTEM
+    assert agent.seen_kwargs[0]["temperature"] == 0.0
+    assert "max_tokens" not in agent.seen_kwargs[0]
 
 
 async def test_agent_adds_token_usage(store):

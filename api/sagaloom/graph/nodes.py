@@ -19,6 +19,7 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.config import Settings
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
+from sagaloom.settings_store import DevSettings
 from sagaloom.models import CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.store.canon import DuplicateTitleError
 from sagaloom.usage import extract_usage
@@ -68,10 +69,17 @@ def route_after_tools(state: SagaState) -> Literal["check", "agent"]:
 # ---------- agent ----------
 
 
-def make_agent_node(model_for: ModelFor, tools: list[BaseTool], settings: Settings):
+def make_agent_node(
+    model_for: ModelFor, tools: list[BaseTool], settings: Settings, dev: Callable[[], DevSettings] = DevSettings
+):
     async def agent(state: SagaState, config: RunnableConfig) -> dict:
-        llm = model_for("agent").bind_tools(tools)
-        reply = await llm.ainvoke([SystemMessage(content=SYSTEM), *state.get("messages", [])], config)
+        d = dev()  # read every turn, so a settings change applies from the next one
+        params: dict[str, Any] = {"temperature": d.agent_temperature}
+        if d.agent_max_tokens:
+            params["max_tokens"] = d.agent_max_tokens
+        llm = model_for("agent").bind_tools(tools).bind(**params)
+        system = SystemMessage(content=d.agent_system_prompt or SYSTEM)
+        reply = await llm.ainvoke([system, *state.get("messages", [])], config)
         return {"messages": [reply], "token_usage": extract_usage(reply, settings)}
 
     return agent

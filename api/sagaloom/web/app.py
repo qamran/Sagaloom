@@ -13,6 +13,7 @@ from sagaloom.config import Settings, load_env_files
 from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
 from sagaloom.seed import ensure_first_run
+from sagaloom.settings_store import DevSettingsStore
 from sagaloom.store.threads import ThreadRegistry
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.routes import router
@@ -33,6 +34,7 @@ class AppDeps:
     settings: Settings | None = None
     promptlog: PromptLog | None = None
     model_settings: ModelSettings | None = None
+    dev_settings: DevSettingsStore | None = None
     seed_dir: Path | None = SEED_DIR
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
 
@@ -88,6 +90,7 @@ async def _open_runtime(app: FastAPI):
                 model_for=make_model_for(settings, deps.model_settings),
                 checkpointer=saver,
                 settings=settings,
+                dev=deps.dev_settings.get,
             )
         if deps.seed_dir is not None:
             await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)
@@ -113,6 +116,7 @@ def create_app(settings: Settings, deps: AppDeps | None = None) -> FastAPI:
     deps.threads = deps.threads or ThreadRegistry(data / "threads.sqlite")
     deps.promptlog = deps.promptlog or PromptLog(data / "prompts.sqlite")
     deps.model_settings = deps.model_settings or ModelSettings(data / "model_settings.json", settings)
+    deps.dev_settings = deps.dev_settings or DevSettingsStore(data / "settings.json")
     app.state.settings = settings
     app.state.deps = deps
 

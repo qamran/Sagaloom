@@ -4,7 +4,7 @@ START -> agent -> (tool calls) tools -> (unchecked/undecided proposal) check -> 
 approval_gate -> check (edit / save as myth) | commit;  commit -> agent;  agent -> END.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -28,15 +28,23 @@ from sagaloom.graph.nodes import (
     route_after_tools,
 )
 from sagaloom.graph.state import SagaState
+from sagaloom.settings_store import DevSettings
 from sagaloom.tools.canon_tools import make_tools
 
 RECURSION_LIMIT = 25
 
 
-def build_graph(*, store, model_for: ModelFor, checkpointer, settings: Settings) -> CompiledStateGraph:
+def build_graph(
+    *,
+    store,
+    model_for: ModelFor,
+    checkpointer,
+    settings: Settings,
+    dev: Callable[[], DevSettings] = DevSettings,
+) -> CompiledStateGraph:
     tools = make_tools(store, RoleModel(model_for, "extractor"), RoleModel(model_for, "judge"))
     g = StateGraph(SagaState)
-    g.add_node("agent", make_agent_node(model_for, tools, settings))
+    g.add_node("agent", make_agent_node(model_for, tools, settings, dev))
     g.add_node("tools", ToolNode(tools, handle_tool_errors=True))
     g.add_node("check", make_check_node(store, model_for))
     g.add_node("approval_gate", approval_gate, destinations=("check", "commit"))

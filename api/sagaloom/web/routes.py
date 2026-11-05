@@ -11,9 +11,12 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from sagaloom.graph.build import run_config
+from sagaloom.graph.prompts import SYSTEM
+from sagaloom.guard import GUARD_POLICY
 from sagaloom.models import Decision, Entry, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
+from sagaloom.settings_store import DevSettingsPatch
 from sagaloom.tools.canon_tools import make_tools
 from sagaloom.web.sse import run_turn_events, sse_response
 
@@ -293,6 +296,25 @@ def put_models(body: ModelChoice, request: Request) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _models_payload(request)
+
+
+def _dev_payload(request: Request) -> dict:
+    return {
+        "settings": _deps(request).dev_settings.get().model_dump(),
+        "defaults": {"agent_system_prompt": SYSTEM},
+        "guard_policy": GUARD_POLICY,
+    }
+
+
+@router.get("/settings")
+def get_dev_settings(request: Request) -> dict:
+    return _dev_payload(request)
+
+
+@router.put("/settings")
+def put_dev_settings(body: DevSettingsPatch, request: Request) -> dict:
+    _deps(request).dev_settings.update(body)
+    return _dev_payload(request)
 
 
 def _mermaid(graph: Any) -> str:
