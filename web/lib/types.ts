@@ -104,6 +104,8 @@ export interface Usage {
 }
 
 export interface ChatMessage {
+  /** "user", "assistant", "tool", "review" (a decision note) or "guard" (the input guard's notice
+   * shown in place of a blocked message, R13.1). */
   role: string;
   content: string;
   name?: string;

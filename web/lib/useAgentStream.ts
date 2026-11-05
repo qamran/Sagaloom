@@ -61,12 +61,22 @@ async function detailOf(res: Response): Promise<string> {
 const hasConflict = (p: PendingInterrupt) =>
   Object.values(p.checks).some((c) => c.flags.some((f) => f.kind === "conflict"));
 
-/** Appends a streamed event to the message list in the same shape `GET /threads/{id}` returns. */
-function applyToMessages(msgs: ChatMessage[], ev: SseEvent): ChatMessage[] {
+/** Who a streamed token belongs to: the input guard's notice or the assistant's reply. */
+type TokenRole = "assistant" | "guard";
+
+/**
+ * Appends a streamed event to the message list in the same shape `GET /threads/{id}` returns.
+ * `tokenRole` says whose text a `token` is; a guard notice never merges into an assistant reply.
+ */
+function applyToMessages(msgs: ChatMessage[], ev: SseEvent, tokenRole: TokenRole = "assistant"): ChatMessage[] {
   const last = msgs[msgs.length - 1];
   const openAssistant = last?.role === "assistant" && !last.tool_calls;
   switch (ev.event) {
     case "token":
+      if (tokenRole === "guard") {
+        if (last?.role === "guard") return [...msgs.slice(0, -1), { ...last, content: last.content + ev.data.text }];
+        return [...msgs, { role: "guard", content: ev.data.text }];
+      }
       if (openAssistant) return [...msgs.slice(0, -1), { ...last, content: last.content + ev.data.text }];
       return [...msgs, { role: "assistant", content: ev.data.text }];
     case "tool_call": {
@@ -212,6 +222,9 @@ export function useAgentStream(threadId: string): AgentStream {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let carry = "";
+        // The guard's notice is streamed as tokens while the guard is the last node to have
+        // started; its `node end` may arrive before or after the token, so the start decides.
+        let lastStarted: string | null = null;
         try {
           while (ended === null) {
             const { done, value } = await reader.read();
@@ -229,9 +242,11 @@ export function useAgentStream(threadId: string): AgentStream {
                   setStatus("error");
                   setError(ev.data.message);
                   break;
-                case "token":
-                  setMessages((m) => applyToMessages(m, ev));
+                case "token": {
+                  const role: TokenRole = lastStarted === "guard" ? "guard" : "assistant";
+                  setMessages((m) => applyToMessages(m, ev, role));
                   break;
+                }
                 case "tool_call":
                 case "tool_result":
                   setMessages((m) => applyToMessages(m, ev));
@@ -246,7 +261,11 @@ export function useAgentStream(threadId: string): AgentStream {
                   setUsage(ev.data.total);
                   record(ev);
                   break;
-                default: // node, llm_request, llm_response
+                case "node":
+                  if (ev.data.phase === "start") lastStarted = ev.data.name;
+                  record(ev);
+                  break;
+                default: // llm_request, llm_response
                   record(ev);
               }
             }

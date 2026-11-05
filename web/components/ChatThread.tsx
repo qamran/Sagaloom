@@ -63,6 +63,18 @@ function Message({ m, done }: { m: ChatMessage; done: boolean }) {
       </div>
     );
   }
+  if (m.role === "guard") {
+    return (
+      <div
+        role="note"
+        aria-label="Blocked by the input guard"
+        className="max-w-[90%] rounded-lg border border-border bg-panel-2 px-3 py-2 text-[14px] text-muted-foreground"
+      >
+        <div className="mb-0.5 text-xs uppercase tracking-[1px] text-accent">Input guard</div>
+        {m.content}
+      </div>
+    );
+  }
   if (m.role !== "assistant") return null; // tool output can quote secrets: never shown
   return (
     <>
@@ -122,7 +134,8 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   const busy = s.status === "streaming" || s.status === "reconnecting";
   const many = (pending?.proposals.length ?? 0) > 1;
   const summary = pending ? checkSummary(pending) : null;
-  const thinking = s.streaming && (!last || last.role !== "assistant" || !!last.tool_calls);
+  const thinking =
+    s.streaming && (!last || (last.role !== "assistant" && last.role !== "guard") || !!last.tool_calls);
 
   return (
     <div className="flex min-h-0 flex-1 flex-wrap">
