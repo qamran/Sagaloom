@@ -30,7 +30,8 @@ MODE_SECTIONS: dict[str, str] = {
     "query": "Mode: query. The author is asking about the world. Search canon and cite entry IDs. "
     "A question is not a change: do not propose one for it.",
     "edit": "Mode: edit. The author is stating or changing something about the world. Search canon, "
-    "then propose the change with create_or_update_entry.",
+    "then propose that change with create_or_update_entry. Propose only what the author stated: do "
+    "not change other entries unless the author asks.",
 }
 
 ROUTER_PROMPT = """You are the router for Sagaloom, a continuity editor for fictional worlds. \

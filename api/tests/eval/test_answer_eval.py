@@ -257,6 +257,26 @@ async def test_declarative_statement_is_proposed(tmp_path):
     assert good >= MIN_PROPOSED, f"only {good}/{RUNS} runs proposed the change"
 
 
+@pytest.mark.eval
+async def test_statement_proposes_only_that_change(tmp_path):
+    """The M1 demo's three-moons claim yields exactly one proposal, for Sky of Velmar (ent_0007): the
+    agent must not rewrite other entries (such as Ister's) that the author never mentioned."""
+    _, _, graph = _setup(tmp_path)
+    states = await _gather([_ask(graph, DECLARATION) for _ in range(RUNS)])
+
+    good = 0
+    for i, state in enumerate(states):
+        interrupts = state.get("__interrupt__") or []
+        proposals = interrupts[0].value["proposals"] if interrupts else []
+        targets = [p.get("entry_id") for p in proposals]
+        if len(proposals) == 1 and targets == ["ent_0007"]:
+            good += 1
+        else:
+            print(f"run {i}: {len(proposals)} proposal(s) targeting {targets} (want exactly ['ent_0007'])")
+    print(f"statement-only-that-change: {good}/{RUNS} (need {MIN_PROPOSED})")
+    assert good >= MIN_PROPOSED, f"only {good}/{RUNS} runs proposed exactly the stated change"
+
+
 # ---------- real_world_reference (R11.4) ----------
 
 REFERENCE_QUESTION = "What were Byzantine trade routes like?"

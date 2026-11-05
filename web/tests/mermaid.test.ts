@@ -12,6 +12,10 @@ describe("highlightMermaid", () => {
       `${SRC}${DARK}\n\tclassDef lastrun fill:#3a2f1a,stroke:#d9a441,stroke-width:2px;\n\tclass guard,router lastrun;`,
     );
   });
+  it("puts the lastrun classDef after the default one, so the highlight wins", () => {
+    const out = highlightMermaid(SRC, ["guard"]);
+    expect(out.indexOf("classDef lastrun")).toBeGreaterThan(out.indexOf("classDef default"));
+  });
   it("ignores names that are not in the source", () => {
     expect(highlightMermaid(SRC, ["guard", "ghost"])).toContain("class guard lastrun;");
     expect(highlightMermaid(SRC, ["ghost"])).toBe(`${SRC}${DARK}`);

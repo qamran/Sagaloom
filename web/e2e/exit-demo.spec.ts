@@ -11,19 +11,6 @@ const THREE_MOONS = "Velmar has three moons that rise together at the solstice."
 const card = (page: Page, title: string) => page.getByRole("region", { name: `Review proposal: ${title}` });
 const log = (page: Page) => page.getByRole("log", { name: "Conversation" });
 
-// With the router in edit mode, the agent often proposes a follow-on change next to the one a step is about
-// (the three-moons claim also updates Ister's entry). The decisions are sent together, so a step that decides
-// one card rejects the others, which it is not about.
-async function rejectOthers(page: Page) {
-  const open = page
-    .getByRole("region", { name: /^Review proposal:/ })
-    .filter({ has: page.getByRole("button", { name: "Reject" }) });
-  for (let i = 0; i < 5 && (await open.count()) > 0; i++) {
-    await open.first().getByRole("button", { name: "Reject" }).click();
-    await page.waitForTimeout(500);
-  }
-}
-
 async function send(page: Page, text: string) {
   const composer = page.getByLabel("Message Sagaloom");
   await expect(composer).toBeEnabled();
@@ -50,7 +37,6 @@ test("M1 exit demo", async ({ page }) => {
   await expect(conflict.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toBeVisible();
   await expect(conflict.locator('a[href="/canon/ent_0012"]').first()).toBeVisible();
   await conflict.getByRole("button", { name: "Reject" }).click();
-  await rejectOthers(page);
   await expect(log(page)).toContainText(/rejected by the author/);
 
   // 4. A clean proposal: no Conflict badge. Approve it, then find it in Canon.
@@ -75,7 +61,6 @@ test("M1 exit demo", async ({ page }) => {
   // on the card, and canon still says "Moons: One" after approval. Asserts the outcome, not one fact row:
   // the agent may name the drafted fact differently from run to run.
   await card(page, "Sky of Velmar").getByRole("button", { name: "Save as myth" }).click();
-  await rejectOthers(page);
   const mythCard = card(page, "Sky of Velmar");
   await expect(mythCard.getByRole("region", { name: "Drafted facts" }).getByText("myth", { exact: true }).first()).toBeVisible();
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
