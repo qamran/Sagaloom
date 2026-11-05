@@ -50,3 +50,28 @@ async def test_old_checkpoint_with_token_usage_channel_still_loads(store, tmp_pa
         assert "token_usage" in (await saver.aget_tuple(cfg)).checkpoint["channel_values"]
         assert await run(graph, start("again"), cfg) == ["guard", "agent"]
         assert (await graph.aget_state(cfg)).values["messages"][-1].content == "two"
+
+
+async def test_blocked_turn_roundtrips_through_the_strict_saver(store, tmp_path, caplog):
+    """The guard's write (RemoveMessage + its notice) survives the runtime saver's strict serde."""
+    from sagaloom.guard import BLOCK_COPY, GuardVerdict
+
+    from test_graph import StubLLM
+
+    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
+    cfg = run_config("t-blocked", W)
+    caplog.set_level(logging.WARNING)
+    verdicts = iter([GuardVerdict(verdict="unsafe", reason="x"), GuardVerdict(verdict="safe", reason="ok")])
+    guard = StubLLM(lambda _: next(verdicts))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        async with sqlite_checkpointer(settings) as saver:
+            graph, *_ = make(store, [], saver=saver, guard=guard)
+            assert await run(graph, start("bad"), cfg) == ["guard"]
+        async with sqlite_checkpointer(settings) as saver:
+            graph, *_ = make(store, [AIMessage(content="ok")], saver=saver, guard=guard)
+            [notice] = (await graph.aget_state(cfg)).values["messages"]
+            assert isinstance(notice, AIMessage) and notice.name == "guard"
+            assert notice.content == BLOCK_COPY["unsafe"]
+            assert await run(graph, start("How many moons?"), cfg) == ["guard", "agent"]
+    assert not [r for r in caplog.records if "msgpack" in r.getMessage().lower() or "unregistered" in r.getMessage().lower()], caplog.text
