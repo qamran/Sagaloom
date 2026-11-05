@@ -60,18 +60,26 @@ class BodyLimitMiddleware:
 
         seen = 0
         started = False
+        responded = False  # our 413 went out: drop whatever the app sends afterwards
 
         async def counted_receive():
-            nonlocal seen
+            nonlocal seen, started, responded
             message = await receive()
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
                 if seen > self.max_bytes:
+                    # FastAPI rewrites exceptions raised while parsing a body into a 400, so
+                    # the 413 is sent here and the app's later response is discarded.
+                    if not started and not responded:
+                        responded = True
+                        await _json_response(send, 413, "request too large")
                     raise _TooLarge
             return message
 
         async def tracked_send(message):
             nonlocal started
+            if responded:
+                return
             if message["type"] == "http.response.start":
                 started = True
             await send(message)
@@ -79,8 +87,7 @@ class BodyLimitMiddleware:
         try:
             await self.app(scope, counted_receive, tracked_send)
         except _TooLarge:
-            if not started:
-                await _json_response(send, 413, "request too large")
+            pass  # intended: over the cap after the response started, the stream is cut short
 
 
 class RateLimitMiddleware:
@@ -103,6 +110,7 @@ class RateLimitMiddleware:
         self.clock = clock
         self._turns: dict[str, deque[float]] = {}
         self._totals: dict[str, deque[float]] = {}
+        self._last_sweep = clock()
 
     @staticmethod
     def client_key(scope) -> str:
@@ -131,7 +139,8 @@ class RateLimitMiddleware:
             return
 
         now = self.clock()
-        if len(self._totals) > 10_000:
+        if now - self._last_sweep >= self.window_s:
+            self._last_sweep = now
             self._sweep(now)
         key = self.client_key(scope)
         is_turn = scope["method"] == "POST" and TURN_PATH.match(scope["path"]) is not None

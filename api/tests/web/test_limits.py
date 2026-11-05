@@ -2,6 +2,7 @@
 
 import pytest
 from fastapi import FastAPI, Request
+from pydantic import BaseModel
 from httpx import ASGITransport, AsyncClient
 
 from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
@@ -21,6 +22,13 @@ def build(**kw) -> FastAPI:
     @app.post("/echo")
     async def echo(request: Request):
         return {"n": len(await request.body())}
+
+    class Msg(BaseModel):
+        content: str
+
+    @app.post("/model")
+    async def model(m: Msg):
+        return {"n": len(m.content)}
 
     @app.get("/api/health")
     def health():
@@ -114,3 +122,30 @@ async def test_limit_response_carries_cors_headers():
         await c.get("/api/worlds", headers=h)
         limited = await c.get("/api/worlds", headers=h)
         assert limited.status_code == 429 and limited.headers["access-control-allow-origin"] == "http://web.test"
+
+
+async def test_streamed_over_cap_pydantic_body_is_413_not_400():
+    async def chunks():
+        yield b'{"content": "'
+        for _ in range(5):
+            yield b"x" * 40
+        yield b'"}'
+
+    async with client(build(max_bytes=100)) as c:
+        r = await c.post("/model", content=chunks(), headers={"Content-Type": "application/json"})
+        assert r.status_code == 413 and r.json() == {"detail": "request too large"}
+
+
+async def test_idle_keys_are_swept_once_per_window():
+    clock = Clock()
+    app = build(total_limit=5, clock=clock)
+    async with client(app) as c:
+        for i in range(3):
+            await c.get("/api/worlds", headers={"X-Forwarded-For": f"10.0.0.{i}"})
+        limiter = app.middleware_stack  # built lazily on first request
+        while not isinstance(limiter, RateLimitMiddleware):
+            limiter = limiter.app
+        assert len(limiter._totals) == 3
+        clock.now += 61
+        await c.get("/api/worlds", headers={"X-Forwarded-For": "10.0.1.1"})
+        assert list(limiter._totals) == ["10.0.1.1"]
