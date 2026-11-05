@@ -46,6 +46,7 @@ const ROLE_LABEL: Record<string, string> = {
   judge: "Contradiction judge",
   extractor: "Fact extractor",
   guard: "Input guard",
+  router: "Router",
 };
 const ROLE_COLOR: Record<string, string> = { system: "text-myth", user: "text-[#9FE0BF]", assistant: "text-[#a9d3ff]" };
 

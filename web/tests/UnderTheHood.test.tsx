@@ -107,6 +107,10 @@ describe("UnderTheHood", () => {
     const { unmount } = render(<UnderTheHood turn={withRole} onClose={() => {}} />);
     expect(screen.getByText("Contradiction judge")).toBeInTheDocument();
     unmount();
+    const router = { ...turn, calls: [{ ...turn.calls[0], role: "router" }] };
+    const second = render(<UnderTheHood turn={router} onClose={() => {}} />);
+    expect(screen.getByText("Router")).toBeInTheDocument();
+    second.unmount();
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
     expect(screen.getByText("Agent")).toBeInTheDocument();
   });
