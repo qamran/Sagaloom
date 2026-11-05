@@ -64,13 +64,16 @@ class WikiClient:
     def _write_cache(self, path: Path, data: dict) -> None:
         # Best effort: a failed write (e.g. two concurrent writers on Windows) must not fail the
         # lookup. Write to a temp name, then rename, so a reader never sees half a file.
+        tmp = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.tmp")
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.tmp")
             tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             os.replace(tmp, path)
         except OSError:
-            pass
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     async def get_json(self, url: str) -> dict:
         """GET a JSON object. Raises `HostNotAllowed` (no request made), `httpx.HTTPError` on a

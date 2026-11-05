@@ -889,7 +889,8 @@ async def test_trusted_fails_closed_across_updates(store, tmp_path):
     assert (e.version, e.source, e.trusted, e.source_url) == (2, "reference", False, REF_URLS[0])
 
     await run(graph, {"messages": [HumanMessage(content="Add canals to Velmar")]}, cfg)
-    assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
+    # The card shows the merged provenance: the stored entry is already reference/untrusted.
+    assert provenance(await pending_after(graph, cfg)) == ("reference", False, REF_URLS[0])
     await run(graph, resume({"proposal_id": await only_pid(graph, cfg), "action": "approve"}), cfg)
     e = store.get_entry(W, "ent_0001")
     assert e.body == "A city of canals."
@@ -933,3 +934,31 @@ async def test_edit_decision_cannot_reset_provenance(store, tmp_path):
 def test_system_prompt_keeps_reference_out_of_canon():
     assert "real_world_reference" in SYSTEM
     assert "reference, not canon" in SYSTEM
+
+
+def timeout_wiki(tmp_path) -> WikiClient:
+    def boom(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(boom))
+
+
+@pytest.mark.parametrize("failure", ["timeout", "invalid_args"])
+async def test_failed_lookup_does_not_taint(store, tmp_path, failure):
+    """Only a successful reference payload taints the turn: an error result, a validation error
+    or an unparseable message brings no reference text into the proposal."""
+    first = ref_call() if failure == "timeout" else tc("real_world_reference", {"query": ""})
+    graph, *_ = make(store, [first, create_call()], wiki=timeout_wiki(tmp_path))
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    msgs = (await graph.aget_state(cfg)).values["messages"]
+    assert any(isinstance(m, ToolMessage) and m.name == "real_world_reference" for m in msgs)
+    assert provenance(await pending_after(graph, cfg)) == ("user", True, None)
+
+
+async def test_plain_update_of_untrusted_entry_shows_merged_provenance(store, tmp_path):
+    seed(store, source="reference", source_url=REF_URLS[1], trusted=False)
+    graph, *_ = make(store, [update_call("A city of canals.")], wiki=fake_wiki(tmp_path))
+    cfg = run_config("t1", W)
+    await run(graph, start("Add canals to Velmar"), cfg)
+    assert provenance(await pending_after(graph, cfg)) == ("reference", False, REF_URLS[1])

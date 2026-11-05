@@ -19,7 +19,8 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
-from sagaloom.models import PROVENANCE_FIELDS, CheckResult, Decision, Entry, EntryDraft, Flag, Proposal
+from sagaloom.models import PROVENANCE_FIELDS, CheckResult, Decision, Entry, Flag, Proposal
+from sagaloom.provenance import merge_provenance
 from sagaloom.settings_store import DevSettings
 from sagaloom.store.canon import DuplicateTitleError
 from sagaloom.text import message_text
@@ -259,17 +260,6 @@ class _CommitFailed(Exception):
 _COMMIT_LOCK = threading.Lock()
 
 
-def _merged_provenance(current: Entry, draft: EntryDraft) -> dict:
-    """Provenance fails closed across updates (R2.S): once untrusted, always untrusted, and a
-    non-`user` source is never downgraded to `user`."""
-    return {
-        "trusted": current.trusted and draft.trusted,
-        "source": current.source if draft.source == "user" else draft.source,
-        "source_url": draft.source_url or current.source_url,
-        "licence": draft.licence or current.licence,
-    }
-
-
 def _apply(store, p: Proposal) -> str:
     with _COMMIT_LOCK:
         return _apply_locked(store, p)
@@ -303,7 +293,7 @@ def _apply_locked(store, p: Proposal) -> str:
         {
             **current.model_dump(),
             **p.after.model_dump(),
-            **_merged_provenance(current, p.after),
+            **merge_provenance(current, p.after),  # the guard
             "version": current.version + 1,  # created_at is kept; upsert refreshes updated_at
         }
     )

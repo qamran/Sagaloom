@@ -14,23 +14,27 @@ from pydantic import BaseModel, Field, ValidationError
 
 from sagaloom.check.contradiction import check_proposal
 from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal, SearchHit, Status
+from sagaloom.provenance import merge_provenance
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
 from sagaloom.text import message_text
 from sagaloom.tools.facts import draft_facts
 from sagaloom.tools.reference import NAME as REFERENCE_TOOL
+from sagaloom.tools.reference import WRAP_SOURCE as REFERENCE_SOURCE
 from sagaloom.tools.reference import make_reference_tool
 from sagaloom.wiki.client import WikiClient
 
 log = logging.getLogger(__name__)
 
 UNTRUSTED_LABEL = "untrusted source"
+# How every successful real_world_reference result starts (an error result is not wrapped).
+_REFERENCE_WRAP = wrap_untrusted("", REFERENCE_SOURCE).split("\n", 1)[0]
 
 _WorldId = Annotated[str, InjectedState("world_id")]
 _CallId = Annotated[str, InjectedToolCallId]
-# The thread's messages, read to set provenance from the turn. Defaults to None only so the tool
-# can be invoked directly in tests; the ToolNode always injects it.
-_Messages = Annotated[list | None, InjectedState("messages")]
+# The thread's messages, read to set provenance from the turn. Required: a call without them
+# must fail rather than fall back to user/trusted.
+_Messages = Annotated[list, InjectedState("messages")]
 
 
 class SearchCanonArgs(BaseModel):
@@ -70,7 +74,7 @@ class CreateOrUpdateArgs(BaseModel):
     )
     world_id: _WorldId
     tool_call_id: _CallId
-    messages: _Messages = None
+    messages: _Messages
 
 
 class CheckContradictionArgs(BaseModel):
@@ -112,8 +116,10 @@ def _keep_secret_facts(before: Entry, proposed: list[Fact]) -> list[Fact]:
 
 
 def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
-    """(whether `real_world_reference` answered in this turn, the URLs it returned). The turn is
-    everything after the author's last message (an unnamed HumanMessage; review notes are named)."""
+    """(whether `real_world_reference` returned a successful reference payload in this turn, the
+    URLs it returned). The turn is everything after the author's last message (an unnamed
+    HumanMessage; review notes are named). An error result, a validation error or an unparseable
+    message brings no reference text in, so it does not count."""
     turn: list = []
     for m in reversed(messages or []):
         if isinstance(m, HumanMessage) and not m.name:
@@ -124,15 +130,22 @@ def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
     for m in reversed(turn):
         if not (isinstance(m, ToolMessage) and m.name == REFERENCE_TOOL):
             continue
-        called = True
+        if m.status == "error":
+            continue
         text = message_text(m.content)
+        if not text.startswith(_REFERENCE_WRAP):
+            continue  # the soft error result is plain JSON, never wrapped
         try:  # the payload sits between the wrapper's first and last line
             payload = json.loads(text.split("\n", 1)[1].rsplit("\n", 1)[0])
         except (IndexError, ValueError):
-            continue  # an error result: it still taints the turn, but has no URLs
-        if not isinstance(payload, dict):
             continue
-        for r in payload.get("results") or []:
+        if not isinstance(payload, dict) or payload.get("label") != "reference":
+            continue
+        results = payload.get("results")
+        if not isinstance(results, list):
+            continue
+        called = True
+        for r in results:
             url = r.get("url") if isinstance(r, dict) else None
             if isinstance(url, str) and url not in urls:
                 urls.append(url)
@@ -145,9 +158,9 @@ def reference_urls_this_turn(messages: list) -> list[str]:
 
 
 def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]:
-    """Server-set provenance for a chat proposal (R11.4.6). Any `real_world_reference` result in
-    this turn taints it (fail closed, even an error result). The agent may pick which of the
-    turn's URLs it used; anything else it names is ignored."""
+    """Server-set provenance for a chat proposal (R11.4.6). A successful `real_world_reference`
+    payload in this turn taints it. The agent may pick which of the turn's URLs it used; anything
+    else it names is ignored, and the first of the turn's URLs is stored instead."""
     called, urls = _reference_turn(messages)
     if not called:
         return {"source": "user", "source_url": None, "licence": None, "trusted": True}
@@ -170,7 +183,8 @@ def make_tools(
         k: int = 5,
     ) -> str:
         """Search this world's canon by meaning. Read-only. Returns matching entries (id, title,
-        type, status, source, snippet, score) as untrusted data; cite entry ids when you use them."""
+        type, status, source, trusted, snippet, score) as untrusted data; an entry with
+        trusted=false also carries label "untrusted source". Cite entry ids when you use them."""
         try:
             hits = store.search(
                 world_id, query, k=k, entry_types=entry_types, statuses=[status] if status else None
@@ -189,6 +203,7 @@ def make_tools(
         action: Literal["create", "update", "delete"],
         world_id: _WorldId,
         tool_call_id: _CallId,
+        messages: _Messages,
         entry_id: str | None = None,
         title: str | None = None,
         type: EntryType | None = None,
@@ -197,7 +212,6 @@ def make_tools(
         aliases: list[str] | None = None,
         facts: list[Fact] | None = None,
         source_url: str | None = None,
-        messages: _Messages = None,
     ) -> Command:
         """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
         queues a proposal that is contradiction-checked and shown to the author for approval.
@@ -245,7 +259,9 @@ def make_tools(
                         status=status if status is not None else before.status,
                         aliases=aliases if aliases is not None else before.aliases,
                         facts=facts if facts is not None else before.facts,
-                        **prov,  # combined with the stored entry's at commit (fail closed)
+                        # Pre-merged with the stored entry so the card shows what will be
+                        # stored; the commit merges again as the guard.
+                        **merge_provenance(before, EntryDraft.model_construct(**prov)),
                     )
                 except ValidationError as e:
                     return _err(tool_call_id, _bad_fields(e))

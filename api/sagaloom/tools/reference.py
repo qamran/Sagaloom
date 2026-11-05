@@ -44,7 +44,7 @@ def make_reference_tool(client: WikiClient) -> BaseTool:
         try:
             results = await search_and_summarise(client, query, max_results)
         except Exception as e:  # R11.4.7: the agent carries on without it
-            log.warning("real_world_reference failed: %s", type(e).__name__)
+            log.warning("real_world_reference failed: %s", type(e).__name__, exc_info=True)
             return json.dumps({"error": f"Wikipedia lookup unavailable: {_reason(e)}"})
         payload = {"label": "reference", "results": [r.model_dump() for r in results]}
         return wrap_untrusted(json.dumps(payload, ensure_ascii=False), WRAP_SOURCE)

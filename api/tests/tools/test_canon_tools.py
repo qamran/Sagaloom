@@ -77,7 +77,7 @@ async def test_create_returns_proposal_and_writes_nothing(store):
     ts, *_ = tools_for(store)
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W},
+        {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W, "messages": []},
         id="c9",
     )
     assert isinstance(cmd, Command)
@@ -117,12 +117,12 @@ async def test_invalid_type_returns_error_naming_field(store):
 async def test_update_requires_entry_id(store):
     ts, *_ = tools_for(store)
     cmd = await call(
-        ts["create_or_update_entry"], {"action": "update", "body": "new", "world_id": W}
+        ts["create_or_update_entry"], {"action": "update", "body": "new", "world_id": W, "messages": []}
     )
     assert msg(cmd).status == "error" and "entry_id" in msg(cmd).content
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_9999", "body": "n", "world_id": W},
+        {"action": "update", "entry_id": "ent_9999", "body": "n", "world_id": W, "messages": []},
     )
     assert msg(cmd).status == "error"
 
@@ -133,7 +133,7 @@ async def test_update_keeps_unspecified_fields_and_drafts_facts_on_body_change(s
     ts, ext, _ = tools_for(store)
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W},
+        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W, "messages": []},
     )
     [p] = cmd.update["pending_proposals"]
     assert p.before.id == "ent_0001" and p.after.title == "Velmar"
@@ -141,7 +141,7 @@ async def test_update_keeps_unspecified_fields_and_drafts_facts_on_body_change(s
     assert ext.calls == 1 and p.after.facts[0].key == "k"
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_0001", "status": "myth", "world_id": W},
+        {"action": "update", "entry_id": "ent_0001", "status": "myth", "world_id": W, "messages": []},
     )
     [p] = cmd.update["pending_proposals"]
     assert ext.calls == 1 and p.after.facts[0].key == "a" and p.after.status == "myth"
@@ -152,7 +152,7 @@ async def test_failed_redraft_keeps_existing_facts(store):
     ts, ext, _ = tools_for(store, facts=[])
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W},
+        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W, "messages": []},
     )
     [p] = cmd.update["pending_proposals"]
     assert ext.calls == 1 and [f.key for f in p.after.facts] == ["a"]
@@ -162,7 +162,7 @@ async def test_delete_has_no_after(store):
     store.upsert_entry(entry())
     ts, ext, _ = tools_for(store)
     cmd = await call(
-        ts["create_or_update_entry"], {"action": "delete", "entry_id": "ent_0001", "world_id": W}
+        ts["create_or_update_entry"], {"action": "delete", "entry_id": "ent_0001", "world_id": W, "messages": []}
     )
     [p] = cmd.update["pending_proposals"]
     assert p.action == "delete" and p.after is None and p.before.id == "ent_0001"
@@ -174,7 +174,7 @@ async def test_create_without_facts_calls_draft_facts(store):
     ts, ext, _ = tools_for(store)
     await call(
         ts["create_or_update_entry"],
-        {"action": "create", "title": "A", "type": "rule", "body": "b", "world_id": W},
+        {"action": "create", "title": "A", "type": "rule", "body": "b", "world_id": W, "messages": []},
     )
     assert ext.calls == 1
     await call(
@@ -186,6 +186,7 @@ async def test_create_without_facts_calls_draft_facts(store):
             "body": "b",
             "facts": [{"key": "x", "value": "y"}],
             "world_id": W,
+            "messages": [],
         },
     )
     assert ext.calls == 1
@@ -197,7 +198,7 @@ async def test_create_with_duplicate_title_returns_error_suggesting_update(store
     for title in ("velmar", "the city"):
         cmd = await call(
             ts["create_or_update_entry"],
-            {"action": "create", "title": title, "type": "place", "body": "b", "world_id": W},
+            {"action": "create", "title": title, "type": "place", "body": "b", "world_id": W, "messages": []},
         )
         assert "pending_proposals" not in cmd.update
         assert msg(cmd).status == "error" and "ent_0001" in msg(cmd).content
@@ -216,7 +217,7 @@ async def test_tool_failure_returns_error_not_exception(store):
     assert "error" in json.loads(out)
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "create", "title": "A", "type": "rule", "body": "b", "world_id": W},
+        {"action": "create", "title": "A", "type": "rule", "body": "b", "world_id": W, "messages": []},
     )
     assert msg(cmd).status == "error"
 
@@ -253,6 +254,17 @@ async def test_untrusted_hit_is_labelled(store):
     assert hits["ent_0002"]["label"] == "untrusted source"
     assert hits["ent_0001"]["trusted"] is True
     assert "label" not in hits["ent_0001"]
+
+
+async def test_messages_injection_is_required(store):
+    """Called without the injected messages, the tool must fail, not fail open to user/trusted."""
+    ts, *_ = tools_for(store)
+    args = {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W}
+    try:
+        out = await call(ts["create_or_update_entry"], args)
+    except Exception:
+        return
+    assert not isinstance(out, Command), "a proposal was made without the turn's messages"
 
 
 def test_search_hit_carries_trusted(store):
@@ -293,6 +305,7 @@ async def test_update_omitting_a_secret_fact_keeps_it_through_commit(store):
             "entry_id": "ent_0001",
             "facts": [{"key": "a", "value": "changed"}],
             "world_id": W,
+            "messages": [],
         },
     )
     [p] = cmd.update["pending_proposals"]
@@ -310,7 +323,7 @@ async def test_update_result_to_the_agent_contains_no_secret_value(store):
     ts, _, _ = tools_for(store)
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_0001", "facts": [{"key": "a", "value": "c"}], "world_id": W},
+        {"action": "update", "entry_id": "ent_0001", "facts": [{"key": "a", "value": "c"}], "world_id": W, "messages": []},
     )
     assert SECRET not in json.dumps([m.content for m in cmd.update["messages"]])
 
@@ -325,6 +338,7 @@ async def test_explicit_same_key_fact_replaces_the_secret(store):
             "entry_id": "ent_0001",
             "facts": [{"key": "hidden", "value": "now public"}],
             "world_id": W,
+            "messages": [],
         },
     )
     [p] = cmd.update["pending_proposals"]
@@ -336,7 +350,7 @@ async def test_redrafted_facts_also_keep_secrets(store):
     ts, _, _ = tools_for(store)
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W},
+        {"action": "update", "entry_id": "ent_0001", "body": "Changed.", "world_id": W, "messages": []},
     )
     [p] = cmd.update["pending_proposals"]
     assert any(f.status == "secret" and f.value == SECRET for f in p.after.facts)
@@ -350,7 +364,7 @@ async def test_update_keeps_every_fact_of_a_secret_entry(store):
     ts, _, _ = tools_for(store)
     cmd = await call(
         ts["create_or_update_entry"],
-        {"action": "update", "entry_id": "ent_0001", "facts": [{"key": "c", "value": "d"}], "world_id": W},
+        {"action": "update", "entry_id": "ent_0001", "facts": [{"key": "c", "value": "d"}], "world_id": W, "messages": []},
     )
     [p] = cmd.update["pending_proposals"]
     assert {(f.key, f.value) for f in p.after.facts} == {("c", "d"), ("a", "b"), ("Hidden", SECRET)}

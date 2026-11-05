@@ -68,3 +68,16 @@ async def test_timeout_raises(tmp_path):
     with pytest.raises(httpx.HTTPError):
         await client.get_json(f"{SEARCH}?action=query")
     assert list(tmp_path.glob("*.json")) == []  # failures are never cached
+
+
+async def test_failed_cache_write_leaves_no_temp_file(tmp_path, monkeypatch):
+    import sagaloom.wiki.client as client_module
+
+    def deny(src, dst):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(client_module.os, "replace", deny)
+    transport, _ = counting(lambda r: httpx.Response(200, json={"ok": 1}))
+    client = WikiClient(tmp_path, transport=transport)
+    assert await client.get_json(f"{SEARCH}?action=query") == {"ok": 1}
+    assert list(tmp_path.iterdir()) == []
