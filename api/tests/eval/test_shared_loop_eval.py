@@ -4,6 +4,7 @@ langchain-openai keeps one async HTTP client per process. If each test had its o
 the first call in a later test would reuse a connection bound to an earlier, closed loop and
 raise `RuntimeError: Event loop is closed` (the guard eval's first prompt hit exactly this).
 The two tests run in order: a cheap real call, then the guard's first classify call.
+It reproduces only because both calls share langchain-openai's cached client (same base_url and timeout).
 """
 
 import pytest
