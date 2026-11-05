@@ -265,6 +265,22 @@ UNAVAILABLE = re.compile(
 )
 
 
+def _mentions_failed_lookup(answer: str) -> bool:
+    """R11.4.7: a non-empty answer that mentions the failed lookup. Curly apostrophes are
+    normalised first, so "couldn\u2019t" counts like "couldn't"."""
+    text = answer.replace("\u2019", "'").replace("\u2018", "'")
+    return bool(text.strip()) and bool(UNAVAILABLE.search(text))
+
+
+def test_failed_lookup_matcher():
+    assert _mentions_failed_lookup("I couldn\u2019t access the Wikipedia lookup, so here is an overview.")
+    assert _mentions_failed_lookup("I couldn\u2018t reach it.")
+    assert _mentions_failed_lookup("The Wikipedia lookup TIMED OUT, but broadly...")
+    assert _mentions_failed_lookup("The lookup was unavailable.")
+    assert not _mentions_failed_lookup("Byzantine trade centred on Constantinople.")
+    assert not _mentions_failed_lookup("   ")
+
+
 def _fake_wiki(tmp_path: Path, handler) -> WikiClient:
     return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler))
 
@@ -327,7 +343,7 @@ async def test_reference_unavailable_still_answers(tmp_path):
     good = 0
     for i, state in enumerate(states):
         answer = _answer(state)
-        ok = bool(answer.strip()) and bool(UNAVAILABLE.search(answer))
+        ok = _mentions_failed_lookup(answer)
         good += ok
         print(f"{'PASS' if ok else 'FAIL'} run {i}: tools={_tool_calls(state)} {ascii(answer[:160])}")
     print(f"reference-unavailable: {good}/{RUNS} (need {MIN_CLEAN_RUNS})")
