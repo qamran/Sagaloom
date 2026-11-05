@@ -245,7 +245,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           <Message
             key={i}
             m={m}
-            worldId={world?.id}
+            worldId={s.worldId ?? world?.id}
             done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
           />
         ))}

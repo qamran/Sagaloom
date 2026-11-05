@@ -188,15 +188,36 @@ describe("/chat/[threadId]", () => {
       },
     ]);
     expect(await screen.findByText("Remembered: tone → grim")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Undo/ })).toHaveLength(1);
     expect(screen.getByText(/Not remembered: it wasn't something the author said/)).toBeInTheDocument();
     expect(screen.queryByText(/agent-facing/)).toBeNull();
     expect(screen.getByRole("link", { name: "Course note: Memory · store" })).toHaveAttribute(
       "href",
       "/studio?card=memory#feature-map",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(forgetMemory).toHaveBeenCalledWith("w1", "tone", undefined);
+    await userEvent.click(screen.getByRole("button", { name: /^Undo/ }));
+    expect(forgetMemory).toHaveBeenCalledWith("w1", "tone", "grim");
     expect(await screen.findByText("Forgotten")).toBeInTheDocument();
+  });
+
+  it("undoes in the thread's own world, not the selected one", async () => {
+    vi.mocked(forgetMemory).mockReset().mockResolvedValue({} as never);
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1",
+      world_id: "w_other",
+      messages: [
+        { role: "memory", content: "x", memory: [{ key: "tone", value: "grim", stored: true, note: "Remembered: tone → grim" }] },
+      ],
+      pending_interrupt: null,
+      usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatThread threadId="t1" />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Undo/ }));
+    expect(forgetMemory).toHaveBeenCalledWith("w_other", "tone", "grim");
   });
 });

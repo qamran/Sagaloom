@@ -30,7 +30,7 @@ export function MemoryPanel({ worldId: given }: { worldId?: string } = {}) {
   }
 
   const rows = Object.entries(memory.data?.preferences ?? {}).flatMap(([key, v]) =>
-    Array.isArray(v) ? v.map((item) => ({ key, value: item, list: true })) : [{ key, value: v, list: false }],
+    Array.isArray(v) ? v.map((item) => ({ key, value: item })) : [{ key, value: v }],
   );
   const st = memory.data?.short_term;
 
@@ -50,7 +50,14 @@ export function MemoryPanel({ worldId: given }: { worldId?: string } = {}) {
       )}
       {st && (
         <p className="m-0 text-xs text-muted-foreground">
-          Short-term: {st.threads ?? 0} threads in <span className="font-mono">{st.checkpoint_file ?? "memory"}</span>
+          Short-term: a SQLite checkpointer
+          {st.threads != null && `, ${st.threads} ${st.threads === 1 ? "thread" : "threads"}`}
+          {st.checkpoint_file && (
+            <>
+              {" in "}
+              <span className="font-mono">{st.checkpoint_file}</span>
+            </>
+          )}
         </p>
       )}
       {memory.data && (
@@ -69,7 +76,7 @@ export function MemoryPanel({ worldId: given }: { worldId?: string } = {}) {
                   <button
                     type="button"
                     aria-label={`Delete ${r.key}: ${r.value}`}
-                    onClick={() => void del(r.key, r.list ? r.value : undefined)}
+                    onClick={() => void del(r.key, r.value)}
                     className="rounded-md border border-border-strong px-2 py-1 text-muted-foreground"
                   >
                     Delete

@@ -32,6 +32,8 @@ export interface AgentStream {
   error: string | null;
   /** True once the first `getThread` has answered. */
   loaded: boolean;
+  /** The world this thread belongs to, once `getThread` has answered. */
+  worldId: string | null;
   /** Decisions picked so far for the pending card(s), keyed by proposal_id. */
   chosen: Record<string, Decision>;
   turnEvents: TurnEvents[];
@@ -109,6 +111,7 @@ export function useAgentStream(threadId: string): AgentStream {
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [threadWorld, setThreadWorld] = useState<string | null>(null);
   const [chosen, setChosenState] = useState<Record<string, Decision>>({});
   const [turnEvents, setTurnEvents] = useState<TurnEvents[]>([]);
 
@@ -137,6 +140,7 @@ export function useAgentStream(threadId: string): AgentStream {
     const t = await getThread(threadId);
     if (!aliveRef.current) return;
     setMessages(t.messages);
+    setThreadWorld(t.world_id);
     setPending(t.pending_interrupt);
     setUsage(t.usage);
   }, [threadId, setPending]);
@@ -148,6 +152,7 @@ export function useAgentStream(threadId: string): AgentStream {
       (t) => {
         if (cancelled) return;
         setMessages(t.messages);
+        setThreadWorld(t.world_id);
         setPending(t.pending_interrupt);
         setUsage(t.usage);
         setLoaded(true);
@@ -365,6 +370,7 @@ export function useAgentStream(threadId: string): AgentStream {
     streaming: status === "streaming",
     pending,
     usage,
+    worldId: threadWorld,
     status,
     error,
     loaded,
