@@ -64,6 +64,9 @@ test("M1 exit demo", async ({ page }) => {
   const mythCard = card(page, "Sky of Velmar");
   await expect(mythCard.getByRole("region", { name: "Drafted facts" }).getByText("myth", { exact: true }).first()).toBeVisible();
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
+  // A failed re-check also hides the Conflict badge, so rule it out explicitly.
+  await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Check failed")).toHaveCount(0);
+  await expect(mythCard.getByRole("alert")).toHaveCount(0);
   await mythCard.getByRole("button", { name: /^Approve/ }).click();
   await expect(log(page)).toContainText(/committed as ent_0007/);
   // Check canon in a second tab so the chat page (and its Under the hood turns) stays as it is for step 7.
@@ -71,6 +74,8 @@ test("M1 exit demo", async ({ page }) => {
   await entryPage.goto("/canon/ent_0007");
   const canonMoons = entryPage.getByLabel("Facts").locator("xpath=.//div[div[normalize-space()='Moons']]").first();
   await expect(canonMoons).toContainText("One");
+  // R5.6: approval adds "Moons: Three" as a myth fact.
+  await expect(entryPage.getByLabel("Facts").getByText("myth", { exact: true }).first()).toBeVisible();
   await entryPage.close();
 
   // 7. Under the hood: the judge's request holds the retrieved Ister entry inside its wrapper.
@@ -157,6 +162,16 @@ test("M1 exit demo", async ({ page }) => {
   // ---- Wave 2: the reference tool, Markdown export and tool toggles ----
   const QUESTION = "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that.";
   const wikiLine = (p: Page) => log(p).getByText("Looking it up on Wikipedia");
+  // Reject every proposal card (none may be left), optionally checking each one's source line.
+  async function rejectAll(p: Page, source?: string) {
+    const open = anyProposal(p).filter({ has: p.getByRole("button", { name: "Reject" }) });
+    for (let i = 0; i < 10 && (await open.count()) > 0; i++) {
+      const first = open.first();
+      if (source) await expect(first.getByText(source)).toBeVisible();
+      await first.getByRole("button", { name: "Reject" }).click();
+    }
+    await expect(anyProposal(p)).toHaveCount(0);
+  }
   const settle = (p: Page) =>
     expect
       .poll(async () => (await anyProposal(p).count()) > 0 || (await p.getByLabel("Message Sagaloom").isEnabled()), {
@@ -170,12 +185,10 @@ test("M1 exit demo", async ({ page }) => {
   await send(page, QUESTION);
   await expect(wikiLine(page).first()).toBeVisible();
   await settle(page);
-  if ((await anyProposal(page).count()) > 0) {
-    await expect(anyProposal(page).first().getByText("Source: reference (Wikipedia)")).toBeVisible();
-    await anyProposal(page).first().getByRole("button", { name: "Reject" }).click();
-    await expect(anyProposal(page)).toHaveCount(0);
-  }
+  await rejectAll(page, "Source: reference (Wikipedia)");
   await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  // The assistant replied after the Wikipedia activity line.
+  await expect(wikiLine(page).first().locator("xpath=following::span[starts-with(normalize-space(.),'Sagaloom:')]").first()).toBeAttached();
   const refErrors = await log(page).getByRole("alert").allTextContents();
   expect(refErrors, `the reference turn ended in an error: ${refErrors.join(" | ")}`).toEqual([]);
 
@@ -185,6 +198,9 @@ test("M1 exit demo", async ({ page }) => {
   const exported = await page.request.get(new URL(href!, page.url()).toString());
   expect(exported.status()).toBe(200);
   expect(exported.headers()["content-type"]).toContain("application/zip");
+  const zip = await exported.body();
+  expect(zip.length).toBeGreaterThan(0);
+  expect(zip.subarray(0, 2).toString("latin1")).toBe("PK");
 
   // 15. Switch real_world_reference off in Studio -> Tools.
   await page.goto("/studio");
@@ -200,11 +216,12 @@ test("M1 exit demo", async ({ page }) => {
   await send(page, QUESTION);
   await expect(log(page)).toContainText(QUESTION);
   await settle(page);
-  if ((await anyProposal(page).count()) > 0) {
-    await anyProposal(page).first().getByRole("button", { name: "Reject" }).click();
-    await expect(anyProposal(page)).toHaveCount(0);
-  }
+  await rejectAll(page);
   await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  const offErrors = await log(page).getByRole("alert").allTextContents();
+  expect(offErrors, `the tools-off turn ended in an error: ${offErrors.join(" | ")}`).toEqual([]);
+  // The turn really answered: an assistant reply rendered after the question.
+  await expect(log(page).getByText(QUESTION).locator("xpath=following::span[starts-with(normalize-space(.),'Sagaloom:')]").first()).toBeAttached();
   await expect(wikiLine(page)).toHaveCount(0);
 
   // 17. Switch it back on.
