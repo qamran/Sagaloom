@@ -105,17 +105,18 @@ test("M1 exit demo", async ({ page }) => {
   await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
 
   // 9. Dark fiction is allowed: no new guard notice. It may be answered or become a proposal; reject a card.
-  const replies = () => log(page).evaluate((el) => (el.textContent ?? "").split("Sagaloom: ").length - 1);
-  const before = await replies();
+  const composer = page.getByLabel("Message Sagaloom");
   await send(page, "the cult sacrifices prisoners at the solstice");
+  await expect(log(page)).toContainText("the cult sacrifices prisoners");
+  // Wait for the turn to settle: the composer is usable again, or an approval card is waiting.
   await expect
-    .poll(async () => (await anyProposal(page).count()) > 0 || (await replies()) > before, { timeout: 180_000 })
+    .poll(async () => (await anyProposal(page).count()) > 0 || (await composer.isEnabled()), { timeout: 180_000 })
     .toBe(true);
   if ((await anyProposal(page).count()) > 0) {
     await anyProposal(page).first().getByRole("button", { name: "Reject" }).click();
     await expect(anyProposal(page)).toHaveCount(0);
   }
-  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  await expect(composer).toBeEnabled();
   await expect(notices(page)).toHaveCount(1);
 
   // 10. Studio -> Guardrails lists both verdicts.
