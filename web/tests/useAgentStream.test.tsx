@@ -274,6 +274,29 @@ describe("useAgentStream", () => {
     expect(localStorage.getItem(TOUR_KEYS.chatted)).toBe("1");
   });
 
+  it("adds a memory message for a live remember result and leaves other tool results alone", async () => {
+    getThreadMock.mockResolvedValue(thread());
+    const memory = [{ key: "tone", value: "grim", stored: true, note: "Remembered: tone → grim" }];
+    fetchMock.mockResolvedValue(
+      streamResponse([
+        sse("tool_result", { name: "search_canon", summary: "4 hits" }),
+        sse("tool_result", { name: "remember", summary: "Remembered: tone", memory }),
+        sse("done", {}),
+      ]),
+    );
+    const { result } = setup();
+    await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await result.current.send("Remember: keep the tone grim.");
+    });
+    expect(result.current.messages).toEqual([
+      { role: "user", content: "Remember: keep the tone grim." },
+      { role: "tool", name: "search_canon", content: "" },
+      { role: "tool", name: "remember", content: "" },
+      { role: "memory", content: "Remembered: tone", memory },
+    ]);
+  });
+
   it("treats error as terminal: no reconnect, status error, message kept", async () => {
     getThreadMock.mockResolvedValue(thread());
     const invalidate = vi.spyOn(qc, "invalidateQueries");

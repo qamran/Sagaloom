@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { CourseChip } from "@/components/CourseChip";
+import { RememberedChip } from "@/components/RememberedChip";
 import { Composer } from "@/components/Composer";
 import { UnderTheHood } from "@/components/UnderTheHood";
 import { getEntries, getLlmLog, getSettings } from "@/lib/api";
@@ -50,7 +51,18 @@ function ActivityLine({ label, done, warn, chip }: { label: string; done: boolea
   );
 }
 
-function Message({ m, done }: { m: ChatMessage; done: boolean }) {
+function Message({ m, done, worldId }: { m: ChatMessage; done: boolean; worldId?: string }) {
+  if (m.role === "memory") {
+    // Chips come from the items (note and value), never from the agent-facing content.
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        {(m.memory ?? []).map((r, i) => (
+          <RememberedChip key={`${r.key}-${i}`} worldId={worldId} result={r} />
+        ))}
+        <CourseChip card="memory" label="Memory · store" />
+      </div>
+    );
+  }
   if (m.role === "user") {
     return (
       <div className="max-w-[80%] self-end whitespace-pre-wrap rounded-[14px_14px_4px_14px] border border-[#2e3834] bg-panel-3 px-4 py-3">
@@ -233,6 +245,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           <Message
             key={i}
             m={m}
+            worldId={world?.id}
             done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
           />
         ))}

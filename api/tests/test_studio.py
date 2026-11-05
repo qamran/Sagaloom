@@ -184,3 +184,11 @@ def test_security_guard_card_follows_the_guard_setting(tmp_path):
     assert card(build_feature_map(make_settings(tmp_path), deps), "security_guard").status == "off"
     # no store wired: falls back to on
     assert card(build_feature_map(make_settings(tmp_path), AppDeps()), "security_guard").status == "live"
+
+
+def test_memory_card_describes_both_memories(tmp_path, monkeypatch):
+    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    c = card(build_feature_map(make_settings(tmp_path), AppDeps()), "memory")
+    assert c.req_ids == ["R10.1", "R10.2", "R18.6", "R18.7"]
+    assert "LangGraph Store" in c.detail
+    assert c.detail.startswith("Short-term: a SQLite checkpointer")

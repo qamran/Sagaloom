@@ -50,3 +50,4 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
 export const GET = forward;
 export const POST = forward;
 export const PUT = forward;
+export const DELETE = forward;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GET, POST, PUT } from "../app/api/proxy/[...path]/route";
+import { DELETE, GET, POST, PUT } from "../app/api/proxy/[...path]/route";
 
 describe("secret-injecting proxy", () => {
   beforeEach(() => {
@@ -79,6 +79,22 @@ describe("secret-injecting proxy", () => {
     expect(url).toBe("http://api.test/api/settings/models");
     expect(init.method).toBe("PUT");
     expect(init.body).toBe('{"role":"judge","model":"openai/gpt-6.1-terra"}');
+    expect(new Headers(init.headers).get("x-sagaloom-secret")).toBe(process.env.API_SHARED_SECRET);
+    expect(res.status).toBe(200);
+  });
+
+  it("forwards DELETE with its query string and the secret", async () => {
+    const fetchMock = vi.fn(async () => new Response('{"preferences":{}}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await DELETE(
+      new Request("http://localhost:3000/api/proxy/worlds/w/memory?key=notes&item=no%20gods", { method: "DELETE" }),
+      { params: Promise.resolve({ path: ["worlds", "w", "memory"] }) },
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://api.test/api/worlds/w/memory?key=notes&item=no%20gods");
+    expect(init.method).toBe("DELETE");
     expect(new Headers(init.headers).get("x-sagaloom-secret")).toBe(process.env.API_SHARED_SECRET);
     expect(res.status).toBe(200);
   });

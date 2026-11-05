@@ -1,6 +1,7 @@
 import type {
   Entry,
   GuardLogRow,
+  MemoryPayload,
   ModelRole,
   ModelsPayload,
   PromptRecord,
@@ -76,3 +77,14 @@ export function exportUrl(worldId: string, excludeSecrets: boolean): string {
   const base = `${BASE}/worlds/${encodeURIComponent(worldId)}/export?format=md`;
   return excludeSecrets ? `${base}&exclude_secrets=true` : base;
 }
+
+export const getMemory = (worldId: string) =>
+  request<MemoryPayload>(`/worlds/${encodeURIComponent(worldId)}/memory`);
+/** Forgets a preference; for a list key pass the `item` to drop only that line. */
+export const forgetMemory = (worldId: string, key: string, item?: string) =>
+  request<MemoryPayload>(
+    `/worlds/${encodeURIComponent(worldId)}/memory?key=${encodeURIComponent(key)}${
+      item === undefined ? "" : `&item=${encodeURIComponent(item)}`
+    }`,
+    { method: "DELETE" },
+  );

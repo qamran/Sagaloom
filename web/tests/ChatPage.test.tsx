@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
-import { createThread, getPendingThreads, getSettings, getThread } from "@/lib/api";
+import { createThread, forgetMemory, getPendingThreads, getSettings, getThread } from "@/lib/api";
 import type { SettingsPayload } from "@/lib/types";
 
 const replace = vi.fn();
@@ -23,6 +24,7 @@ vi.mock("@/lib/api", () => ({
   getEntries: vi.fn(async () => []),
   getLlmLog: vi.fn(async () => []),
   getSettings: vi.fn(),
+  forgetMemory: vi.fn(),
 }));
 
 const settings = (guard_enabled: boolean): SettingsPayload => ({
@@ -171,5 +173,30 @@ describe("/chat/[threadId]", () => {
     renderThread([]);
     await screen.findByRole("heading", { name: /Talk to/ });
     expect(screen.queryByRole("link", { name: /Memory/ })).toBeNull();
+  });
+  it("renders a memory message as a Remembered chip with Undo, a muted refusal and the course chip", async () => {
+    vi.mocked(forgetMemory).mockReset().mockResolvedValue({} as never);
+    renderThread([
+      { role: "user", content: "Remember: keep the tone grim." },
+      {
+        role: "memory",
+        content: "agent-facing: tone stored; notes refused",
+        memory: [
+          { key: "tone", value: "grim", stored: true, note: "Remembered: tone → grim" },
+          { key: "notes", value: "zzz", stored: false, note: "Not remembered: it wasn't something the author said (notes: zzz)" },
+        ],
+      },
+    ]);
+    expect(await screen.findByText("Remembered: tone → grim")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
+    expect(screen.getByText(/Not remembered: it wasn't something the author said/)).toBeInTheDocument();
+    expect(screen.queryByText(/agent-facing/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Course note: Memory · store" })).toHaveAttribute(
+      "href",
+      "/studio?card=memory#feature-map",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(forgetMemory).toHaveBeenCalledWith("w1", "tone", undefined);
+    expect(await screen.findByText("Forgotten")).toBeInTheDocument();
   });
 });

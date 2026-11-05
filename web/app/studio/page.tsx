@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { FeatureMap } from "@/components/FeatureMap";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
+import { MemoryPanel } from "@/components/MemoryPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ToolsPanel } from "@/components/ToolsPanel";
@@ -16,6 +17,7 @@ const SECTIONS = [
   ["agent-graph", "Agent graph"],
   ["models", "Models and providers"],
   ["tools", "Tools"],
+  ["memory", "Memory"],
   ["guardrails", "Guardrails"],
   ["settings", "Settings"],
   ["usage", "Usage"],
@@ -80,6 +82,7 @@ function Studio() {
               )}
             </div>
             <ToolsPanel />
+            <MemoryPanel />
             {dev.data ? (
               <>
                 <GuardrailsPanel payload={dev.data} />

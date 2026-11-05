@@ -108,12 +108,30 @@ export interface Usage {
   cost_usd: number;
 }
 
+/** What the `remember` node did with one preference; render `note` and `value`, never `content`. */
+export interface MemoryResult {
+  key: string;
+  value: string;
+  stored: boolean;
+  note: string;
+}
+
+/** `GET/DELETE /worlds/{id}/memory`. */
+export interface MemoryPayload {
+  preferences: Record<string, string | string[]>;
+  count: number;
+  cap: number;
+  short_term: { threads: number | null; checkpoint_file: string | null };
+}
+
 export interface ChatMessage {
-  /** "user", "assistant", "tool", "review" (a decision note) or "guard" (the input guard's notice
+  /** "user", "assistant", "tool", "review" (a decision note), "memory" (the remember node's results) or "guard" (the input guard's notice
    * shown in place of a blocked message, R13.1). */
   role: string;
   content: string;
   name?: string;
+  /** On a "memory" message: what `remember` did with each preference (R10.2). */
+  memory?: MemoryResult[];
   tool_calls?: { id: string | null; name: string; args: Record<string, unknown> }[];
 }
 
@@ -143,7 +161,7 @@ export interface ThreadSummary {
 export type SseEvent =
   | { event: "token"; data: { text: string } }
   | { event: "tool_call"; data: { name: string; args: Record<string, unknown> } }
-  | { event: "tool_result"; data: { name: string; summary: string } }
+  | { event: "tool_result"; data: { name: string; summary: string; memory?: MemoryResult[] } }
   | { event: "node"; data: { name: string; phase: "start" | "end"; ms?: number } }
   | { event: "llm_request"; data: Record<string, unknown> }
   | { event: "llm_response"; data: Record<string, unknown> }

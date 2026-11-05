@@ -108,11 +108,11 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             id="memory",
             title="Memory",
             brief_ref="Medium 2",
-            req_ids=["R10.1", "R18.6", "R18.7"],
+            req_ids=["R10.1", "R10.2", "R18.6", "R18.7"],
             status="live",
-            detail="Short-term memory: a SQLite checkpointer"
+            detail="Short-term: a SQLite checkpointer"
             + (f", {threads} threads" if threads is not None else "")
-            + ". Survives refresh and restart.",
+            + ". Long-term: author preferences per world in a LangGraph Store.",
             try_href="/chat",
         ),
         FeatureCard(
