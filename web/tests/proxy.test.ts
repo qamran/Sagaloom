@@ -26,6 +26,29 @@ describe("secret-injecting proxy", () => {
     expect(await res.text()).toBe('[{"id":1}]');
   });
 
+  it("passes a binary download through with its content-disposition", async () => {
+    const bytes = new Uint8Array([80, 75, 3, 4, 0, 255, 128]);
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            "content-type": "application/zip",
+            "content-disposition": 'attachment; filename="velmar.zip"',
+          },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await GET(new Request("http://localhost:3000/api/proxy/worlds/velmar/export?format=md"), {
+      params: Promise.resolve({ path: ["worlds", "velmar", "export"] }),
+    });
+
+    expect(res.headers.get("content-type")).toBe("application/zip");
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="velmar.zip"');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+  });
+
   it("forwards the incoming x-forwarded-for header, and sends none when absent", async () => {
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

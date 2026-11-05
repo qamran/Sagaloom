@@ -68,3 +68,9 @@ export const getSettings = () => request<SettingsPayload>("/settings");
 export const putSettings = (patch: SettingsPatch) =>
   request<SettingsPayload>("/settings", { method: "PUT", body: JSON.stringify(patch) });
 export const getGuardLog = (limit = 20) => request<GuardLogRow[]>(`/guard/log?limit=${limit}`);
+
+/** The Markdown zip download for a world (R11.5.4), through the proxy. */
+export function exportUrl(worldId: string, excludeSecrets: boolean): string {
+  const base = `${BASE}/worlds/${encodeURIComponent(worldId)}/export?format=md`;
+  return excludeSecrets ? `${base}&exclude_secrets=true` : base;
+}

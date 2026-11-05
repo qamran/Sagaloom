@@ -18,6 +18,7 @@ from sagaloom.provenance import merge_provenance
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
 from sagaloom.text import message_text
+from sagaloom.tools.export import make_export_tool
 from sagaloom.tools.facts import draft_facts
 from sagaloom.tools.reference import NAME as REFERENCE_TOOL
 from sagaloom.tools.reference import WRAP_SOURCE as REFERENCE_SOURCE
@@ -323,6 +324,7 @@ def make_tools(
             return _json({"error": f"contradiction check failed: {e}"})
 
     tools: list[BaseTool] = [search_canon, create_or_update_entry, check_contradiction]
+    tools.append(make_export_tool(store))
     if wiki is not None:
         tools.append(make_reference_tool(wiki))
     return tools

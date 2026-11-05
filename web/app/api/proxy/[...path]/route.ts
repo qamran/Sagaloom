@@ -41,6 +41,8 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   const out = new Headers();
   const upstreamType = upstream.headers.get("content-type");
   if (upstreamType) out.set("content-type", upstreamType);
+  const disposition = upstream.headers.get("content-disposition");
+  if (disposition) out.set("content-disposition", disposition);
   out.set("cache-control", "no-cache, no-transform");
   return new Response(upstream.body, { status: upstream.status, headers: out });
 }

@@ -5,11 +5,12 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
+from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.guard import GUARD_POLICY, parse_verdict
@@ -160,6 +161,25 @@ def get_entry(world_id: str, entry_id: str, request: Request) -> Entry:
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
     return entry
+
+
+@router.get("/worlds/{world_id}/export")
+def export_world(
+    world_id: str, request: Request, format: str = "md", exclude_secrets: bool = False
+) -> Response:
+    d = _deps(request)
+    world = d.worlds.get(world_id)
+    if world is None:
+        raise HTTPException(status_code=404, detail="world not found")
+    if format != "md":
+        raise HTTPException(status_code=422, detail="only format=md is supported")
+    data = export_markdown(d.store.list_entries(world_id), exclude_secrets=exclude_secrets)
+    filename = f"{slugify(world.name, 'world')}.zip"
+    return Response(
+        data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------- threads ----------

@@ -230,10 +230,12 @@ async def test_recursion_limit_becomes_error_event(make_env):
 # ---------- tools, studio ----------
 
 
-async def test_tools_endpoint_lists_three_core_tools(make_env):
+async def test_tools_endpoint_lists_core_and_export_tools(make_env):
     env = make_env()
     tools = (await env.client.get("/api/tools")).json()
-    assert {t["name"] for t in tools} == {"search_canon", "create_or_update_entry", "check_contradiction"}
+    assert {t["name"] for t in tools} == {
+        "search_canon", "create_or_update_entry", "check_contradiction", "export_world"
+    }
     assert all(t["description"] for t in tools)
 
 
@@ -459,3 +461,42 @@ async def test_blocked_turn_streams_the_copy_and_drops_the_message(make_env):
     assert env.agent.seen == []
     body = (await env.client.get(f"/api/threads/{tid}")).json()
     assert body["messages"] == [{"role": "guard", "content": BLOCK_COPY["injection"], "name": "guard"}]
+
+
+# ---------- export (R11.5) ----------
+
+
+async def test_export_route_serves_a_zip(make_env):
+    import io
+    import zipfile
+
+    env = make_env()
+    env.deps.store.upsert_entry(Entry(id="ent_0001", world_id=W, title="Ostra", type="place", body="b"))
+    r = await env.client.get(f"/api/worlds/{W}/export", params={"format": "md"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert r.headers["content-disposition"] == 'attachment; filename="world-one.zip"'
+    assert zipfile.ZipFile(io.BytesIO(r.content)).namelist() == ["ent_0001-ostra.md"]
+
+
+async def test_export_route_excludes_secrets_on_request(make_env):
+    import io
+    import zipfile
+
+    env = make_env()
+    env.deps.store.upsert_entry(
+        Entry(id="ent_0001", world_id=W, title="Vault", type="place", body="b", status="secret")
+    )
+    url = f"/api/worlds/{W}/export?format=md"
+    assert len(zipfile.ZipFile(io.BytesIO((await env.client.get(url)).content)).namelist()) == 1
+    r = await env.client.get(url + "&exclude_secrets=true")
+    assert zipfile.ZipFile(io.BytesIO(r.content)).namelist() == []
+
+
+async def test_export_route_rejects_other_formats_and_unknown_worlds(make_env):
+    env = make_env()
+    r = await env.client.get(f"/api/worlds/{W}/export?format=json")
+    assert r.status_code == 422 and r.json() == {"detail": "only format=md is supported"}
+    assert (await env.client.get("/api/worlds/nope/export?format=md")).status_code == 404
+    env.client.headers.pop("X-Sagaloom-Secret")
+    assert (await env.client.get(f"/api/worlds/{W}/export?format=md")).status_code == 401

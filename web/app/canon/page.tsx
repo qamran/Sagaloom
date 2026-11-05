@@ -1,5 +1,6 @@
 "use client";
 
+import { ExportButton } from "@/components/ExportButton";
 import { GetStarted } from "@/components/GetStarted";
 import { useWorld } from "@/lib/world";
 
@@ -26,6 +27,7 @@ export default function CanonHome() {
           Choose an entry from the list to read it and its facts.
         </p>
       </div>
+      <ExportButton worldId={world.id} />
       <GetStarted world={world} onStartOwn={() => void startWorld("My World")} />
     </div>
   );
