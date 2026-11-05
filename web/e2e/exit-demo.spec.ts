@@ -165,10 +165,14 @@ test("M1 exit demo", async ({ page }) => {
   // Reject every proposal card (none may be left), optionally checking each one's source line.
   async function rejectAll(p: Page, source?: string) {
     const open = anyProposal(p).filter({ has: p.getByRole("button", { name: "Reject" }) });
-    for (let i = 0; i < 10 && (await open.count()) > 0; i++) {
+    for (let i = 0; i < 10; i++) {
+      const before = await open.count();
+      if (before === 0) break;
       const first = open.first();
       if (source) await expect(first.getByText(source)).toBeVisible();
       await first.getByRole("button", { name: "Reject" }).click();
+      // The card stays mounted (Reject disabled) until /decisions answers: wait for it to go before looping.
+      await expect(open).toHaveCount(before - 1, { timeout: 120_000 });
     }
     await expect(anyProposal(p)).toHaveCount(0);
   }
