@@ -1,6 +1,7 @@
 """Graph nodes (R18). Only `commit` writes to the store, and it refuses anything that has
 not been checked and approved (R18.3)."""
 
+import asyncio
 import logging
 import threading
 from collections.abc import Callable
@@ -27,7 +28,7 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
-from sagaloom.memory import apply_updates, read_preferences, render_preferences
+from sagaloom.memory import agent_note, apply_updates, read_preferences, render_preferences
 from sagaloom.models import PROVENANCE_FIELDS, CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.provenance import merge_provenance
 from sagaloom.settings_store import DevSettings, enabled_tool_names
@@ -241,7 +242,7 @@ def _author_text(msgs: list) -> str:
     """The latest message the author typed: an unnamed HumanMessage (review and memory notes are
     named). Retrieved text arrives in ToolMessages, so it can never be this message."""
     for m in reversed(msgs):
-        if isinstance(m, HumanMessage) and m.name is None:
+        if isinstance(m, HumanMessage) and not m.name:
             return message_text(m.content)
     return ""
 
@@ -250,18 +251,23 @@ def make_remember_node(memory_store: BaseStore):
     """The only writer of preferences (R18.2). No approval gate: preferences are not canon, and
     every write is shown in chat and undoable. The verbatim gate in `apply_updates` is the
     injection defence (R10.2)."""
+    # One lock per world: two threads of the same world must not interleave their
+    # read-modify-write (a lost update, or a way past the cap).
+    locks: dict[str, asyncio.Lock] = {}
 
     async def remember(state: SagaState) -> dict:
+        world_id = state["world_id"]
         updates = list(state.get("memory_updates") or [])
-        results = await apply_updates(
-            memory_store, state["world_id"], updates, _author_text(state.get("messages") or [])
-        )
+        author = _author_text(state.get("messages") or [])
+        async with locks.setdefault(world_id, asyncio.Lock()):
+            results = await apply_updates(memory_store, world_id, updates, author)
         return {
             "memory_updates": None,
             "messages": [
                 HumanMessage(
                     name="memory",
-                    content="\n".join(r.note for r in results),
+                    # Key only for a refused value; the full notes are in additional_kwargs.
+                    content="\n".join(agent_note(r) for r in results),
                     additional_kwargs={"memory": [r.model_dump() for r in results]},
                 )
             ],

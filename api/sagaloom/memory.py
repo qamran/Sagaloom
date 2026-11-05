@@ -11,6 +11,7 @@ from there every later system prompt.
 """
 
 import re
+import unicodedata
 
 from langgraph.store.base import BaseStore
 
@@ -21,6 +22,7 @@ __all__ = [
     "KEY_ORDER",
     "LIST_KEYS",
     "PreferenceKey",
+    "agent_note",
     "apply_updates",
     "forget",
     "namespace",
@@ -95,6 +97,14 @@ def _full(key: str, value: str) -> str:
     return f"Not remembered: memory is full ({CAP} preferences) ({key}: {value})"
 
 
+def _one_line(raw: str) -> bool:
+    """No line or paragraph separator and no control character anywhere: a vertical tab, NEL
+    (U+0085), U+2028 or a tab is rejected too, not only CR and LF."""
+    return len(raw.splitlines()) <= 1 and not any(
+        unicodedata.category(c) in ("Zl", "Zp", "Cc") for c in raw
+    )
+
+
 def _invalid(key: str) -> str:
     return f"Not remembered: preferences must be one line of at most {MAX_CHARS} characters ({key})"
 
@@ -109,7 +119,7 @@ async def apply_updates(
     for u in updates:
         key, raw = u.key, u.value
         value = raw.strip()
-        if "\n" in raw or "\r" in raw or not 1 <= len(value) <= MAX_CHARS:
+        if not _one_line(raw) or not 1 <= len(value) <= MAX_CHARS:
             # Bounded, since the result is kept in the thread and streamed to the client.
             results.append(
                 MemoryResult(key=key, value=value[:MAX_CHARS], stored=False, note=_invalid(key))
@@ -122,9 +132,12 @@ async def apply_updates(
             continue
         if key in LIST_KEYS:
             items = list(prefs.get(key) or [])
-            if any(norm(i) == norm(value) for i in items):  # already there: not added twice
+            same = next((i for i in items if norm(i) == norm(value)), None)
+            if same is not None:
+                # Already there: not added twice. Report the author's stored spelling, so an
+                # Undo of this result removes exactly that item.
                 results.append(
-                    MemoryResult(key=key, value=value, stored=True, note=_stored(key, value))
+                    MemoryResult(key=key, value=same, stored=True, note=_stored(key, same))
                 )
                 continue
             if count_items(prefs) >= CAP:
@@ -166,6 +179,19 @@ async def forget(
         elif norm(current) == norm(item):
             await store.adelete(namespace(world_id), key)
     return await read_preferences(store, world_id)
+
+
+def agent_note(r: MemoryResult) -> str:
+    """The line the agent reads (the memory note goes back to it in the user role). A refused
+    value never appears there: text the model took from an injection must not come back as a
+    user message. The full note, with the value, stays in `MemoryResult.note` for the UI."""
+    if r.stored:
+        return r.note
+    if r.note == _gated(r.key, r.value):
+        return f"Not remembered: it wasn't something the author said ({r.key})"
+    if r.note == _full(r.key, r.value):
+        return f"Not remembered: memory is full ({CAP} preferences) ({r.key})"
+    return _invalid(r.key)  # every other refusal names the key only
 
 
 def render_preferences(prefs: dict) -> str:
