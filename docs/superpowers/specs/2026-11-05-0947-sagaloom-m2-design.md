@@ -2,7 +2,7 @@
 
 _Written 2026-11-05 by the product/architecture judge (Fable), after M1 shipped. Inputs: the M1 handoff notes, `docs/requirements.md`, the approved design (`docs/superpowers/specs/2026-11-04-sagaloom-design.md`), the competitor analysis, the course brief, the M1 final review, and the code under `api/sagaloom/` and `web/`. The canvas mockups were read too (a Review board already exists)._
 
-**How to use this:** a builder plans `docs/superpowers/plans/<date>-sagaloom-m2-*.md` from section 2 (one plan per wave is fine), creates the issues per task in both repos before building (standing rule), and applies the design decisions in section 3 without re-opening them. Section 4 is cuts and flags; section 5 records the user's decisions.
+**How to use this:** a builder plans `docs/superpowers/plans/<date>-<HHMM>-sagaloom-m2-*.md` from section 2 (one plan per wave is fine), creates the issues per task in both repos before building (standing rule), and applies the design decisions in section 3 without re-opening them. Section 4 is cuts and flags; section 5 records the user's decisions.
 
 ---
 
