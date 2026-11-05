@@ -48,7 +48,7 @@ async def test_old_checkpoint_with_token_usage_channel_still_loads(store, tmp_pa
         cp["channel_versions"] = {**cp["channel_versions"], "token_usage": version}
         await saver.aput(tup.config, cp, tup.metadata, {"token_usage": version})
         assert "token_usage" in (await saver.aget_tuple(cfg)).checkpoint["channel_values"]
-        assert await run(graph, start("again"), cfg) == ["guard", "agent"]
+        assert await run(graph, start("again"), cfg) == ["guard", "router", "agent"]
         assert (await graph.aget_state(cfg)).values["messages"][-1].content == "two"
 
 
@@ -73,7 +73,7 @@ async def test_blocked_turn_roundtrips_through_the_strict_saver(store, tmp_path,
             [notice] = (await graph.aget_state(cfg)).values["messages"]
             assert isinstance(notice, AIMessage) and notice.name == "guard"
             assert notice.content == BLOCK_COPY["unsafe"]
-            assert await run(graph, start("How many moons?"), cfg) == ["guard", "agent"]
+            assert await run(graph, start("How many moons?"), cfg) == ["guard", "router", "agent"]
     assert not [r for r in caplog.records if "msgpack" in r.getMessage().lower() or "unregistered" in r.getMessage().lower()], caplog.text
 
 

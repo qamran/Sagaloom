@@ -68,6 +68,11 @@ function Message({ m, done, worldId }: { m: ChatMessage; done: boolean; worldId?
       <div className="max-w-[80%] self-end whitespace-pre-wrap rounded-[14px_14px_4px_14px] border border-[#2e3834] bg-panel-3 px-4 py-3">
         <span className="sr-only">You: </span>
         {m.content}
+        {m.mode && (
+          <div className="mt-1.5 flex justify-end">
+            <CourseChip card="router" label={`Router · ${m.mode}`} />
+          </div>
+        )}
       </div>
     );
   }

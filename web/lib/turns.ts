@@ -1,5 +1,5 @@
 import type { TurnEvents } from "./useAgentStream";
-import type { LlmResponse, PromptMessage, PromptRecord, SseEvent } from "./types";
+import type { LlmResponse, Mode, PromptMessage, PromptRecord, SseEvent } from "./types";
 
 /** One model call as the drawer shows it: the request as sent and, once it ends, the response. */
 export interface LlmCall {
@@ -50,6 +50,29 @@ export function callFromRecord(r: PromptRecord): LlmCall {
     tools: r.request?.tools ?? [],
     response: r.response,
   };
+}
+
+const MODES: readonly Mode[] = ["brainstorm", "query", "edit"];
+
+/** The mode in a router response (api/sagaloom/router.py RouteDecision): the content as JSON, else
+ * the first tool call's args. Anything else (prose, an unknown mode, no response) is null. */
+export function parseRouterMode(response: LlmResponse | null): Mode | null {
+  if (!response) return null;
+  const candidates: unknown[] = [];
+  if (typeof response.content === "string" && response.content.trim()) {
+    try {
+      candidates.push(JSON.parse(response.content));
+    } catch {
+      /* not JSON */
+    }
+  }
+  const first = Array.isArray(response.tool_calls) ? response.tool_calls[0] : undefined;
+  if (first && typeof first === "object") candidates.push(first.args);
+  for (const c of candidates) {
+    const mode = c && typeof c === "object" ? (c as { mode?: unknown }).mode : undefined;
+    if (MODES.includes(mode as Mode)) return mode as Mode;
+  }
+  return null;
 }
 
 /** Builds the turn view from the SSE events collected for one turn. */

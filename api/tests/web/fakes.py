@@ -22,6 +22,7 @@ from sagaloom.graph.build import build_graph
 from sagaloom.guard import GuardVerdict
 from sagaloom.models import Fact
 from sagaloom.promptlog import PromptLog
+from sagaloom.router import RouteDecision
 from sagaloom.store.threads import ThreadRegistry
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.tools.facts import FactList
@@ -189,7 +190,7 @@ class Env:
 def make_env(store, tmp_path):
     def build(
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
-        guard=None,
+        guard=None, router=None,
     ) -> Env:
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
@@ -204,6 +205,7 @@ def make_env(store, tmp_path):
             if real_extractor
             else StubLLM(FactList(facts=[Fact(key="k", value="v")])),
             "guard": guard or StubLLM(guard_reply or GuardVerdict(verdict="safe", reason="ok")),
+            "router": router or StubLLM(RouteDecision(mode="edit")),
         }
         memory = InMemoryStore()  # one Store shared by the graph and the memory routes
         graph = build_graph(

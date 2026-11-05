@@ -200,6 +200,17 @@ describe("/chat/[threadId]", () => {
     expect(await screen.findByText("Forgotten")).toBeInTheDocument();
   });
 
+  it("shows the router's mode as a course chip on a user message", async () => {
+    renderThread([
+      { role: "user", content: "How many moons?", mode: "query" },
+      { role: "user", content: "No mode here" },
+    ]);
+    const chip = await screen.findByRole("link", { name: "Course note: Router · query" });
+    expect(chip).toHaveAttribute("href", "/studio?card=router#feature-map");
+    expect(screen.getAllByRole("link", { name: /Router/ })).toHaveLength(1);
+    expect(screen.getByText("How many moons?")).toBeInTheDocument();
+  });
+
   it("undoes in the thread's own world, not the selected one", async () => {
     vi.mocked(forgetMemory).mockReset().mockResolvedValue({} as never);
     vi.mocked(getThread).mockResolvedValue({

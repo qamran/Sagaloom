@@ -2,7 +2,7 @@
 
 import json
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from sagaloom.guard import BLOCK_COPY, GuardVerdict
 from sagaloom.models import Entry
@@ -10,7 +10,7 @@ from sagaloom.seed import VELMAR_ID
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.app import AppDeps, SEED_DIR
 
-from fakes import KEY, W, create_call, endless, names, parse_sse, tc
+from fakes import KEY, W, StubLLM, create_call, endless, names, parse_sse, tc
 
 
 def approve(pid):
@@ -256,7 +256,7 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
 async def test_studio_endpoint_shape(make_env):
     env = make_env()
     body = (await env.client.get("/api/studio")).json()
-    assert len(body["features"]) == 10 and len(body["providers"]) == 2
+    assert len(body["features"]) == 11 and len(body["providers"]) == 2
     assert set(body["usage"]) >= {"prompt_tokens", "completion_tokens", "cost_usd"}
 
 
@@ -520,3 +520,18 @@ async def test_export_route_rejects_other_formats_and_unknown_worlds(make_env):
     assert (await env.client.get("/api/worlds/nope/export?format=md")).status_code == 404
     env.client.headers.pop("X-Sagaloom-Secret")
     assert (await env.client.get(f"/api/worlds/{W}/export?format=md")).status_code == 401
+
+
+async def test_mode_on_user_message(make_env):
+    from sagaloom.router import RouteDecision
+    from sagaloom.web.routes import message_dict
+
+    env = make_env([AIMessage(content="One moon.")], router=StubLLM(RouteDecision(mode="query")))
+    tid = await env.new_thread()
+    await env.send(tid, "How many moons?")
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    assert body["messages"][0] == {"role": "user", "content": "How many moons?", "mode": "query"}
+    assert "mode" not in body["messages"][1]
+    assert message_dict(HumanMessage(content="hi")) == {"role": "user", "content": "hi"}
+    noted = HumanMessage(name="review", content="r", additional_kwargs={"mode": "edit"})
+    assert "mode" not in message_dict(noted)  # only the author's own messages carry a mode

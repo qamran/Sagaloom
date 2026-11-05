@@ -89,6 +89,7 @@ describe("UsagePanel", () => {
   it("groups cost by role and model", () => {
     expect(usageLabel("judge", "openai/gpt-6-luna")).toBe("Judge (Luna)");
     expect(usageLabel(null, "openai/gpt-6-luna")).toBe("openai/gpt-6-luna");
+    expect(usageLabel("router", "openai/gpt-6-luna")).toBe("Router (Luna)");
     render(
       <UsagePanel
         usage={{

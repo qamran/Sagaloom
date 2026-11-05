@@ -6,7 +6,9 @@ from langgraph.graph.message import add_messages
 
 from sagaloom.models import CheckResult, Decision, MemoryUpdate, Proposal
 
-Role = Literal["agent", "judge", "extractor", "guard"]
+# `router` runs on the guard's model (make_model_for aliases it) and is not switchable in Studio.
+Role = Literal["agent", "judge", "extractor", "guard", "router"]
+Mode = Literal["brainstorm", "query", "edit"]
 GuardVerdictValue = Literal["safe", "unsafe", "injection", "error", "off"]
 
 
@@ -60,6 +62,8 @@ class SagaState(TypedDict, total=False):
     # This turn's input-guard result (R13.1); `off` when the guard is switched off in Studio.
     # Token usage is not kept in state: the prompt log is the only usage source (R12).
     guard_verdict: GuardVerdictValue
+    # This turn's router mode (R6.5); None when the router call failed (the turn runs anyway).
+    mode: Mode | None
     # Preferences queued by `remember_preference` this step; only the `remember` node writes
     # them to the Store, after the verbatim gate (R10.2), and then clears the list.
     memory_updates: Annotated[list[MemoryUpdate], merge_memory]

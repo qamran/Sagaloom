@@ -7,6 +7,7 @@ export type FeatureCardId =
   | "agent_purpose"
   | "agentic_rag"
   | "human_in_the_loop"
+  | "router"
   | "memory"
   | "token_cost"
   | "langsmith"

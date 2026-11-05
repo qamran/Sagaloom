@@ -54,7 +54,7 @@ def _thread(request: Request, thread_id: str):
 
 
 def message_dict(m: BaseMessage) -> dict:
-    """{role, content, name?, tool_calls?, memory?}; `review` is the author's decision note
+    """{role, content, name?, tool_calls?, memory?, mode?}; `review` is the author's decision note
     (R18.6), `memory` the `remember` node's note with one result per preference (R10.2), and
     `guard` the input guard's notice in place of a blocked message (R13.1)."""
     out: dict[str, Any] = {"content": message_text(m.content)}
@@ -65,6 +65,8 @@ def message_dict(m: BaseMessage) -> dict:
             out["name"] = m.name
         if role == "memory":
             out["memory"] = list(m.additional_kwargs.get("memory") or [])
+        if role == "user" and m.additional_kwargs.get("mode"):
+            out["mode"] = m.additional_kwargs["mode"]  # the router's pick for this turn (R6.5)
     elif isinstance(m, AIMessage):
         # The input guard's notice for a blocked message (R13.1), like the `review` pattern.
         out = {"role": "guard" if m.name == "guard" else "assistant", **out}

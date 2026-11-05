@@ -124,6 +124,9 @@ export interface MemoryPayload {
   short_term: { threads: number | null; checkpoint_file: string | null };
 }
 
+/** The router's pick for one chat turn (R6.5, api/sagaloom/router.py). */
+export type Mode = "brainstorm" | "query" | "edit";
+
 export interface ChatMessage {
   /** "user", "assistant", "tool", "review" (a decision note), "memory" (the remember node's results) or "guard" (the input guard's notice
    * shown in place of a blocked message, R13.1). */
@@ -132,6 +135,8 @@ export interface ChatMessage {
   name?: string;
   /** On a "memory" message: what `remember` did with each preference (R10.2). */
   memory?: MemoryResult[];
+  /** On a "user" message: the mode the router picked for that turn. */
+  mode?: Mode;
   tool_calls?: { id: string | null; name: string; args: Record<string, unknown> }[];
 }
 

@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
+from sagaloom.router import RouteDecision
 from sagaloom.guard import GuardVerdict
 from sagaloom.model_settings import ModelSettings
 from sagaloom.models import Entry
@@ -35,6 +36,8 @@ def build_switchable_env(store, tmp_path) -> Env:
         built.append((role, model))
         if role == "guard":
             return StubLLM(GuardVerdict(verdict="safe", reason="ok"))
+        if role == "router":
+            return StubLLM(RouteDecision(mode="edit"))
         return NamedJudge(model_name=model) if role == "judge" else agent
 
     graph = build_graph(
@@ -116,7 +119,7 @@ async def test_studio_returns_features_providers_mermaid_and_no_keys(make_env):
     )
     r = await env.client.get("/api/studio")
     body = r.json()
-    assert len(body["features"]) == 10
+    assert len(body["features"]) == 11
     assert [p["name"] for p in body["providers"]] == ["OpenRouter", "Gemini"]
     assert body["providers"][1]["key_set"] is True
     assert "agent" in body["mermaid"] and "graph" in body["mermaid"]

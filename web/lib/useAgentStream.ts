@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getThread } from "./api";
 import { parseSse } from "./sse";
 import { markTour } from "./tour";
-import type { ChatMessage, Decision, PendingInterrupt, SseEvent, Usage } from "./types";
+import { parseRouterMode } from "./turns";
+import type { ChatMessage, Decision, LlmResponse, Mode, PendingInterrupt, SseEvent, Usage } from "./types";
 
 export type StreamStatus = "idle" | "streaming" | "reconnecting" | "error";
 
@@ -101,6 +102,14 @@ function applyToMessages(msgs: ChatMessage[], ev: SseEvent, tokenRole: TokenRole
     default:
       return msgs;
   }
+}
+
+/** Puts the router's mode on the author's latest message (the one this turn sent). */
+function withMode(msgs: ChatMessage[], mode: Mode): ChatMessage[] {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === "user") return [...msgs.slice(0, i), { ...msgs[i], mode }, ...msgs.slice(i + 1)];
+  }
+  return msgs;
 }
 
 export function useAgentStream(threadId: string): AgentStream {
@@ -238,6 +247,8 @@ export function useAgentStream(threadId: string): AgentStream {
         // The guard's notice is streamed as tokens while the guard is the last node to have
         // started; its `node end` may arrive before or after the token, so the start decides.
         let lastStarted: string | null = null;
+        // Ids of this turn's router calls: their response carries the mode for the chip.
+        const routerCalls = new Set<string>();
         try {
           while (ended === null) {
             const { done, value } = await reader.read();
@@ -278,7 +289,19 @@ export function useAgentStream(threadId: string): AgentStream {
                   if (ev.data.phase === "start") lastStarted = ev.data.name;
                   record(ev);
                   break;
-                default: // llm_request, llm_response
+                case "llm_request":
+                  if (ev.data.role === "router" && typeof ev.data.id === "string") routerCalls.add(ev.data.id);
+                  record(ev);
+                  break;
+                case "llm_response": {
+                  if (typeof ev.data.id === "string" && routerCalls.has(ev.data.id)) {
+                    const mode = parseRouterMode(ev.data as unknown as LlmResponse);
+                    if (mode) setMessages((m) => withMode(m, mode));
+                  }
+                  record(ev);
+                  break;
+                }
+                default:
                   record(ev);
               }
             }

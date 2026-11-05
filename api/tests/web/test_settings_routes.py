@@ -89,6 +89,7 @@ async def test_guard_log_lists_guard_records_newest_first(make_env):
     log.add(rec("b", "agent", "2026-01-01T00:00:02", {"content": "hi", "tool_calls": []}))
     log.add(rec("c", "guard", "2026-01-01T00:00:03", {"content": "", "tool_calls": [{"id": "1", "name": "GuardVerdict", "args": {"verdict": "injection", "reason": "override"}}]}, thread="t2"))
     log.add(rec("d", "guard", "2026-01-01T00:00:04", {"content": "prose", "tool_calls": []}))
+    log.add(rec("e", "router", "2026-01-01T00:00:05", {"content": json.dumps({"mode": "query"}), "tool_calls": []}))
     r = await env.client.get("/api/guard/log?limit=10")
     assert r.status_code == 200
     rows = r.json()

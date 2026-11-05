@@ -1,6 +1,6 @@
 import type { StudioData } from "@/lib/types";
 
-const ROLE_SHORT: Record<string, string> = { agent: "Agent", judge: "Judge", extractor: "Extractor", guard: "Guard" };
+const ROLE_SHORT: Record<string, string> = { agent: "Agent", judge: "Judge", extractor: "Extractor", guard: "Guard", router: "Router" };
 
 /** "Judge (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
 export function usageLabel(role: string | null | undefined, model: string): string {

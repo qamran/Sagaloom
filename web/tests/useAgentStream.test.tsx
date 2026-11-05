@@ -162,6 +162,32 @@ describe("useAgentStream", () => {
     expect(result.current.status).toBe("idle");
   });
 
+  it("sets the mode on the last user message from the live router response", async () => {
+    getThreadMock.mockResolvedValue(thread({ messages: [{ role: "user", content: "Earlier" }] }));
+    fetchMock.mockResolvedValue(
+      streamResponse([
+        sse("node", { name: "router", phase: "start" }),
+        sse("llm_request", { id: "r1", role: "router", model: "openai/gpt-6-luna", messages: [], tools: [] }),
+        sse("llm_request", { id: "x", role: "guard", model: "openai/gpt-6-luna", messages: [], tools: [] }),
+        sse("llm_response", { id: "x", content: JSON.stringify({ mode: "edit" }), tool_calls: [] }),
+        sse("llm_response", { id: "r1", content: "", tool_calls: [{ id: "c", name: "RouteDecision", args: { mode: "query" } }] }),
+        sse("node", { name: "router", phase: "end", ms: 200 }),
+        sse("token", { text: "One moon." }),
+        sse("done", {}),
+      ]),
+    );
+    const { result } = setup();
+    await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await result.current.send("How many moons?");
+    });
+    expect(result.current.messages).toEqual([
+      { role: "user", content: "Earlier" },
+      { role: "user", content: "How many moons?", mode: "query" },
+      { role: "assistant", content: "One moon." },
+    ]);
+  });
+
   it("marks tokens streamed inside the guard node as the guard's notice", async () => {
     getThreadMock.mockResolvedValue(thread());
     const copy = "That message tries to change how I work, so I didn't act on it.";

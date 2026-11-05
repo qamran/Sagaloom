@@ -44,6 +44,10 @@ class AppDeps:
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
 
 
+# Roles that run on another role's model choice; not switchable on their own.
+_ALIAS = {"router": "guard"}
+
+
 def make_model_for(settings: Settings, model_settings: ModelSettings, factory=None):
     """role -> chat model. The current mapping is read on every call and one model is built per
     (role, model id), so a Studio switch (R11.G10) applies from the next turn."""
@@ -59,7 +63,9 @@ def make_model_for(settings: Settings, model_settings: ModelSettings, factory=No
     built: dict[tuple[str, str], Any] = {}
 
     def model_for(role: str):
-        key = (role, model_settings.get_model_settings()[role])
+        # The router uses the guard's current model but keeps its own role (and cache entry), so
+        # its prompt records say `router` (spec 3.4).
+        key = (role, model_settings.get_model_settings()[_ALIAS.get(role, role)])
         if key not in built:
             m = factory(*key)
             try:  # the prompt log reads the role from the model's metadata

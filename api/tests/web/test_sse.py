@@ -27,7 +27,7 @@ async def test_partial_turn_visible_via_get_after_client_disconnect(make_env):
             break
     await gen.aclose()  # the client went away mid-turn
     body = (await env.client.get(f"/api/threads/{tid}")).json()
-    assert body["messages"][0] == {"role": "user", "content": "Add Ostra"}
+    assert body["messages"][0] == {"role": "user", "content": "Add Ostra", "mode": "edit"}
 
 
 async def test_sse_events_frames_each_event_as_name_plus_json():

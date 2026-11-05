@@ -1,6 +1,6 @@
 """Builds the Sagaloom graph (R18.1):
 
-START -> guard -> (safe / off) agent | (blocked) END
+START -> guard -> (safe / off) router -> agent | (blocked) END
 agent -> (tool calls) tools -> (queued preferences) remember -> check | agent
 tools -> (unchecked/undecided proposal) check -> approval_gate
 approval_gate -> check (edit / save as myth) | commit;  commit -> agent;  agent -> END.
@@ -29,6 +29,7 @@ from sagaloom.graph.nodes import (
     make_commit_node,
     make_guard_node,
     make_remember_node,
+    make_router_node,
     make_tools_node,
     route_after_guard,
     route_after_agent,
@@ -61,6 +62,7 @@ def build_graph(
     )
     g = StateGraph(SagaState)
     g.add_node("guard", make_guard_node(model_for, dev))
+    g.add_node("router", make_router_node(model_for))
     g.add_node("agent", make_agent_node(model_for, tools, dev, memory_store))
     g.add_node("tools", make_tools_node(tools, dev))
     g.add_node("remember", make_remember_node(memory_store))
@@ -69,7 +71,8 @@ def build_graph(
     g.add_node("commit", make_commit_node(store))
 
     g.add_edge(START, "guard")
-    g.add_conditional_edges("guard", route_after_guard, {"agent": "agent", END: END})
+    g.add_conditional_edges("guard", route_after_guard, {"router": "router", END: END})
+    g.add_edge("router", "agent")
     g.add_conditional_edges("agent", route_after_agent, {"tools": "tools", END: END})
     g.add_conditional_edges(
         "tools", route_after_tools, {"remember": "remember", "check": "check", "agent": "agent"}

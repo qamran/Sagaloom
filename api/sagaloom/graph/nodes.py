@@ -23,6 +23,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
+import sagaloom.router as router_mod
 from sagaloom.check.contradiction import check_proposal
 from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
@@ -86,8 +87,8 @@ def route_after_remember(state: SagaState) -> Literal["check", "agent"]:
     return "agent"
 
 
-def route_after_guard(state: SagaState) -> Literal["agent", "__end__"]:
-    return "agent" if state.get("guard_verdict") in ("safe", "off") else END
+def route_after_guard(state: SagaState) -> Literal["router", "__end__"]:
+    return "router" if state.get("guard_verdict") in ("safe", "off") else END
 
 
 # ---------- input guard ----------
@@ -135,6 +136,31 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
     return guard
 
 
+# ---------- router ----------
+
+
+def make_router_node(model_for: ModelFor):
+    """Picks this turn's mode (R6.5). Never blocks the turn: on any error the mode is None and
+    the agent runs with no mode section. The mode is also stamped on the author's message (same
+    id, so `add_messages` replaces it in place) for the chat's mode chip after a reload."""
+
+    async def router(state: SagaState) -> dict:
+        run = _unchecked_run(state.get("messages") or [])
+        if not run:
+            return {}
+        text = "\n\n".join(message_text(m.content) for m in run)  # one call, as in the guard
+        try:
+            mode = (await router_mod.route(model_for("router"), text)).mode
+        except Exception as exc:
+            log.warning("router failed, running the turn without a mode: %s", type(exc).__name__)
+            return {"mode": None}
+        last = run[-1]
+        stamped = last.model_copy(update={"additional_kwargs": {**last.additional_kwargs, "mode": mode}})
+        return {"mode": mode, "messages": [stamped]}
+
+    return router
+
+
 # ---------- agent ----------
 
 
@@ -158,7 +184,11 @@ def make_agent_node(
         world_id = state.get("world_id")
         prefs = await read_preferences(memory_store, world_id) if memory_store and world_id else {}
         block = render_preferences(prefs)
-        system = SystemMessage(content=base + ("\n\n" + block if block else ""))
+        # The mode section sits between the base prompt and the preferences. Advisory (spec F3):
+        # the mode is still set and shown, but no section is appended.
+        mode = state.get("mode")
+        section = "" if not mode or router_mod.ROUTER_ADVISORY else "\n\n" + router_mod.MODE_SECTIONS[mode]
+        system = SystemMessage(content=base + section + ("\n\n" + block if block else ""))
         reply = await llm.ainvoke([system, *state.get("messages", [])], config)
         return {"messages": [reply]}
 

@@ -105,6 +105,16 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             try_href=prompt + "Add a place called Ostra, a port town with a deep harbour.",
         ),
         FeatureCard(
+            id="router",
+            title="Router",
+            brief_ref="Sprint topic",
+            req_ids=["R6.5"],
+            status="live",
+            detail="A router node after the guard picks brainstorm, query or edit for each message, "
+            "and the agent gets a short section for that mode. The mode shows on your message.",
+            try_href=prompt + "Give me three ideas for a festival in Velmar.",
+        ),
+        FeatureCard(
             id="memory",
             title="Memory",
             brief_ref="Medium 2",

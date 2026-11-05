@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTurnViews, viewFromEvents } from "@/lib/turns";
+import { buildTurnViews, parseRouterMode, viewFromEvents } from "@/lib/turns";
 import type { PromptRecord } from "@/lib/types";
 
 const rec = (id: string, run_id: string): PromptRecord => ({
@@ -50,5 +50,25 @@ describe("turn views", () => {
       ["Turn 1", ["a", "b"]],
       ["Turn 2", ["c"]],
     ]);
+  });
+});
+
+describe("parseRouterMode", () => {
+  const resp = (content: string, tool_calls: unknown[] = []) =>
+    ({ content, tool_calls, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, latency_ms: 0 }) as never;
+
+  it("reads the mode from JSON content", () => {
+    expect(parseRouterMode(resp(JSON.stringify({ mode: "brainstorm" })))).toBe("brainstorm");
+  });
+
+  it("reads the mode from the first tool call's args", () => {
+    expect(parseRouterMode(resp("", [{ id: "1", name: "RouteDecision", args: { mode: "edit" } }]))).toBe("edit");
+  });
+
+  it("is null for garbage, an unknown mode or no response", () => {
+    expect(parseRouterMode(resp("prose, not JSON"))).toBeNull();
+    expect(parseRouterMode(resp(JSON.stringify({ mode: "chat" })))).toBeNull();
+    expect(parseRouterMode(resp("", [{ id: "1", name: "X", args: "nope" }]))).toBeNull();
+    expect(parseRouterMode(null)).toBeNull();
   });
 });

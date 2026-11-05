@@ -49,15 +49,18 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
     cards = build_feature_map(make_settings(tmp_path), AppDeps())
     assert [c.id for c in cards] == [
-        "agent_purpose", "agentic_rag", "human_in_the_loop", "memory", "token_cost",
+        "agent_purpose", "agentic_rag", "human_in_the_loop", "router", "memory", "token_cost",
         "langsmith", "multi_provider", "security_guard", "tools", "external_tools",
     ]
     assert all(c.req_ids and c.title and c.brief_ref and c.detail for c in cards)
     live = {c.id for c in cards if c.status == "live"}
     assert live == {
-        "agent_purpose", "agentic_rag", "human_in_the_loop", "memory", "token_cost",
+        "agent_purpose", "agentic_rag", "human_in_the_loop", "router", "memory", "token_cost",
         "security_guard", "tools", "external_tools",
     }
+    router = card(cards, "router")
+    assert (router.brief_ref, router.req_ids, router.status) == ("Sprint topic", ["R6.5"], "live")
+    assert router.try_href == "/chat?prompt=Give me three ideas for a festival in Velmar."
     assert card(cards, "tools").brief_ref == "Medium 6"
     assert card(cards, "tools").req_ids == ["R11.G1", "R11.G3"]
     assert card(cards, "external_tools").status == "live"
@@ -146,6 +149,34 @@ def test_model_for_tags_the_role_on_the_model(tmp_path):
     model_for = make_model_for(s, ModelSettings(tmp_path / "ms.json", s))
     assert model_for("judge").metadata["role"] == "judge"
     assert model_for("extractor").metadata["role"] == "extractor"
+
+
+def test_router_role_alias(tmp_path):
+    """The router runs on the guard's model (spec 3.4) but is its own role on prompt records."""
+    from sagaloom.model_settings import ROLES
+    from sagaloom.web.app import make_model_for
+
+    s = make_settings(tmp_path)
+    ms = ModelSettings(tmp_path / "ms.json", s)
+    built: list[tuple[str, str]] = []
+
+    class Fake:
+        def __init__(self, role, model):
+            self.model_name, self.metadata = model, {}
+
+    def factory(role, model):
+        built.append((role, model))
+        return Fake(role, model)
+
+    model_for = make_model_for(s, ms, factory)
+    router, guard = model_for("router"), model_for("guard")
+    assert router.model_name == guard.model_name == ms.get_model_settings()["guard"]
+    assert router.metadata["role"] == "router" and guard.metadata["role"] == "guard"
+    assert router is not guard and model_for("router") is router
+    ms.set_model("guard", "anthropic/claude-sonnet-5.5")
+    assert model_for("router").model_name == "anthropic/claude-sonnet-5.5"
+    assert built[-1] == ("router", "anthropic/claude-sonnet-5.5")
+    assert "router" not in ROLES  # not switchable on its own
 
 
 def test_env_default_model_off_the_allowlist_fails_fast(tmp_path):
