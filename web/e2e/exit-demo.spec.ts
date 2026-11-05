@@ -57,15 +57,21 @@ test("M1 exit demo", async ({ page }) => {
   await page.reload();
   await expect(card(page, "Sky of Velmar")).toBeVisible();
 
-  // 6. Save as myth: the card is re-checked and its Moons fact carries a myth badge.
+  // 6. Save as myth (R5.6 "Done when"): the re-check reports no conflict, the clashing claim is a myth fact
+  // on the card, and canon still says "Moons: One" after approval. Asserts the outcome, not one fact row:
+  // the agent may name the drafted fact differently from run to run.
   await card(page, "Sky of Velmar").getByRole("button", { name: "Save as myth" }).click();
   const mythCard = card(page, "Sky of Velmar");
-  const moons = mythCard
-    .getByRole("region", { name: "Drafted facts" })
-    .locator("xpath=.//div[div[normalize-space()='Moons']]");
-  await expect(moons.getByText("myth", { exact: true })).toBeVisible();
+  await expect(mythCard.getByRole("region", { name: "Drafted facts" }).getByText("myth", { exact: true }).first()).toBeVisible();
+  await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
   await mythCard.getByRole("button", { name: /^Approve/ }).click();
   await expect(log(page)).toContainText(/committed as ent_0007/);
+  // Check canon in a second tab so the chat page (and its Under the hood turns) stays as it is for step 7.
+  const entryPage = await page.context().newPage();
+  await entryPage.goto("/canon/ent_0007");
+  const canonMoons = entryPage.getByLabel("Facts").locator("xpath=.//div[div[normalize-space()='Moons']]").first();
+  await expect(canonMoons).toContainText("One");
+  await entryPage.close();
 
   // 7. Under the hood: the judge's request holds the retrieved Ister entry inside its wrapper.
   await page.getByRole("button", { name: "Under the hood" }).click();
@@ -118,12 +124,19 @@ test("M1 exit demo", async ({ page }) => {
   }
   await expect(composer).toBeEnabled();
   await expect(notices(page)).toHaveCount(1);
+  // A turn that ended in an error is a failure, not a pass.
+  const turnErrors = await log(page).getByRole("alert").allTextContents();
+  expect(turnErrors, `the turn ended in an error: ${turnErrors.join(" | ")}`).toEqual([]);
+  const threadId = decodeURIComponent(new URL(page.url()).pathname.split("/").pop()!);
 
   // 10. Studio -> Guardrails lists both verdicts.
   await page.goto("/studio");
   const guardrails = page.getByRole("region", { name: "Guardrails" });
   await expect(guardrails.getByText(/^(injection|unsafe)$/).first()).toBeVisible();
-  await expect(guardrails.getByText("safe", { exact: true }).first()).toBeVisible();
+  // The safe verdict belongs to this chat thread, not to any earlier row.
+  await expect(
+    guardrails.getByRole("listitem").filter({ hasText: threadId }).getByText("safe", { exact: true }).first(),
+  ).toBeVisible();
   await expect(guardSwitch).toHaveAttribute("aria-checked", "true");
   await expect(securityCard.getByText("Live", { exact: true })).toBeVisible();
 
@@ -140,4 +153,63 @@ test("M1 exit demo", async ({ page }) => {
   await guardSwitch.click();
   await expect(guardSwitch).toHaveAttribute("aria-checked", "true");
   await expect(securityCard.getByText("Live", { exact: true })).toBeVisible();
+
+  // ---- Wave 2: the reference tool, Markdown export and tool toggles ----
+  const QUESTION = "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that.";
+  const wikiLine = (p: Page) => log(p).getByText("Looking it up on Wikipedia");
+  const settle = (p: Page) =>
+    expect
+      .poll(async () => (await anyProposal(p).count()) > 0 || (await p.getByLabel("Message Sagaloom").isEnabled()), {
+        timeout: 180_000,
+      })
+      .toBe(true);
+
+  // 13. The reference tool runs, the reply finishes, and nothing enters canon.
+  await page.getByRole("link", { name: "Chat", exact: true }).click();
+  await expect(page).toHaveURL(/\/chat\/[^/]+/);
+  await send(page, QUESTION);
+  await expect(wikiLine(page).first()).toBeVisible();
+  await settle(page);
+  if ((await anyProposal(page).count()) > 0) {
+    await expect(anyProposal(page).first().getByText("Source: reference (Wikipedia)")).toBeVisible();
+    await anyProposal(page).first().getByRole("button", { name: "Reject" }).click();
+    await expect(anyProposal(page)).toHaveCount(0);
+  }
+  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  const refErrors = await log(page).getByRole("alert").allTextContents();
+  expect(refErrors, `the reference turn ended in an error: ${refErrors.join(" | ")}`).toEqual([]);
+
+  // 14. The Markdown export downloads as a zip.
+  await page.goto("/canon");
+  const href = await page.getByRole("link", { name: "Download as Markdown" }).getAttribute("href");
+  const exported = await page.request.get(new URL(href!, page.url()).toString());
+  expect(exported.status()).toBe(200);
+  expect(exported.headers()["content-type"]).toContain("application/zip");
+
+  // 15. Switch real_world_reference off in Studio -> Tools.
+  await page.goto("/studio");
+  const refSwitch = page.getByRole("region", { name: "Tools" }).getByRole("switch", { name: "real_world_reference" });
+  await expect(page.getByRole("region", { name: "Tools" }).getByText("Always on").first()).toBeVisible();
+  await expect(refSwitch).toHaveAttribute("aria-checked", "true");
+  await refSwitch.click();
+  await expect(refSwitch).toHaveAttribute("aria-checked", "false");
+
+  // 16. The same question in a new thread: no Wikipedia activity line.
+  await page.getByRole("link", { name: "Chat", exact: true }).click();
+  await expect(page).toHaveURL(/\/chat\/[^/]+/);
+  await send(page, QUESTION);
+  await expect(log(page)).toContainText(QUESTION);
+  await settle(page);
+  if ((await anyProposal(page).count()) > 0) {
+    await anyProposal(page).first().getByRole("button", { name: "Reject" }).click();
+    await expect(anyProposal(page)).toHaveCount(0);
+  }
+  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+  await expect(wikiLine(page)).toHaveCount(0);
+
+  // 17. Switch it back on.
+  await page.goto("/studio");
+  await expect(refSwitch).toHaveAttribute("aria-checked", "false");
+  await refSwitch.click();
+  await expect(refSwitch).toHaveAttribute("aria-checked", "true");
 });
