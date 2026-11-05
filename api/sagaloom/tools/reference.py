@@ -12,6 +12,9 @@ from sagaloom.wiki.client import WikiClient, search_and_summarise
 
 log = logging.getLogger(__name__)
 
+DESCRIPTION = """Look up real-world history, places or things on Wikipedia for inspiration. Read-only.
+Returns article titles, short summaries and URLs labelled as reference: they are NOT part
+of the world's canon."""
 NAME = "real_world_reference"
 WRAP_SOURCE = "real_world_reference (reference, not canon)"
 
@@ -36,11 +39,8 @@ def _reason(e: Exception) -> str:
 
 
 def make_reference_tool(client: WikiClient) -> BaseTool:
-    @tool(NAME, args_schema=ReferenceArgs)
+    @tool(NAME, args_schema=ReferenceArgs, description=DESCRIPTION)
     async def real_world_reference(query: str, max_results: int = 3) -> str:
-        """Look up real-world history, places or things on Wikipedia for inspiration. Read-only.
-        Returns article titles, short summaries and URLs labelled as reference: they are NOT part
-        of the world's canon."""
         try:
             results = await search_and_summarise(client, query, max_results)
         except Exception as e:  # R11.4.7: the agent carries on without it

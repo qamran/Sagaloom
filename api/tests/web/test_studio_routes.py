@@ -117,7 +117,7 @@ async def test_studio_returns_features_providers_mermaid_and_no_keys(make_env):
     )
     r = await env.client.get("/api/studio")
     body = r.json()
-    assert len(body["features"]) == 9
+    assert len(body["features"]) == 10
     assert [p["name"] for p in body["providers"]] == ["OpenRouter", "Gemini"]
     assert body["providers"][1]["key_set"] is True
     assert "agent" in body["mermaid"] and "graph" in body["mermaid"]

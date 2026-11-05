@@ -15,6 +15,7 @@ async def test_get_returns_defaults(make_env):
         "agent_max_tokens": None,
         "agent_system_prompt": None,
         "guard_enabled": True,
+        "enabled_tools": None,
     }
     assert body["defaults"]["agent_system_prompt"] == SYSTEM
     assert "guard_policy" in body
@@ -95,3 +96,12 @@ async def test_guard_log_lists_guard_records_newest_first(make_env):
     assert rows[1]["reason"] == "override"
     assert rows[0]["model"] == "google/gemma" and rows[0]["started_at"]
     assert len((await env.client.get("/api/guard/log?limit=1")).json()) == 1
+
+
+async def test_put_enabled_tools_and_unknown_tool_422(make_env):
+    env = make_env()
+    r = await env.client.put("/api/settings", json={"enabled_tools": ["export_world"]})
+    assert r.status_code == 200 and r.json()["settings"]["enabled_tools"] == ["export_world"]
+    assert (await env.client.put("/api/settings", json={"enabled_tools": ["nope"]})).status_code == 422
+    r = await env.client.put("/api/settings", json={"enabled_tools": None})
+    assert r.json()["settings"]["enabled_tools"] is None

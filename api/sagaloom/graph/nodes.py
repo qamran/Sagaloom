@@ -7,10 +7,17 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END
+from langgraph.prebuilt import ToolNode
 from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
@@ -21,7 +28,7 @@ from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
 from sagaloom.models import PROVENANCE_FIELDS, CheckResult, Decision, Entry, Flag, Proposal
 from sagaloom.provenance import merge_provenance
-from sagaloom.settings_store import DevSettings
+from sagaloom.settings_store import DevSettings, enabled_tool_names
 from sagaloom.store.canon import DuplicateTitleError
 from sagaloom.text import message_text
 
@@ -127,12 +134,82 @@ def make_agent_node(
         params: dict[str, Any] = {"temperature": d.agent_temperature}
         if d.agent_max_tokens:
             params["max_tokens"] = d.agent_max_tokens
-        llm = model_for("agent").bind_tools(tools).bind(**params)
+        enabled = enabled_tool_names(d)
+        bound = [t for t in tools if t.name in enabled]
+        llm = model_for("agent").bind_tools(bound).bind(**params)
         system = SystemMessage(content=d.agent_system_prompt or SYSTEM)
         reply = await llm.ainvoke([system, *state.get("messages", [])], config)
         return {"messages": [reply]}
 
     return agent
+
+
+def _off_copy(name: str) -> str:
+    return f"Tool '{name}' is turned off in Studio."
+
+
+def _tool_messages(update: Any) -> list[ToolMessage]:
+    """The ToolMessages inside one piece of a ToolNode result (a dict, a list, or a Command)."""
+    if isinstance(update, Command):
+        update = update.update
+    if isinstance(update, dict):
+        update = update.get("messages")
+    if isinstance(update, ToolMessage):
+        return [update]
+    return [m for m in update or [] if isinstance(m, ToolMessage)] if isinstance(update, list) else []
+
+
+def make_tools_node(tools: list[BaseTool], dev: Callable[[], DevSettings] = DevSettings):
+    """`ToolNode` that refuses a tool turned off in Studio (R11.G3). The agent only binds enabled
+    tools, but a disabled one can still be named from history or by a stale turn: it gets an
+    error ToolMessage with the same call id and never runs. The enabled calls of the same AI
+    message go to the real ToolNode, and the results come back in the original call order."""
+    inner = ToolNode(tools, handle_tool_errors=True)
+
+    async def tools_node(state: SagaState, config: RunnableConfig):
+        enabled = enabled_tool_names(dev())  # read every turn, like the agent node
+        msgs = list(state.get("messages") or [])
+        last = msgs[-1] if msgs else None
+        calls = list(getattr(last, "tool_calls", None) or [])
+        if all(c["name"] in enabled for c in calls):
+            return await inner.ainvoke(state, config)
+        kept = [c for c in calls if c["name"] in enabled]
+        merged: dict[str, list] = {}  # call id -> the ToolNode updates that answer it
+        leftovers: list = []
+        if kept:
+            narrowed = last.model_copy(update={"tool_calls": kept})
+            result = await inner.ainvoke({**state, "messages": [*msgs[:-1], narrowed]}, config)
+            # A dict when no tool returned a Command, else a list mixing dicts and Commands.
+            for part in result if isinstance(result, list) else [result]:
+                found = _tool_messages(part)
+                if isinstance(part, dict):  # one dict holds all the plain ToolMessages
+                    for m in found:
+                        merged.setdefault(m.tool_call_id, []).append(m)
+                elif found:
+                    merged.setdefault(found[0].tool_call_id, []).append(part)
+                else:
+                    leftovers.append(part)
+        ordered: list = []
+        for c in calls:
+            if c["name"] in enabled:
+                ordered.extend(merged.pop(c["id"], []))
+            else:
+                ordered.append(
+                    ToolMessage(
+                        content=_off_copy(c["name"]),
+                        tool_call_id=c["id"],
+                        name=c["name"],
+                        status="error",
+                    )
+                )
+        for rest in merged.values():
+            ordered.extend(rest)
+        ordered.extend(leftovers)
+        if not any(isinstance(u, Command) for u in ordered):
+            return {"messages": ordered}
+        return [u if isinstance(u, Command) else {"messages": [u]} for u in ordered]
+
+    return tools_node
 
 
 # ---------- check ----------

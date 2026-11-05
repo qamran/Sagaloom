@@ -50,12 +50,20 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     cards = build_feature_map(make_settings(tmp_path), AppDeps())
     assert [c.id for c in cards] == [
         "agent_purpose", "agentic_rag", "human_in_the_loop", "memory", "token_cost",
-        "langsmith", "multi_provider", "security_guard", "external_tools",
+        "langsmith", "multi_provider", "security_guard", "tools", "external_tools",
     ]
     assert all(c.req_ids and c.title and c.brief_ref and c.detail for c in cards)
     live = {c.id for c in cards if c.status == "live"}
-    assert live == {"agent_purpose", "agentic_rag", "human_in_the_loop", "memory", "token_cost", "security_guard"}
-    assert card(cards, "external_tools").status == "off"
+    assert live == {
+        "agent_purpose", "agentic_rag", "human_in_the_loop", "memory", "token_cost",
+        "security_guard", "tools", "external_tools",
+    }
+    assert card(cards, "tools").brief_ref == "Medium 6"
+    assert card(cards, "tools").req_ids == ["R11.G1", "R11.G3"]
+    assert card(cards, "external_tools").status == "live"
+    assert card(cards, "external_tools").detail == (
+        "Wikipedia reference tool; fan-wiki import arrives in Wave 6."
+    )
     assert card(cards, "external_tools").try_href is None
     assert card(cards, "agentic_rag").try_href.startswith("/chat?prompt=")
 

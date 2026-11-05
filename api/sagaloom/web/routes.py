@@ -17,9 +17,9 @@ from sagaloom.guard import GUARD_POLICY, parse_verdict
 from sagaloom.models import Decision, Entry, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
-from sagaloom.settings_store import DevSettingsPatch
+from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.text import message_text
-from sagaloom.tools.canon_tools import make_tools
+from sagaloom.tools.canon_tools import TOOL_SPECS
 from sagaloom.web.sse import run_turn_events, sse_response
 
 router = APIRouter()
@@ -284,8 +284,8 @@ def llm_log(thread_id: str, request: Request) -> list[PromptRecord]:
 
 @router.get("/tools")
 def list_tools(request: Request) -> list[dict]:
-    tools = make_tools(_deps(request).store, None, None)  # only names and descriptions are read
-    return [{"name": t.name, "description": t.description} for t in tools]
+    enabled = enabled_tool_names(_deps(request).dev_settings.get())
+    return [{**spec, "enabled": spec["name"] in enabled} for spec in TOOL_SPECS]
 
 
 class ModelChoice(BaseModel):

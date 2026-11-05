@@ -166,12 +166,21 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             try_href="#guardrails" if not guard_on else prompt + "Which entries mention Ister?",
         ),
         FeatureCard(
+            id="tools",
+            title="Tools and plugins",
+            brief_ref="Medium 6",
+            req_ids=["R11.G1", "R11.G3"],
+            status="live",
+            detail="Five tools. The three core tools are always on; turn the others on or off in Studio.",
+            try_href="#tools",
+        ),
+        FeatureCard(
             id="external_tools",
             title="External data tools",
             brief_ref="Medium 3, Hard 5",
             req_ids=["R11.4", "R11.6"],
-            status="off",
-            detail="Wikipedia reference and fan-wiki import arrive in M2.",
+            status="live",
+            detail="Wikipedia reference tool; fan-wiki import arrives in Wave 6.",
             try_href=None,
         ),
     ]

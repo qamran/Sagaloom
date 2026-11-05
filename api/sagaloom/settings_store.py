@@ -5,7 +5,18 @@ import json
 import threading
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from sagaloom.tools.canon_tools import CORE_TOOLS, TOOL_SPECS
+
+ALL_TOOLS = frozenset(spec["name"] for spec in TOOL_SPECS)
+
+
+def _known_tools(names: list[str] | None) -> list[str] | None:
+    unknown = sorted(set(names or []) - ALL_TOOLS)
+    if unknown:
+        raise ValueError(f"unknown tool: {', '.join(unknown)}")
+    return names
 
 
 class DevSettings(BaseModel):
@@ -13,6 +24,16 @@ class DevSettings(BaseModel):
     agent_max_tokens: int | None = Field(default=None, ge=256, le=16000)
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool = True
+    # None means every tool. Core tools are always on, whatever this lists (R11.G3).
+    enabled_tools: list[str] | None = None
+
+    _check_tools = field_validator("enabled_tools")(_known_tools)
+
+
+def enabled_tool_names(d: DevSettings) -> set[str]:
+    if d.enabled_tools is None:
+        return set(ALL_TOOLS)
+    return set(d.enabled_tools) | CORE_TOOLS
 
 
 class DevSettingsPatch(BaseModel):
@@ -22,7 +43,10 @@ class DevSettingsPatch(BaseModel):
     agent_max_tokens: int | None = Field(default=None, ge=256, le=16000)
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool | None = None
+    enabled_tools: list[str] | None = None
     reset_system_prompt: bool = False
+
+    _check_tools = field_validator("enabled_tools")(_known_tools)
 
     @model_validator(mode="after")
     def _no_null_for_required(self):

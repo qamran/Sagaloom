@@ -40,12 +40,14 @@ class ScriptedChat(BaseChatModel):
     script: Any
     seen: list = Field(default_factory=list)
     seen_kwargs: list = Field(default_factory=list)
+    bound: list = Field(default_factory=list)
 
     @property
     def _llm_type(self) -> str:
         return "scripted"
 
     def bind_tools(self, tools, **kwargs):
+        self.bound.append([t.name for t in tools])
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
@@ -962,3 +964,93 @@ async def test_plain_update_of_untrusted_entry_shows_merged_provenance(store, tm
     cfg = run_config("t1", W)
     await run(graph, start("Add canals to Velmar"), cfg)
     assert provenance(await pending_after(graph, cfg)) == ("reference", False, REF_URLS[1])
+
+
+# ---------- tool toggles (R11.G3) ----------
+
+CORE = {"search_canon", "create_or_update_entry", "check_contradiction"}
+OFF_COPY = "Tool 'real_world_reference' is turned off in Studio."
+
+
+def counting_wiki(tmp_path):
+    requests: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"query": {"search": []}})
+
+    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler)), requests
+
+
+async def test_disabled_tool_not_bound(store, tmp_path):
+    graph, agent, _ = make(
+        store,
+        [AIMessage(content="ok")],
+        dev=lambda: DevSettings(enabled_tools=[]),
+        wiki=fake_wiki(tmp_path),
+    )
+    await run(graph, start("hi"), run_config("t-off", W))
+    assert [set(b) for b in agent.bound] == [CORE]
+
+
+async def test_enabled_tools_are_bound_on_the_next_turn(store, tmp_path):
+    current = DevSettings(enabled_tools=[])
+    graph, agent, _ = make(
+        store,
+        [AIMessage(content="one"), AIMessage(content="two")],
+        dev=lambda: current,
+        wiki=fake_wiki(tmp_path),
+    )
+    await run(graph, start("hi"), run_config("t-next", W))
+    current = DevSettings(enabled_tools=["real_world_reference"])
+    await run(graph, start("again"), run_config("t-next", W))
+    assert set(agent.bound[0]) == CORE
+    assert set(agent.bound[1]) == CORE | {"real_world_reference"}
+
+
+async def test_disabled_tool_named_from_history_gets_error(store, tmp_path):
+    wiki, requests = counting_wiki(tmp_path)
+    graph, agent, _ = make(
+        store,
+        [tc("real_world_reference", {"query": "Venice"}, "call_ref"), AIMessage(content="ok")],
+        dev=lambda: DevSettings(enabled_tools=[]),
+        wiki=wiki,
+    )
+    cfg = run_config("t-hist", W)
+    await run(graph, start("hi"), cfg)
+    tm = [m for m in (await graph.aget_state(cfg)).values["messages"] if isinstance(m, ToolMessage)]
+    [m] = tm
+    assert (m.status, m.content, m.tool_call_id, m.name) == (
+        "error", OFF_COPY, "call_ref", "real_world_reference"
+    )
+    assert requests == []
+    assert len(agent.seen) == 2  # the agent ran again after the refusal
+
+
+async def test_mixed_enabled_and_disabled_calls_keep_call_order(store, tmp_path):
+    wiki, requests = counting_wiki(tmp_path)
+    calls = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "real_world_reference", "args": {"query": "x"}, "id": "c1", "type": "tool_call"},
+            {"name": "create_or_update_entry", "id": "c2", "type": "tool_call", "args": {
+                "action": "create", "title": "Ostra", "type": "place", "body": "A port.",
+                "facts": [{"key": "harbour", "value": "deep"}]}},
+            {"name": "real_world_reference", "args": {"query": "y"}, "id": "c3", "type": "tool_call"},
+            {"name": "search_canon", "args": {"query": "port"}, "id": "c4", "type": "tool_call"},
+        ],
+    )
+    graph, _, _ = make(
+        store, [calls], dev=lambda: DevSettings(enabled_tools=[]), wiki=wiki
+    )
+    cfg = run_config("t-mixed", W)
+    await run(graph, start("hi"), cfg)
+    values = (await graph.aget_state(cfg)).values
+    tm = [m for m in values["messages"] if isinstance(m, ToolMessage)]
+    assert [m.tool_call_id for m in tm] == ["c1", "c2", "c3", "c4"]
+    assert [m.status for m in tm][0] == "error" and tm[0].content == OFF_COPY
+    assert tm[2].status == "error" and tm[2].content == OFF_COPY
+    assert tm[1].status != "error" and tm[3].status != "error"
+    [p] = values["pending_proposals"]  # the enabled Command still reached the state
+    assert p.after.title == "Ostra"
+    assert requests == []

@@ -230,19 +230,33 @@ async def test_recursion_limit_becomes_error_event(make_env):
 # ---------- tools, studio ----------
 
 
-async def test_tools_endpoint_lists_core_and_export_tools(make_env):
+async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(make_env, monkeypatch):
+    import sagaloom.web.routes as routes
+
+    def boom(*a, **k):
+        raise AssertionError("make_tools must not be called")
+
+    monkeypatch.setattr(routes, "make_tools", boom, raising=False)
     env = make_env()
     tools = (await env.client.get("/api/tools")).json()
     assert {t["name"] for t in tools} == {
-        "search_canon", "create_or_update_entry", "check_contradiction", "export_world"
+        "search_canon", "create_or_update_entry", "check_contradiction",
+        "export_world", "real_world_reference",
     }
     assert all(t["description"] for t in tools)
+    assert all(t["enabled"] for t in tools)
+    assert {t["name"] for t in tools if t["core"]} == {
+        "search_canon", "create_or_update_entry", "check_contradiction"
+    }
+    await env.client.put("/api/settings", json={"enabled_tools": []})
+    off = {t["name"] for t in (await env.client.get("/api/tools")).json() if not t["enabled"]}
+    assert off == {"export_world", "real_world_reference"}
 
 
 async def test_studio_endpoint_shape(make_env):
     env = make_env()
     body = (await env.client.get("/api/studio")).json()
-    assert len(body["features"]) == 9 and len(body["providers"]) == 2
+    assert len(body["features"]) == 10 and len(body["providers"]) == 2
     assert set(body["usage"]) >= {"prompt_tokens", "completion_tokens", "cost_usd"}
 
 

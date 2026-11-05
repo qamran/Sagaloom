@@ -14,7 +14,6 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import ToolNode
 
 from sagaloom import models as sagaloom_models
 from sagaloom.config import Settings
@@ -26,6 +25,7 @@ from sagaloom.graph.nodes import (
     make_check_node,
     make_commit_node,
     make_guard_node,
+    make_tools_node,
     route_after_guard,
     route_after_agent,
     route_after_tools,
@@ -53,7 +53,7 @@ def build_graph(
     g = StateGraph(SagaState)
     g.add_node("guard", make_guard_node(model_for, dev))
     g.add_node("agent", make_agent_node(model_for, tools, dev))
-    g.add_node("tools", ToolNode(tools, handle_tool_errors=True))
+    g.add_node("tools", make_tools_node(tools, dev))
     g.add_node("check", make_check_node(store, model_for))
     g.add_node("approval_gate", approval_gate, destinations=("check", "commit"))
     g.add_node("commit", make_commit_node(store))

@@ -91,6 +91,13 @@ async def test_handler_records_system_prompt_tools_and_wrapped_context(tmp_path)
     assert events[0][1]["messages"] == msgs and events[0][1]["tools"] == TOOLS
 
 
+async def test_promptlog_records_bound_max_tokens(tmp_path):
+    log, handler, _ = make_handler(tmp_path)
+    await start(handler, [HumanMessage(content="hi")], params={"max_tokens": 512})
+    [rec] = log.list("t1")
+    assert rec.params["max_tokens"] == 512
+
+
 async def test_llm_request_event_carries_role_from_metadata(tmp_path):
     log, handler, events = make_handler(tmp_path)
     await handler.on_chat_model_start(

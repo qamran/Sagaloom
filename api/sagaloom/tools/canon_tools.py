@@ -18,8 +18,11 @@ from sagaloom.provenance import merge_provenance
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
 from sagaloom.text import message_text
+from sagaloom.tools.export import DESCRIPTION as EXPORT_DESCRIPTION
+from sagaloom.tools.export import NAME as EXPORT_TOOL
 from sagaloom.tools.export import make_export_tool
 from sagaloom.tools.facts import draft_facts
+from sagaloom.tools.reference import DESCRIPTION as REFERENCE_DESCRIPTION
 from sagaloom.tools.reference import NAME as REFERENCE_TOOL
 from sagaloom.tools.reference import WRAP_SOURCE as REFERENCE_SOURCE
 from sagaloom.tools.reference import make_reference_tool
@@ -30,6 +33,25 @@ log = logging.getLogger(__name__)
 UNTRUSTED_LABEL = "untrusted source"
 # How every successful real_world_reference result starts (an error result is not wrapped).
 _REFERENCE_WRAP = wrap_untrusted("", REFERENCE_SOURCE).split("\n", 1)[0]
+
+SEARCH_DESCRIPTION = """Search this world's canon by meaning. Read-only. Returns matching entries (id, title,
+type, status, source, trusted, snippet, score) as untrusted data; an entry with
+trusted=false also carries label "untrusted source". Cite entry ids when you use them."""
+CREATE_DESCRIPTION = """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
+queues a proposal that is contradiction-checked and shown to the author for approval.
+Pass `facts` as short key/value claims, or omit them to have them drafted from the body."""
+CHECK_DESCRIPTION = """Check a hypothetical claim against this world's canon without proposing anything.
+Read-only. Returns a verdict (none, possible, conflict, failed) and any flags."""
+
+CORE_TOOLS = frozenset({"search_canon", "create_or_update_entry", "check_contradiction"})
+# Names and descriptions, readable without building the tool closures (GET /api/tools).
+TOOL_SPECS: list[dict] = [
+    {"name": "search_canon", "description": SEARCH_DESCRIPTION, "core": True},
+    {"name": "create_or_update_entry", "description": CREATE_DESCRIPTION, "core": True},
+    {"name": "check_contradiction", "description": CHECK_DESCRIPTION, "core": True},
+    {"name": EXPORT_TOOL, "description": EXPORT_DESCRIPTION, "core": False},
+    {"name": REFERENCE_TOOL, "description": REFERENCE_DESCRIPTION, "core": False},
+]
 
 _WorldId = Annotated[str, InjectedState("world_id")]
 _CallId = Annotated[str, InjectedToolCallId]
@@ -175,7 +197,7 @@ def make_tools(
     judge_llm: BaseChatModel,
     wiki: WikiClient | None = None,
 ) -> list[BaseTool]:
-    @tool("search_canon", args_schema=SearchCanonArgs)
+    @tool("search_canon", args_schema=SearchCanonArgs, description=SEARCH_DESCRIPTION)
     async def search_canon(
         query: str,
         world_id: _WorldId,
@@ -183,9 +205,6 @@ def make_tools(
         status: str | None = None,
         k: int = 5,
     ) -> str:
-        """Search this world's canon by meaning. Read-only. Returns matching entries (id, title,
-        type, status, source, trusted, snippet, score) as untrusted data; an entry with
-        trusted=false also carries label "untrusted source". Cite entry ids when you use them."""
         try:
             hits = store.search(
                 world_id, query, k=k, entry_types=entry_types, statuses=[status] if status else None
@@ -199,7 +218,7 @@ def make_tools(
             log.warning("search_canon failed", exc_info=True)
             return _json({"error": f"search failed: {e}"})
 
-    @tool("create_or_update_entry", args_schema=CreateOrUpdateArgs)
+    @tool("create_or_update_entry", args_schema=CreateOrUpdateArgs, description=CREATE_DESCRIPTION)
     async def create_or_update_entry(
         action: Literal["create", "update", "delete"],
         world_id: _WorldId,
@@ -214,9 +233,6 @@ def make_tools(
         facts: list[Fact] | None = None,
         source_url: str | None = None,
     ) -> Command:
-        """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
-        queues a proposal that is contradiction-checked and shown to the author for approval.
-        Pass `facts` as short key/value claims, or omit them to have them drafted from the body."""
         try:
             prov = _provenance(messages, source_url)
             before = None
@@ -292,10 +308,8 @@ def make_tools(
             log.warning("create_or_update_entry failed", exc_info=True)
             return _err(tool_call_id, f"Could not prepare the proposal: {e}")
 
-    @tool("check_contradiction", args_schema=CheckContradictionArgs)
+    @tool("check_contradiction", args_schema=CheckContradictionArgs, description=CHECK_DESCRIPTION)
     async def check_contradiction(proposed_text: str, world_id: _WorldId) -> str:
-        """Check a hypothetical claim against this world's canon without proposing anything.
-        Read-only. Returns a verdict (none, possible, conflict, failed) and any flags."""
         try:
             facts = await draft_facts("(hypothetical)", proposed_text, extractor_llm)
             proposal = Proposal(
