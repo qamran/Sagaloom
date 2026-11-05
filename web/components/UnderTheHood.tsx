@@ -219,7 +219,15 @@ function PathStep({ node }: { node: NodeStep }) {
 
 /** The Under the hood drawer (R20.3): graph path, tool calls and every prompt sent to OpenRouter
  * for one turn. API keys never reach this data: the prompt log is redacted on the server. */
-export function UnderTheHood({ turn, onClose }: { turn: TurnView; onClose: () => void }) {
+export function UnderTheHood({
+  turn,
+  onClose,
+  threadId,
+}: {
+  turn: TurnView;
+  onClose: () => void;
+  threadId?: string;
+}) {
   const [copyError, setCopyError] = useState(false);
   const totals = turn.calls.reduce(
     (a, c) => ({ cost: a.cost + (c.response?.cost_usd ?? 0), ms: a.ms + (c.response?.latency_ms ?? 0) }),
@@ -289,6 +297,14 @@ export function UnderTheHood({ turn, onClose }: { turn: TurnView; onClose: () =>
             <p className="m-0 text-xs text-muted-foreground">
               Only the prompt log is kept after a refresh, so the graph path is not available for this turn.
             </p>
+          )}
+          {threadId && (
+            <a
+              href={`/studio?thread=${encodeURIComponent(threadId)}#agent-graph`}
+              className="mt-2 inline-block text-xs text-accent underline"
+            >
+              See it on the agent graph
+            </a>
           )}
         </div>
         {turn.nodes.length > 0 && (

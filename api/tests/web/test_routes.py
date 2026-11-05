@@ -535,3 +535,19 @@ async def test_mode_on_user_message(make_env):
     assert message_dict(HumanMessage(content="hi")) == {"role": "user", "content": "hi"}
     noted = HumanMessage(name="review", content="r", additional_kwargs={"mode": "edit"})
     assert "mode" not in message_dict(noted)  # only the author's own messages carry a mode
+
+
+async def test_runs_last_edge_cases(make_env, store):
+    env = make_env([create_call(), AIMessage(content="Saved it.")])
+    assert (await env.client.get("/api/threads/nope/runs/last")).status_code == 404
+    tid = await env.new_thread()
+    r = await env.client.get(f"/api/threads/{tid}/runs/last")
+    assert r.status_code == 200
+    assert r.json() == {"thread_id": tid, "nodes": [], "paused": False}
+    await env.send(tid)
+    body = (await env.client.get(f"/api/threads/{tid}/runs/last")).json()
+    assert body["paused"] is True and "approval_gate" in body["nodes"]
+    await env.decide(tid, approve(await env.pending_id(tid)))
+    body = (await env.client.get(f"/api/threads/{tid}/runs/last")).json()
+    assert body["paused"] is False
+    assert body["nodes"][0] == "guard" and "commit" in body["nodes"]

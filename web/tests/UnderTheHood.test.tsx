@@ -45,6 +45,14 @@ function stubClipboard(writeText: (t: string) => Promise<void>) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("UnderTheHood", () => {
+  it("links to the agent graph for the thread", () => {
+    render(<UnderTheHood turn={turn} threadId="t 1" onClose={() => {}} />);
+    expect(screen.getByRole("link", { name: "See it on the agent graph" })).toHaveAttribute(
+      "href",
+      "/studio?thread=t%201#agent-graph",
+    );
+  });
+
   it("warns that prompts are shown verbatim and may contain secret facts", () => {
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
     expect(screen.getByText("Prompts are shown verbatim as sent and may contain secret facts.")).toBeInTheDocument();

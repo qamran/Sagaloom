@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { AgentGraph } from "@/components/AgentGraph";
 import { FeatureMap } from "@/components/FeatureMap";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { MemoryPanel } from "@/components/MemoryPanel";
@@ -65,12 +66,10 @@ function Studio() {
             >
               <h2 className="m-0 font-heading text-[22px] font-medium">Agent graph</h2>
               <p className="m-0 text-xs text-muted-foreground">
-                The compiled LangGraph, as Mermaid from <code className="font-mono">draw_mermaid()</code>. The
-                rendered graph with the last run highlighted comes in M2.
+                The compiled LangGraph, drawn from <code className="font-mono">draw_mermaid()</code>. The nodes of
+                the chosen thread&apos;s last run are highlighted.
               </p>
-              <pre className="m-0 max-h-[360px] overflow-auto rounded-lg border border-border bg-[#101314] p-3 font-mono text-xs leading-[1.55] text-[#c9c6bd]">
-                {studio.data.mermaid || "The graph is not available."}
-              </pre>
+              <AgentGraph mermaid={studio.data.mermaid} />
             </section>
             <div>
               {models.data ? (

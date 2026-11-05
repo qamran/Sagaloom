@@ -295,3 +295,10 @@ export interface GuardLogRow {
   verdict: "safe" | "unsafe" | "injection" | "unknown";
   reason: string;
 }
+
+/** GET /api/threads/{id}/runs/last: the nodes the newest run went through. */
+export interface LastRun {
+  thread_id: string;
+  nodes: string[];
+  paused: boolean;
+}

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
 from sagaloom.graph.prompts import SYSTEM
+from sagaloom.graph.runs import last_run_nodes
 from sagaloom.guard import GUARD_POLICY, parse_verdict
 from sagaloom.memory import CAP, count_items, forget, read_preferences
 from sagaloom.models import Decision, Entry, PreferenceKey, Usage, World
@@ -319,6 +320,12 @@ async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
     except BaseException:
         release()
         raise
+
+
+@router.get("/threads/{thread_id}/runs/last")
+async def last_run(thread_id: str, request: Request) -> dict:
+    _thread(request, thread_id)
+    return {"thread_id": thread_id, **await last_run_nodes(_deps(request).graph, thread_id)}
 
 
 @router.get("/threads/{thread_id}/llm-log")
