@@ -161,3 +161,18 @@ async def test_default_app_reports_a_bad_env_model_at_startup(tmp_path, monkeypa
     with pytest.raises(RuntimeError, match="misconfigured: .*CHAT_MODEL=foo/bar"):
         async with app.router.lifespan_context(app):
             pass
+
+
+def test_security_guard_card_follows_the_guard_setting(tmp_path):
+    from sagaloom.settings_store import DevSettingsPatch, DevSettingsStore
+
+    store = DevSettingsStore(tmp_path / "dev_settings.json")
+    deps = AppDeps(dev_settings=store)
+    on = card(build_feature_map(make_settings(tmp_path), deps), "security_guard")
+    assert on.status == "live"
+    assert {"R13.1", "R12.4"} <= set(on.req_ids)
+    assert "input guard checks each message" in on.detail
+    store.update(DevSettingsPatch(guard_enabled=False))
+    assert card(build_feature_map(make_settings(tmp_path), deps), "security_guard").status == "off"
+    # no store wired: falls back to on
+    assert card(build_feature_map(make_settings(tmp_path), AppDeps()), "security_guard").status == "live"

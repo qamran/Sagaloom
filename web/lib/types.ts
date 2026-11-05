@@ -232,3 +232,29 @@ export interface PromptRecord {
   response: LlmResponse | null;
   started_at: string;
 }
+
+// ---------- Developer settings and the input guard (R12.4, R13.1) ----------
+
+export interface DevSettings {
+  agent_temperature: number;
+  agent_max_tokens: number | null;
+  agent_system_prompt: string | null;
+  guard_enabled: boolean;
+}
+
+export interface SettingsPayload {
+  settings: DevSettings;
+  defaults: { agent_system_prompt: string };
+  guard_policy: string;
+}
+
+/** A partial update: an explicit null clears max tokens or the prompt. */
+export type SettingsPatch = Partial<DevSettings> & { reset_system_prompt?: boolean };
+
+export interface GuardLogRow {
+  thread_id: string;
+  started_at: string;
+  model: string;
+  verdict: "safe" | "unsafe" | "injection" | "unknown";
+  reason: string;
+}

@@ -3,7 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
-import { createThread, getPendingThreads, getThread } from "@/lib/api";
+import { createThread, getPendingThreads, getSettings, getThread } from "@/lib/api";
+import type { SettingsPayload } from "@/lib/types";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
@@ -21,9 +22,17 @@ vi.mock("@/lib/api", () => ({
   getThread: vi.fn(),
   getEntries: vi.fn(async () => []),
   getLlmLog: vi.fn(async () => []),
+  getSettings: vi.fn(),
 }));
 
+const settings = (guard_enabled: boolean): SettingsPayload => ({
+  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled },
+  defaults: { agent_system_prompt: "x" },
+  guard_policy: "p",
+});
+
 beforeEach(() => {
+  vi.mocked(getSettings).mockReset().mockResolvedValue(settings(true));
   replace.mockReset();
   vi.mocked(createThread).mockReset().mockResolvedValue({ thread_id: "t_new" });
   vi.mocked(getPendingThreads).mockReset();
@@ -72,5 +81,43 @@ describe("/chat/[threadId]", () => {
     );
     const note = await screen.findByRole("note", { name: "Blocked by the input guard" });
     expect(note).toHaveTextContent(copy);
+  });
+
+  it("shows a banner when the input guard is off, linking to Studio", async () => {
+    vi.mocked(getSettings).mockResolvedValue(settings(false));
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1",
+      world_id: "w1",
+      messages: [],
+      pending_interrupt: null,
+      usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatThread threadId="t1" />
+      </QueryClientProvider>,
+    );
+    const banner = await screen.findByRole("status", { name: "Input guard status" });
+    expect(banner).toHaveTextContent("Input guard off (Studio)");
+    expect(screen.getByRole("link", { name: /Input guard off/ })).toHaveAttribute("href", "/studio#guardrails");
+  });
+
+  it("shows no banner while the guard is on", async () => {
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1",
+      world_id: "w1",
+      messages: [],
+      pending_interrupt: null,
+      usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatThread threadId="t1" />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(getSettings).toHaveBeenCalled());
+    expect(screen.queryByRole("status", { name: "Input guard status" })).toBeNull();
   });
 });

@@ -175,3 +175,24 @@ async def test_log_is_per_thread_and_survives_reopen(tmp_path):
     await start(handler, [HumanMessage(content="hi")])
     assert [r.thread_id for r in PromptLog(tmp_path / "prompts.sqlite").list("t1")] == ["t1"]
     assert PromptLog(tmp_path / "prompts.sqlite").list("other") == []
+
+
+def _rec(id, role, started_at, response=None, thread_id="t1"):
+    from sagaloom.promptlog import PromptRecord
+
+    return PromptRecord(
+        id=id, thread_id=thread_id, run_id="r", provider="openrouter", model="m", role=role,
+        request={"messages": [], "tools": []}, response=response, started_at=started_at,
+    )
+
+
+def test_list_by_role_returns_only_that_role_newest_first_capped(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_rec("a", "guard", "2026-01-01T00:00:01"))
+    log.add(_rec("b", "agent", "2026-01-01T00:00:02"))
+    log.add(_rec("c", "guard", "2026-01-01T00:00:03", thread_id="t2"))
+    log.add(_rec("d", "guard", "2026-01-01T00:00:04"))
+    assert [r.id for r in log.list_by_role("guard")] == ["d", "c", "a"]
+    assert [r.id for r in log.list_by_role("guard", limit=2)] == ["d", "c"]
+    assert [r.id for r in log.list_by_role("agent")] == ["b"]
+    assert log.list_by_role("judge") == []

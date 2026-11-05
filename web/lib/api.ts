@@ -1,8 +1,11 @@
 import type {
   Entry,
+  GuardLogRow,
   ModelRole,
   ModelsPayload,
   PromptRecord,
+  SettingsPatch,
+  SettingsPayload,
   StudioData,
   ThreadState,
   ThreadSummary,
@@ -16,6 +19,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public detail?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -27,7 +31,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
-  if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText || "request failed"}`);
+  if (!res.ok) {
+    let detail: string | undefined;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail))
+        detail = body.detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join("; ") || undefined;
+    } catch {
+      // no JSON body: the status line is enough
+    }
+    throw new ApiError(res.status, `${res.status} ${res.statusText || "request failed"}`, detail);
+  }
   return (await res.json()) as T;
 }
 
@@ -49,3 +64,7 @@ export const putModel = (role: ModelRole, model: string) =>
   request<ModelsPayload>("/settings/models", { method: "PUT", body: JSON.stringify({ role, model }) });
 export const getLlmLog = (threadId: string) =>
   request<PromptRecord[]>(`/threads/${encodeURIComponent(threadId)}/llm-log`);
+export const getSettings = () => request<SettingsPayload>("/settings");
+export const putSettings = (patch: SettingsPatch) =>
+  request<SettingsPayload>("/settings", { method: "PUT", body: JSON.stringify(patch) });
+export const getGuardLog = (limit = 20) => request<GuardLogRow[]>(`/guard/log?limit=${limit}`);

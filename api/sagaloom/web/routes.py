@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from sagaloom.graph.build import run_config
 from sagaloom.graph.prompts import SYSTEM
-from sagaloom.guard import GUARD_POLICY
+from sagaloom.guard import GUARD_POLICY, parse_verdict
 from sagaloom.models import Decision, Entry, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
@@ -319,6 +319,24 @@ def get_dev_settings(request: Request) -> dict:
 def put_dev_settings(body: DevSettingsPatch, request: Request) -> dict:
     _deps(request).dev_settings.update(body)
     return _dev_payload(request)
+
+
+@router.get("/guard/log")
+def guard_log(request: Request, limit: int = 20) -> list[dict]:
+    """Recent input-guard verdicts, read from the prompt log (role `guard`)."""
+    rows = []
+    for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100))):
+        v = parse_verdict(rec.response)
+        rows.append(
+            {
+                "thread_id": rec.thread_id,
+                "started_at": rec.started_at,
+                "model": rec.model,
+                "verdict": v.verdict if v else "unknown",
+                "reason": v.reason if v else "",
+            }
+        )
+    return rows
 
 
 def _mermaid(graph: Any) -> str:

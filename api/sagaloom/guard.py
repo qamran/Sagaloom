@@ -6,11 +6,12 @@ author's fictional world are the product's normal material. The caller fails clo
 exception from `classify` blocks the message.
 """
 
+import json
 from typing import Annotated, Literal
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, ValidationError
 
 from sagaloom.security import wrap_untrusted
 
@@ -89,3 +90,27 @@ async def classify(model: BaseChatModel, text: str) -> GuardVerdict:
     if not isinstance(out, GuardVerdict):
         raise ValueError(f"guard returned no verdict ({type(out).__name__})")
     return out
+
+
+def parse_verdict(response: dict | None) -> GuardVerdict | None:
+    """Read a recorded guard response: the content as JSON, else the first tool call's args.
+    Anything else (prose, an invalid verdict, no response) is None."""
+    if not response:
+        return None
+    candidates: list = []
+    content = response.get("content")
+    if isinstance(content, str) and content.strip():
+        try:
+            candidates.append(json.loads(content))
+        except ValueError:
+            pass
+    calls = response.get("tool_calls") or []
+    if calls and isinstance(calls[0], dict):
+        candidates.append(calls[0].get("args"))
+    for c in candidates:
+        if isinstance(c, dict):
+            try:
+                return GuardVerdict.model_validate(c)
+            except ValidationError:
+                continue
+    return None

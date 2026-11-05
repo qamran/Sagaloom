@@ -2,14 +2,18 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { FeatureMap } from "@/components/FeatureMap";
+import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { UsagePanel } from "@/components/UsagePanel";
-import { getModels, getStudio } from "@/lib/api";
+import { getModels, getSettings, getStudio } from "@/lib/api";
 
 const SECTIONS = [
   ["feature-map", "Feature map"],
   ["agent-graph", "Agent graph"],
   ["models", "Models and providers"],
+  ["guardrails", "Guardrails"],
+  ["settings", "Settings"],
   ["usage", "Usage"],
 ];
 
@@ -17,6 +21,7 @@ const SECTIONS = [
 export default function StudioPage() {
   const studio = useQuery({ queryKey: ["studio"], queryFn: getStudio });
   const models = useQuery({ queryKey: ["settings", "models"], queryFn: getModels });
+  const dev = useQuery({ queryKey: ["settings"], queryFn: getSettings });
 
   return (
     <div className="flex flex-1 flex-wrap">
@@ -68,8 +73,18 @@ export default function StudioPage() {
                   {models.isError ? "Could not load the model list." : "Loading models…"}
                 </p>
               )}
-              <UsagePanel usage={studio.data.usage} />
             </div>
+            {dev.data ? (
+              <>
+                <GuardrailsPanel payload={dev.data} />
+                <SettingsPanel payload={dev.data} />
+              </>
+            ) : (
+              <p id="guardrails" className="m-0 text-muted-foreground">
+                {dev.isError ? "Could not load the guardrails and settings." : "Loading settings…"}
+              </p>
+            )}
+            <UsagePanel usage={studio.data.usage} />
           </>
         )}
       </main>

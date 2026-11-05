@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { Composer } from "@/components/Composer";
 import { UnderTheHood } from "@/components/UnderTheHood";
-import { getEntries, getLlmLog } from "@/lib/api";
+import { getEntries, getLlmLog, getSettings } from "@/lib/api";
 import { buildTurnViews } from "@/lib/turns";
 import type { ChatMessage, PendingInterrupt } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
@@ -125,6 +125,9 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   const turns = useMemo(() => buildTurnViews(s.turnEvents, log ?? []), [s.turnEvents, log]);
   const shown = turns.find((t) => t.key === picked) ?? turns[turns.length - 1] ?? null;
 
+  const { data: dev } = useQuery({ queryKey: ["settings"], queryFn: getSettings });
+  const guardOff = dev?.settings.guard_enabled === false;
+
   const last = s.messages[s.messages.length - 1];
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
@@ -140,6 +143,17 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   return (
     <div className="flex min-h-0 flex-1 flex-wrap">
     <main className="flex min-h-0 min-w-0 flex-[999_1_520px] flex-col">
+      {guardOff && (
+        <div
+          role="status"
+          aria-label="Input guard status"
+          className="border-b border-border bg-panel-2 px-4 py-1 text-xs text-muted-foreground md:px-7"
+        >
+          <a href="/studio#guardrails" className="text-conflict underline">
+            Input guard off (Studio)
+          </a>
+        </div>
+      )}
       <div className="flex items-center justify-end gap-2.5 px-4 pt-3 md:px-7">
         {hood && turns.length > 1 && (
           <>

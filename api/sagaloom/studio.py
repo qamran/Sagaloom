@@ -65,6 +65,12 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             cost = deps.promptlog.total_usage().cost_usd
         except Exception:
             pass
+    guard_on = True
+    if getattr(deps, "dev_settings", None) is not None:
+        try:
+            guard_on = deps.dev_settings.get().guard_enabled
+        except Exception:
+            pass
     project = os.environ.get("LANGSMITH_PROJECT")
     ls_live = langsmith_live()
     gemini_set = gemini_key_set(settings)
@@ -148,10 +154,16 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             id="security_guard",
             title="Security guard",
             brief_ref="Medium 8",
-            req_ids=["R13.2", "R13.3", "R20.1"],
-            status="live",
-            detail="Retrieved and imported text is wrapped as untrusted data; keys never leave the server. The input guard is M2.",
-            try_href=prompt + "Which entries mention Ister?",
+            req_ids=["R13.1", "R13.2", "R13.3", "R12.4", "R20.1"],
+            status="live" if guard_on else "off",
+            detail=(
+                "The input guard checks each message before the agent sees it. Retrieved and imported "
+                "text is wrapped as untrusted data; keys never leave the server."
+                if guard_on
+                else "The input guard is off (turned off in Studio), so messages go straight to the agent. "
+                "Retrieved and imported text is still wrapped as untrusted data."
+            ),
+            try_href="#guardrails" if not guard_on else prompt + "Which entries mention Ister?",
         ),
         FeatureCard(
             id="external_tools",

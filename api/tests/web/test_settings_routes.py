@@ -68,3 +68,30 @@ async def test_put_null_temperature_rejected(make_env):
 async def test_put_null_guard_enabled_rejected(make_env):
     env = make_env()
     assert (await env.client.put("/api/settings", json={"guard_enabled": None})).status_code == 422
+
+
+async def test_guard_log_lists_guard_records_newest_first(make_env):
+    import json
+
+    from sagaloom.promptlog import PromptRecord
+
+    env = make_env()
+
+    def rec(id, role, at, response, thread="t1"):
+        return PromptRecord(
+            id=id, thread_id=thread, run_id="r", provider="openrouter", model="google/gemma", role=role,
+            request={"messages": [], "tools": []}, response=response, started_at=at,
+        )
+
+    log = env.deps.promptlog
+    log.add(rec("a", "guard", "2026-01-01T00:00:01", {"content": json.dumps({"verdict": "safe", "reason": "fine"}), "tool_calls": []}))
+    log.add(rec("b", "agent", "2026-01-01T00:00:02", {"content": "hi", "tool_calls": []}))
+    log.add(rec("c", "guard", "2026-01-01T00:00:03", {"content": "", "tool_calls": [{"id": "1", "name": "GuardVerdict", "args": {"verdict": "injection", "reason": "override"}}]}, thread="t2"))
+    log.add(rec("d", "guard", "2026-01-01T00:00:04", {"content": "prose", "tool_calls": []}))
+    r = await env.client.get("/api/guard/log?limit=10")
+    assert r.status_code == 200
+    rows = r.json()
+    assert [(x["thread_id"], x["verdict"]) for x in rows] == [("t1", "unknown"), ("t2", "injection"), ("t1", "safe")]
+    assert rows[1]["reason"] == "override"
+    assert rows[0]["model"] == "google/gemma" and rows[0]["started_at"]
+    assert len((await env.client.get("/api/guard/log?limit=1")).json()) == 1

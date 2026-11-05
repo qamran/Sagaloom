@@ -86,6 +86,19 @@ class PromptLog:
             ).fetchall()
         return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
+    def list_by_role(self, role: str, limit: int = 20) -> "builtins.list[PromptRecord]":
+        """The newest records of one model role (e.g. `guard`), newest first."""
+        with closing(self._connect()) as conn:
+            rows = conn.execute("SELECT record FROM prompt_log ORDER BY started_at DESC, rowid DESC").fetchall()
+        out: builtins.list[PromptRecord] = []
+        for (raw,) in rows:
+            rec = PromptRecord.model_validate_json(raw)
+            if rec.role == role:
+                out.append(rec)
+                if len(out) >= limit:
+                    break
+        return out
+
     def total_usage(self) -> Usage:
         return self.usage()
 
