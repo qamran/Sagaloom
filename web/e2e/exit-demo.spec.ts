@@ -378,4 +378,77 @@ test("M1 exit demo", async ({ page }) => {
   await expect(notes.getByRole("listitem")).toHaveCount(2);
   await expect(notes).toContainText(/rejected/);
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Review", exact: true })).toBeVisible({ timeout: 40_000 });
+
+  // ---- Wave 5: Import (paste) -> Review -> the imported-text marker ----
+  // 27. Paste three paragraphs of session notes on the Import page and extract them.
+  const NOTES = [
+    "Brother Aldo is a lamplighter of Lantern Quay. He tends the iron lanterns on the night watch and keeps a ledger of every flame that gutters before dawn.",
+    "The Gull Market is held on the shingle below the harbour wall every morning. Its stalls sell gull eggs, salt cod and tarred rope, and it closes when the noon bell rings.",
+    "On the festival night the three moons rose together over the harbour, and the whole sky of Velmar shone silver until dawn.",
+  ].join("\n\n");
+  await nav.getByRole("link", { name: "Import", exact: true }).click();
+  await expect(page).toHaveURL(/\/import$/);
+  const paste = page.locator('section[aria-label="Paste text"]');
+  await paste.getByLabel("Text to import").fill(NOTES);
+  await paste.getByRole("button", { name: "Extract", exact: true }).click();
+  await expect(page).toHaveURL(/\/review\/[^/]+$/, { timeout: 120_000 });
+
+  // 28. At least two cards, each with its "From paste:" provenance line (shown above the selected card).
+  const importQueue = page.getByRole("complementary", { name: "Pending proposals" });
+  const importRows = importQueue.getByRole("listitem");
+  await expect.poll(() => importRows.count()).toBeGreaterThanOrEqual(2);
+  const shownCard = page.getByRole("region", { name: /^Review proposal: / });
+  const imported: { title: string; update: boolean }[] = [];
+  const pick = async (i: number) => {
+    const button = importRows.nth(i).getByRole("button");
+    await button.click();
+    await expect(button).toHaveAttribute("aria-current", "true");
+  };
+  for (let i = 0; i < (await importRows.count()); i++) {
+    await pick(i);
+    await expect(page.getByText(/^From paste: “/)).toBeVisible();
+    const title = ((await shownCard.getAttribute("aria-label")) ?? "").replace(/^Review proposal: /, "");
+    imported.push({ title, update: /\bUpdate\b/.test(await importRows.nth(i).innerText()) });
+  }
+  console.log(`demo step 28: imported cards ${JSON.stringify(imported)}`);
+
+  // 29. The sky card: an update of Sky of Velmar or a new sky entry, either way flagged against Sky of
+  // Velmar (ent_0007) or Ister (ent_0012). Other flags the judge adds are legitimate (Ruling R17).
+  const sky = imported.findIndex((c) => /Sky of Velmar|sky/i.test(c.title));
+  if (sky < 0) throw new Error(`no imported card is about the sky: ${JSON.stringify(imported)}`);
+  await pick(sky);
+  await expect(shownCard.locator('a[href="/canon/ent_0007"], a[href="/canon/ent_0012"]').first()).toBeVisible();
+  const skyEntry = imported[sky].update ? /\b(ent_\d{4})\b/.exec(await shownCard.innerText())?.[1] : undefined;
+
+  // 30. Save the sky card as myth, approve one new entry, reject the rest, and submit.
+  const myth = shownCard.getByRole("button", { name: "Save as myth" });
+  if ((await myth.count()) === 0) {
+    throw new Error(`the sky card offers no Save as myth (no conflict or retcon): ${await shownCard.innerText()}`);
+  }
+  await myth.click();
+  const create = imported.findIndex((c, i) => i !== sky && !c.update);
+  if (create < 0) throw new Error(`the import proposed no new entry besides the sky card: ${JSON.stringify(imported)}`);
+  await pick(create);
+  await shownCard.getByRole("button", { name: /^Approve/ }).click();
+  const rejectRest = page.getByRole("button", { name: "Reject all" });
+  if (await rejectRest.isEnabled()) await rejectRest.click();
+  await page.getByRole("button", { name: /^Submit \d+ decisions?$/ }).click();
+
+  // 31. Save as myth sends the sky card back through the check: approve the re-checked card and submit.
+  await expect(page.getByText(/^1 proposal · nothing enters canon/)).toBeVisible();
+  await expect(shownCard).toBeVisible();
+  await shownCard.getByRole("button", { name: /^Approve/ }).click();
+  await page.getByRole("button", { name: "Submit 1 decision" }).click();
+  const importNotes = page.getByRole("list", { name: "Decision notes" });
+  await expect(importNotes).toContainText(/committed as ent_\d{4}/, { timeout: 120_000 });
+  await expect(page.getByRole("link", { name: "Back to Import" })).toBeVisible();
+  // Error alerts on the page (Next's route announcer also has role="alert": it is not one).
+  const importErrors = await page.locator('[role="alert"]:not(#__next-route-announcer__)').allTextContents();
+  expect(importErrors, `the import decisions ended in an error: ${importErrors.join(" | ")}`).toEqual([]);
+
+  // 32. A merged sky entry is marked as containing imported text.
+  if (skyEntry) {
+    await page.goto(`/canon/${skyEntry}`);
+    await expect(page.getByText("Contains imported text")).toBeVisible();
+  }
 });
