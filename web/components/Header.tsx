@@ -15,6 +15,7 @@ const TABS = [
   { href: "/canon", label: "Canon" },
   { href: "/chat", label: "Chat" },
   { href: "/review", label: "Review" },
+  { href: "/import", label: "Import" },
 ];
 
 function Logo() {

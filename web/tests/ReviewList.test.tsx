@@ -13,7 +13,7 @@ vi.mock("@/lib/api", () => ({ getReviewThreads: vi.fn() }));
 
 const row = (over: Partial<ThreadSummary>): ThreadSummary => ({
   thread_id: "t1", world_id: "w1", pending: 1, created_at: new Date().toISOString(), kind: "chat",
-  title: "Sky of Velmar", badge: "conflict", ...over,
+  title: "Sky of Velmar", badge: "conflict", approved: 0, rejected: 0, running: false, ...over,
 });
 const renderList = () =>
   render(
@@ -58,6 +58,14 @@ describe("ReviewList", () => {
     vi.mocked(getReviewThreads).mockResolvedValue([row({ title: null })]);
     renderList();
     expect(await screen.findByRole("link", { name: /Untitled chat/ })).toBeInTheDocument();
+  });
+
+  it("labels imports and falls back to Untitled import", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([row({ kind: "import", title: null })]);
+    renderList();
+    const link = await screen.findByRole("link", { name: /Untitled import/ });
+    expect(within(link).getByText("Import")).toBeInTheDocument();
+    expect(within(link).queryByText("Chat")).toBeNull();
   });
 
   it("sits in a main landmark", async () => {

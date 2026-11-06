@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { FactList } from "@/components/FactList";
 import { ApiError, getEntry } from "@/lib/api";
 import { TYPE_LABEL, TYPE_PLURAL, TYPE_TEXT } from "@/lib/entity";
+import { importedSections } from "@/lib/imported";
 import { markTour } from "@/lib/tour";
 import { useWorld } from "@/lib/world";
 
@@ -50,6 +51,7 @@ export function EntryView({ entryId }: { entryId: string }) {
   const hidden = entry.status === "secret" && !revealed;
   const typeText = TYPE_TEXT[entry.type];
   const status = entry.status.charAt(0).toUpperCase() + entry.status.slice(1);
+  const imported = entry.trusted ? [] : importedSections(entry.body);
 
   return (
     <div className="flex flex-wrap items-start gap-7">
@@ -94,6 +96,16 @@ export function EntryView({ entryId }: { entryId: string }) {
                   v{entry.version} · edited {new Date(entry.updated_at).toLocaleDateString("en-GB")}
                 </span>
               </div>
+              {imported.length > 0 && (
+                <div className="flex flex-col gap-0.5 text-xs">
+                  <span className={`uppercase tracking-[1px] ${typeText}`}>Contains imported text</span>
+                  <ul className="m-0 flex list-none flex-wrap gap-x-3 p-0 text-muted-foreground">
+                    {imported.map((label, i) => (
+                      <li key={i}>{label}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <section className={CARD}>

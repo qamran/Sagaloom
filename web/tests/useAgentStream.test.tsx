@@ -23,7 +23,7 @@ const pendingOf = (...ids: string[]): PendingInterrupt => ({
 });
 
 const thread = (over: Partial<ThreadState> = {}): ThreadState => ({
-  thread_id: "t1", world_id: "w1", messages: [], pending_interrupt: null, usage: usage(0), ...over,
+  thread_id: "t1", world_id: "w1", messages: [], pending_interrupt: null, usage: usage(0), kind: "chat", title: null, ...over,
 });
 
 const sse = (event: string, data: unknown) => `event: ${event}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;

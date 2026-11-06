@@ -90,6 +90,8 @@ export const forgetMemory = (worldId: string, key: string, item?: string) =>
     }`,
     { method: "DELETE" },
   );
+export const getImports = (worldId: string) =>
+  request<ThreadSummary[]>(`/threads?world_id=${encodeURIComponent(worldId)}&kind=import`);
 export const getThreads = () => request<ThreadSummary[]>("/threads");
 export const getLastRun = (threadId: string) =>
   request<LastRun>(`/threads/${encodeURIComponent(threadId)}/runs/last`);

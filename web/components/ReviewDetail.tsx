@@ -4,11 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
+import { CourseChip } from "@/components/CourseChip";
 import { ReviewQueue } from "@/components/ReviewQueue";
 import { getEntries } from "@/lib/api";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
-import type { CheckResult, Decision, PendingInterrupt } from "@/lib/types";
+import type { CheckResult, Decision, ImportNote, PendingInterrupt } from "@/lib/types";
 
 const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
@@ -16,6 +17,25 @@ const BTN_OUTLINE = `${BTN} border border-border-strong bg-transparent text-fore
 const LINK_BTN = `flex ${BTN} items-center no-underline hover:no-underline`;
 
 const NOTHING_WAITING = "This conversation has nothing waiting for review.";
+const NOTHING_IMPORTED = "Nothing from this import needs review.";
+
+/** The candidates an import left out, each with why. Titles are the model's, shown as plain text. */
+function NotImported({ note }: { note: ImportNote | null }) {
+  if (!note || note.skipped.length === 0) return null;
+  return (
+    <section aria-label="Not imported" className="flex flex-col gap-2">
+      <h2 className="m-0 text-xs font-semibold uppercase tracking-[1px] text-muted-foreground">Not imported</h2>
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm">
+        {note.skipped.map((k, i) => (
+          <li key={i} className="rounded-[10px] border border-border bg-panel-2 px-3.5 py-2">
+            <span className="font-semibold">{k.title}</span>
+            <span className="text-muted-foreground"> · {k.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 /** A pending set the author has not decided yet, with the choices made so far. */
 interface Held {
@@ -57,9 +77,15 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
     enabled: !!worldId,
   });
 
+  const isImport = s.kind === "import";
   const back = (
     <Link href="/review" className={`${LINK_BTN} border border-border-strong text-foreground`}>
       Back to Review
+    </Link>
+  );
+  const backToImport = (
+    <Link href="/import" className={`${LINK_BTN} ${BTN_OUTLINE}`}>
+      Back to Import
     </Link>
   );
   const page = (children: React.ReactNode) => <main className="flex flex-col gap-4 px-4 py-6 md:px-11">{children}</main>;
@@ -70,8 +96,12 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
   if (otherWorld || (!shown && notesBefore === null)) {
     return page(
       <>
-        <p className="m-0 text-[17px] text-[#c9c6bd]">{NOTHING_WAITING}</p>
-        <div>{back}</div>
+        <p className="m-0 text-[17px] text-[#c9c6bd]">{isImport && !otherWorld ? NOTHING_IMPORTED : NOTHING_WAITING}</p>
+        {isImport && !otherWorld && <NotImported note={s.importNote} />}
+        <div className="flex flex-wrap gap-2.5">
+          {back}
+          {isImport && !otherWorld && backToImport}
+        </div>
         {s.error && (
           <p role="alert" className="m-0 text-sm text-conflict">
             {s.error}
@@ -95,6 +125,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
             ))}
           </ul>
         )}
+        {isImport && <NotImported note={s.importNote} />}
         {s.error && (
           <p role="alert" className="m-0 text-sm text-conflict">
             {s.error}
@@ -102,9 +133,13 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
         )}
         <div className="flex flex-wrap gap-2.5">
           {back}
-          <Link href={`/chat/${encodeURIComponent(threadId)}`} className={`${LINK_BTN} ${BTN_OUTLINE}`}>
-            Open in Chat
-          </Link>
+          {isImport ? (
+            backToImport
+          ) : (
+            <Link href={`/chat/${encodeURIComponent(threadId)}`} className={`${LINK_BTN} ${BTN_OUTLINE}`}>
+              Open in Chat
+            </Link>
+          )}
         </div>
       </>,
     );
@@ -169,6 +204,15 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
       </aside>
 
       <main className="flex min-w-0 flex-[999_1_520px] flex-col gap-4 px-4 py-6 md:px-10">
+        {isImport && current && (
+          <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
+            <span>
+              From {s.importNote?.source ?? "paste"}
+              {s.importNote?.first_lines[current.proposal_id] ? `: “${s.importNote.first_lines[current.proposal_id]}”` : ""}
+            </span>
+            <CourseChip card="injection_safe_extraction" label="Injection-safe extraction" />
+          </p>
+        )}
         {current && (
           <ApprovalCard
             key={current.proposal_id}
@@ -196,6 +240,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
             Submit {n} {n === 1 ? "decision" : "decisions"}
           </button>
         </div>
+        {isImport && <NotImported note={s.importNote} />}
       </main>
     </div>
   );

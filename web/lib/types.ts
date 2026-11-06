@@ -132,8 +132,17 @@ export interface MemoryPayload {
 /** The router's pick for one chat turn (R6.5, api/sagaloom/router.py). */
 export type Mode = "brainstorm" | "query" | "edit";
 
+/** The note an import thread starts with (api/sagaloom/web/imports.py). */
+export interface ImportNote {
+  /** The filename, or "paste". */
+  source: string;
+  /** Each proposal's first line of imported text, keyed by proposal_id. */
+  first_lines: Record<string, string>;
+  skipped: { title: string; reason: string }[];
+}
+
 export interface ChatMessage {
-  /** "user", "assistant", "tool", "review" (a decision note), "memory" (the remember node's results) or "guard" (the input guard's notice
+  /** "user", "assistant", "tool", "review" (a decision note), "import" (an import's note), "memory" (the remember node's results) or "guard" (the input guard's notice
    * shown in place of a blocked message, R13.1). */
   role: string;
   content: string;
@@ -142,6 +151,8 @@ export interface ChatMessage {
   memory?: MemoryResult[];
   /** On a "user" message: the mode the router picked for that turn. */
   mode?: Mode;
+  /** On an "import" message: the import's source, first lines and left-out candidates. */
+  import?: ImportNote;
   tool_calls?: { id: string | null; name: string; args: Record<string, unknown> }[];
 }
 
@@ -158,6 +169,8 @@ export interface ThreadState {
   messages: ChatMessage[];
   pending_interrupt: PendingInterrupt | null;
   usage: Usage;
+  kind: "chat" | "import";
+  title: string | null;
 }
 
 export interface ThreadSummary {
@@ -168,6 +181,9 @@ export interface ThreadSummary {
   kind: "chat" | "import";
   title: string | null;
   badge: Badge | null;
+  approved: number;
+  rejected: number;
+  running: boolean;
 }
 
 // SSE events (R19.2), mirroring api/sagaloom/web/sse.py. llm_request / llm_response payloads
@@ -175,13 +191,13 @@ export interface ThreadSummary {
 export type SseEvent =
   | { event: "token"; data: { text: string } }
   | { event: "tool_call"; data: { name: string; args: Record<string, unknown> } }
-  | { event: "tool_result"; data: { name: string; summary: string; memory?: MemoryResult[] } }
+  | { event: "tool_result"; data: { name: string; summary: string; memory?: MemoryResult[]; candidates?: number; skipped?: number } }
   | { event: "node"; data: { name: string; phase: "start" | "end"; ms?: number } }
   | { event: "llm_request"; data: Record<string, unknown> }
   | { event: "llm_response"; data: Record<string, unknown> }
   | { event: "interrupt"; data: PendingInterrupt }
   | { event: "usage"; data: { turn: Usage; total: Usage } }
-  | { event: "done"; data: Record<string, never> }
+  | { event: "done"; data: { thread_id?: string } }
   | { event: "error"; data: { message: string; retryable: boolean } };
 
 // ---------- Studio and prompt capture (Task 12) ----------

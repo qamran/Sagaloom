@@ -7,7 +7,7 @@ import { getLastRun, getThreads } from "@/lib/api";
 import type { ThreadSummary } from "@/lib/types";
 
 const summary = (thread_id: string, world_id: string, pending: number): ThreadSummary => ({
-  thread_id, world_id, pending, created_at: "", kind: "chat", title: null, badge: null,
+  thread_id, world_id, pending, created_at: "", kind: "chat", title: null, badge: null, approved: 0, rejected: 0, running: false,
 });
 
 const mermaidMock = vi.hoisted(() => ({

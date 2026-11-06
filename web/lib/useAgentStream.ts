@@ -1,12 +1,12 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getThread } from "./api";
-import { parseSse } from "./sse";
+import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
-import type { ChatMessage, Decision, LlmResponse, Mode, PendingInterrupt, SseEvent, Usage } from "./types";
+import type { ChatMessage, Decision, ImportNote, LlmResponse, Mode, PendingInterrupt, SseEvent, ThreadState, Usage } from "./types";
 
 export type StreamStatus = "idle" | "streaming" | "reconnecting" | "error";
 
@@ -35,6 +35,11 @@ export interface AgentStream {
   loaded: boolean;
   /** The world this thread belongs to, once `getThread` has answered. */
   worldId: string | null;
+  /** What started the thread, and its title, once `getThread` has answered. */
+  kind: "chat" | "import";
+  title: string | null;
+  /** On an import thread: where the text came from, each proposal's first line, what was left out. */
+  importNote: ImportNote | null;
   /** Decisions picked so far for the pending card(s), keyed by proposal_id. */
   chosen: Record<string, Decision>;
   turnEvents: TurnEvents[];
@@ -53,25 +58,6 @@ const PENDING_FIRST = "Decide on the pending change first";
 const BUSY = "A reply is still running. Wait for it to finish.";
 const UNREACHABLE = "Could not reach Sagaloom. Please try again.";
 const LOST = "Lost the connection and could not reload this conversation. Refresh the page.";
-
-/** FastAPI's `detail`: a string as is, a validation list as "edited.title: <msg>; …". */
-async function detailOf(res: Response): Promise<string> {
-  try {
-    const body = (await res.json()) as { detail?: unknown };
-    if (typeof body.detail === "string") return body.detail;
-    if (!Array.isArray(body.detail)) return "";
-    return body.detail
-      .map((d: { loc?: unknown[]; msg?: unknown }) => {
-        const field = (d.loc ?? [])
-          .filter((p) => typeof p === "string" && p !== "body" && p !== "decisions")
-          .join(".");
-        return field ? `${field}: ${String(d.msg)}` : String(d.msg);
-      })
-      .join("; ");
-  } catch {
-    return "";
-  }
-}
 
 const hasConflict = (p: PendingInterrupt) =>
   Object.values(p.checks).some((c) => c.flags.some((f) => f.kind === "conflict"));
@@ -134,6 +120,8 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [threadWorld, setThreadWorld] = useState<string | null>(null);
+  const [threadKind, setThreadKind] = useState<"chat" | "import">("chat");
+  const [threadTitle, setThreadTitle] = useState<string | null>(null);
   const [chosen, setChosenState] = useState<Record<string, Decision>>({});
   const [turnEvents, setTurnEvents] = useState<TurnEvents[]>([]);
 
@@ -158,14 +146,23 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
     setChosenState(c);
   }, []);
 
+  const applyThread = useCallback(
+    (t: ThreadState) => {
+      setMessages(t.messages);
+      setThreadWorld(t.world_id);
+      setThreadKind(t.kind ?? "chat");
+      setThreadTitle(t.title ?? null);
+      setPending(t.pending_interrupt);
+      setUsage(t.usage);
+    },
+    [setPending],
+  );
+
   const restore = useCallback(async () => {
     const t = await getThread(threadId);
     if (!aliveRef.current) return;
-    setMessages(t.messages);
-    setThreadWorld(t.world_id);
-    setPending(t.pending_interrupt);
-    setUsage(t.usage);
-  }, [threadId, setPending]);
+    applyThread(t);
+  }, [threadId, applyThread]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -173,10 +170,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
     getThread(threadId).then(
       (t) => {
         if (cancelled) return;
-        setMessages(t.messages);
-        setThreadWorld(t.world_id);
-        setPending(t.pending_interrupt);
-        setUsage(t.usage);
+        applyThread(t);
         setLoaded(true);
       },
       () => {
@@ -191,7 +185,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
       aliveRef.current = false;
       abortRef.current?.abort();
     };
-  }, [threadId, setPending]);
+  }, [threadId, applyThread]);
 
   const run = useCallback(
     async (path: "messages" | "decisions", body: unknown, kind: TurnEvents["kind"], onOk: () => void) => {
@@ -254,74 +248,58 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
         }
 
         onOk();
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let carry = "";
         // The guard's notice is streamed as tokens while the guard is the last node to have
         // started; its `node end` may arrive before or after the token, so the start decides.
         let lastStarted: string | null = null;
         // Ids of this turn's router calls: their response carries the mode for the chip.
         const routerCalls = new Set<string>();
-        try {
-          while (ended === null) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const parsed = parseSse(decoder.decode(value, { stream: true }), carry);
-            carry = parsed.carry;
-            for (const ev of parsed.events) {
-              if (ended !== null) break;
-              switch (ev.event) {
-                case "done":
-                  ended = "done";
-                  break;
-                case "error": // terminal: no `done` follows it
-                  ended = "error";
-                  setStatus("error");
-                  setError(ev.data.message);
-                  break;
-                case "token": {
-                  const role: TokenRole = lastStarted === "guard" ? "guard" : "assistant";
-                  setMessages((m) => applyToMessages(m, ev, role));
-                  break;
-                }
-                case "tool_call":
-                case "tool_result":
-                  setMessages((m) => applyToMessages(m, ev));
-                  record(ev);
-                  break;
-                case "interrupt":
-                  setPending(ev.data);
-                  if (hasConflict(ev.data)) markTour("conflict");
-                  record(ev);
-                  break;
-                case "usage":
-                  setUsage(ev.data.total);
-                  record(ev);
-                  break;
-                case "node":
-                  if (ev.data.phase === "start") lastStarted = ev.data.name;
-                  record(ev);
-                  break;
-                case "llm_request":
-                  if (ev.data.role === "router" && typeof ev.data.id === "string") routerCalls.add(ev.data.id);
-                  record(ev);
-                  break;
-                case "llm_response": {
-                  if (typeof ev.data.id === "string" && routerCalls.has(ev.data.id)) {
-                    const mode = parseRouterMode(ev.data as unknown as LlmResponse);
-                    if (mode) setMessages((m) => withMode(m, mode));
-                  }
-                  record(ev);
-                  break;
-                }
-                default:
-                  record(ev);
-              }
+        ended = await readEvents(res, (ev) => {
+          switch (ev.event) {
+            case "done":
+              break;
+            case "error":
+              setStatus("error");
+              setError(ev.data.message);
+              break;
+            case "token": {
+              const role: TokenRole = lastStarted === "guard" ? "guard" : "assistant";
+              setMessages((m) => applyToMessages(m, ev, role));
+              break;
             }
+            case "tool_call":
+            case "tool_result":
+              setMessages((m) => applyToMessages(m, ev));
+              record(ev);
+              break;
+            case "interrupt":
+              setPending(ev.data);
+              if (hasConflict(ev.data)) markTour("conflict");
+              record(ev);
+              break;
+            case "usage":
+              setUsage(ev.data.total);
+              record(ev);
+              break;
+            case "node":
+              if (ev.data.phase === "start") lastStarted = ev.data.name;
+              record(ev);
+              break;
+            case "llm_request":
+              if (ev.data.role === "router" && typeof ev.data.id === "string") routerCalls.add(ev.data.id);
+              record(ev);
+              break;
+            case "llm_response": {
+              if (typeof ev.data.id === "string" && routerCalls.has(ev.data.id)) {
+                const mode = parseRouterMode(ev.data as unknown as LlmResponse);
+                if (mode) setMessages((m) => withMode(m, mode));
+              }
+              record(ev);
+              break;
+            }
+            default:
+              record(ev);
           }
-        } catch {
-          /* the connection dropped mid-stream: handled below */
-        }
+        });
         if (ctrl.signal.aborted) return;
         if (ended === null) {
           await reconnect();
@@ -412,12 +390,17 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
     [setChosen],
   );
 
+  const importNote = useMemo(() => messages.find((m) => m.role === "import")?.import ?? null, [messages]);
+
   return {
     messages,
     streaming: status === "streaming",
     pending,
     usage,
     worldId: threadWorld,
+    kind: threadKind,
+    title: threadTitle,
+    importNote,
     status,
     error,
     loaded,

@@ -13,7 +13,8 @@ export type FeatureCardId =
   | "langsmith"
   | "multi_provider"
   | "security_guard"
-  | "external_tools";
+  | "external_tools"
+  | "injection_safe_extraction";
 
 const listeners = new Set<() => void>();
 // Fallback for when localStorage is unavailable: the toggle still works for this page load.

@@ -4,21 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { getReviewThreads } from "@/lib/api";
 import { BADGE_CLASS, BADGE_LABEL, REVIEW_KEY } from "@/lib/review";
+import { ago } from "@/lib/time";
 import { useWorld } from "@/lib/world";
 
 export const EMPTY_REVIEW =
   "Nothing to review. Every change the assistant proposes waits here until you decide.";
-
-/** "5 min ago", "2 h ago", "3 d ago"; empty for a missing or unreadable time. */
-function ago(iso: string): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const min = Math.max(0, Math.floor((Date.now() - then) / 60_000));
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
-  if (min < 1440) return `${Math.floor(min / 60)} h ago`;
-  return `${Math.floor(min / 1440)} d ago`;
-}
 
 /** The Review tab: conversations with proposals waiting for a decision, newest first. */
 export function ReviewList() {
@@ -68,9 +58,9 @@ export function ReviewList() {
                     </span>
                   )}
                   <span className="text-sm font-semibold">
-                    {t.title ?? "Untitled chat"}
+                    {t.title ?? (t.kind === "import" ? "Untitled import" : "Untitled chat")}
                   </span>
-                  <span className="text-xs text-muted-foreground">Chat</span>
+                  <span className="text-xs text-muted-foreground">{t.kind === "import" ? "Import" : "Chat"}</span>
                   <span className="text-xs text-muted-foreground">
                     {t.pending} {t.pending === 1 ? "proposal" : "proposals"}
                   </span>

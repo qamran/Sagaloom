@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/components/Header";
 import { getReviewThreads } from "@/lib/api";
@@ -15,7 +15,7 @@ vi.mock("@/lib/world", () => ({
 vi.mock("@/lib/api", () => ({ getThread: vi.fn(), getReviewThreads: vi.fn() }));
 
 const row = (thread_id: string, pending: number): ThreadSummary => ({
-  thread_id, world_id: "w1", pending, created_at: "", kind: "chat", title: null, badge: null,
+  thread_id, world_id: "w1", pending, created_at: "", kind: "chat", title: null, badge: null, approved: 0, rejected: 0, running: false,
 });
 const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const renderHeader = () =>
@@ -48,5 +48,16 @@ describe("Header Review tab", () => {
     renderHeader();
     await settled();
     expect(screen.getByRole("link", { name: "Review" })).toHaveTextContent(/^Review$/);
+  });
+});
+
+describe("Header Import tab", () => {
+  it("links to /import after Review", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([]);
+    renderHeader();
+    await settled();
+    const tabs = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Canon", "Chat", "Review", "Import"]);
+    expect(screen.getByRole("link", { name: "Import" })).toHaveAttribute("href", "/import");
   });
 });

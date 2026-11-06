@@ -8,7 +8,7 @@ import { createThread, forgetMemory, getReviewThreads, getSettings, getThread } 
 import type { SettingsPayload, ThreadSummary } from "@/lib/types";
 
 const summary = (thread_id: string, world_id: string, pending: number): ThreadSummary => ({
-  thread_id, world_id, pending, created_at: "", kind: "chat", title: null, badge: null,
+  thread_id, world_id, pending, created_at: "", kind: "chat", title: null, badge: null, approved: 0, rejected: 0, running: false,
 });
 
 const replace = vi.fn();
@@ -75,6 +75,8 @@ describe("/chat/[threadId]", () => {
     const copy = "That message tries to change how I work, so I didn't act on it.";
     vi.mocked(getThread).mockResolvedValue({
       thread_id: "t1",
+      kind: "chat",
+      title: null,
       world_id: "w1",
       messages: [{ role: "guard", content: copy, name: "guard" }],
       pending_interrupt: null,
@@ -94,6 +96,8 @@ describe("/chat/[threadId]", () => {
     vi.mocked(getSettings).mockResolvedValue(settings(false));
     vi.mocked(getThread).mockResolvedValue({
       thread_id: "t1",
+      kind: "chat",
+      title: null,
       world_id: "w1",
       messages: [],
       pending_interrupt: null,
@@ -113,6 +117,8 @@ describe("/chat/[threadId]", () => {
   it("shows no banner while the guard is on", async () => {
     vi.mocked(getThread).mockResolvedValue({
       thread_id: "t1",
+      kind: "chat",
+      title: null,
       world_id: "w1",
       messages: [],
       pending_interrupt: null,
@@ -130,6 +136,8 @@ describe("/chat/[threadId]", () => {
   const renderThread = (messages: unknown[]) => {
     vi.mocked(getThread).mockResolvedValue({
       thread_id: "t1",
+      kind: "chat",
+      title: null,
       world_id: "w1",
       messages,
       pending_interrupt: null,
@@ -220,6 +228,8 @@ describe("/chat/[threadId]", () => {
     vi.mocked(forgetMemory).mockReset().mockResolvedValue({} as never);
     vi.mocked(getThread).mockResolvedValue({
       thread_id: "t1",
+      kind: "chat",
+      title: null,
       world_id: "w_other",
       messages: [
         { role: "memory", content: "x", memory: [{ key: "tone", value: "grim", stored: true, note: "Remembered: tone → grim" }] },

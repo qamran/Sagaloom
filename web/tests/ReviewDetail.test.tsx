@@ -40,7 +40,7 @@ const two = pendingOf(
 
 const base = (over: Partial<AgentStream> = {}): AgentStream => ({
   messages: [], streaming: false, pending: null, usage: null, status: "idle", error: null, loaded: true,
-  worldId: "w1", chosen: {}, turnEvents: [],
+  worldId: "w1", kind: "chat", title: null, importNote: null, chosen: {}, turnEvents: [],
   send: vi.fn(), decide: vi.fn(async () => undefined), choose: vi.fn(async () => undefined),
   chooseMany: vi.fn(async () => undefined), unchoose: vi.fn(), ...over,
 });
@@ -256,5 +256,54 @@ describe("ReviewDetail", () => {
     expect(await screen.findByText("Possible duplicate of ent_0013 'Plain'")).toBeInTheDocument();
     expect(screen.getByText("Possible duplicate of ent_0012")).toBeInTheDocument();
     expect(screen.queryByText(/'Ister'/)).toBeNull();
+  });
+});
+
+describe("ReviewDetail for an import thread", () => {
+  const note = {
+    source: "notes.md",
+    first_lines: { p_a: "The Tide Council sits at dusk." },
+    skipped: [{ title: "Old Mill", reason: "couldn't locate the original text" }],
+  };
+  const importStream = (over: Partial<AgentStream> = {}) =>
+    base({ kind: "import", title: "notes.md", importNote: note, ...over });
+
+  it("shows where the selected card came from, the skipped list and the course chip", () => {
+    stream = importStream({ pending: two });
+    render(ui());
+    expect(screen.getByText("From notes.md: \u201cThe Tide Council sits at dusk.\u201d")).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "Not imported" });
+    expect(within(list).getByText("Old Mill")).toBeInTheDocument();
+    expect(within(list).getByText(/couldn't locate the original text/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Course note: Injection-safe extraction" })).toHaveAttribute(
+      "href",
+      "/studio?card=injection_safe_extraction#feature-map",
+    );
+  });
+
+  it("offers Back to Import, not Open in Chat, once the decisions are in", async () => {
+    const one = pendingOf([proposal("p_a", "Tide Council"), clean("p_a")]);
+    stream = importStream({ pending: one, chosen: { p_a: { proposal_id: "p_a", action: "approve" } } });
+    const { rerender } = render(ui());
+    await userEvent.click(screen.getByRole("button", { name: "Submit 1 decision" }));
+    stream = importStream({
+      pending: null,
+      messages: [{ role: "review", content: "Tide Council committed as ent_0020." }],
+    });
+    rerender(ui());
+    expect(screen.getByText("Tide Council committed as ent_0020.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open in Chat" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Back to Import" })).toHaveAttribute("href", "/import");
+    expect(screen.getByRole("link", { name: "Back to Review" })).toBeInTheDocument();
+  });
+
+  it("says nothing needs review when the import has no proposals, and lists what was left out", () => {
+    stream = importStream({ pending: null });
+    render(ui());
+    expect(screen.getByText("Nothing from this import needs review.")).toBeInTheDocument();
+    expect(screen.queryByText(/nothing waiting/)).toBeNull();
+    expect(screen.getByText("Old Mill")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open in Chat" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Back to Import" })).toHaveAttribute("href", "/import");
   });
 });
