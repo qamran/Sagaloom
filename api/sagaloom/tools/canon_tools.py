@@ -46,6 +46,8 @@ _CallId = Annotated[str, InjectedToolCallId]
 # The thread's messages, read to set provenance from the turn. Required: a call without them
 # must fail rather than fall back to user/trusted.
 _Messages = Annotated[list, InjectedState("messages")]
+# Proposals already pending from an earlier step, so replacing one can drop its stale check.
+_Pending = Annotated[list, InjectedState("pending_proposals")]
 
 
 class SearchCanonArgs(BaseModel):
@@ -86,6 +88,7 @@ class CreateOrUpdateArgs(BaseModel):
     world_id: _WorldId
     tool_call_id: _CallId
     messages: _Messages
+    pending: _Pending = Field(default_factory=list)
 
 
 class CheckContradictionArgs(BaseModel):
@@ -220,6 +223,7 @@ def make_tools(
         aliases: list[str] | None = None,
         facts: list[Fact] | None = None,
         source_url: str | None = None,
+        pending: _Pending | None = None,
     ) -> Command:
         try:
             prov = _provenance(messages, source_url)
@@ -286,12 +290,16 @@ def make_tools(
             )
             label = after.title if after else before.title
             text = f"Proposal {proposal.proposal_id} ({action} {label}) is awaiting the author's review."
-            return Command(
-                update={
-                    "pending_proposals": [proposal],
-                    "messages": [ToolMessage(content=text, tool_call_id=tool_call_id)],
-                }
-            )
+            update: dict[str, Any] = {
+                "pending_proposals": [proposal],
+                "messages": [ToolMessage(content=text, tool_call_id=tool_call_id)],
+            }
+            # The reducer swaps this in for an entry's earlier pending proposal (keeping its id);
+            # that proposal's check is then stale, so drop it and it is checked again.
+            stale = {q.proposal_id: None for q in pending or [] if q.entry_id == entry_id}
+            if action != "create" and stale:
+                update["check_results"] = stale
+            return Command(update=update)
         except Exception as e:
             log.warning("create_or_update_entry failed", exc_info=True)
             return _err(tool_call_id, f"Could not prepare the proposal: {e}")

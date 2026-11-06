@@ -46,3 +46,35 @@ def test_canon_fact_retcon_is_not_secret_but_secret_entry_is():
     assert detect_retcons(mk([Fact(key="Moons", value="One")]), changed)[0].existing_secret is False
     hidden = mk([Fact(key="Moons", value="One")]).model_copy(update={"status": "secret"})
     assert detect_retcons(hidden, changed)[0].existing_secret is True
+
+
+def test_one_retcon_flag_per_stored_fact():
+    before = mk([Fact(key="Members", value="About sixty"), Fact(key="Members", value="Ashen Choir", status="secret")])
+    flags = detect_retcons(before, draft([Fact(key="Members", value="About seventy")]))
+    assert [(f.existing_fact, f.existing_secret) for f in flags] == [
+        ("About sixty", False),
+        ("Ashen Choir", True),
+    ]
+    assert all(f.new_fact == "About seventy" and f.fact_key == "Members" for f in flags)
+    assert flags[0].explanation == "Changes established canon: About sixty → About seventy"
+
+
+def test_retcon_pure_addition():
+    flags = detect_retcons(
+        mk([Fact(key="Moons", value="One (Ister)")]),
+        draft([Fact(key="Moons", value="One (Ister)"), Fact(key="Moons", value="Three")]),
+    )
+    assert len(flags) == 1
+    f = flags[0]
+    assert (f.existing_fact, f.new_fact) == ("One (Ister)", "Three")
+    assert f.explanation.startswith("Adds to established canon")
+    assert f.explanation == "Adds to established canon: Three"
+    assert f.existing_secret is False
+
+
+def test_removed_fact_explanation_names_one_fact():
+    flags = detect_retcons(mk([Fact(key="Moons", value="One"), Fact(key="Moons", value="Ister")]), draft([]))
+    assert [f.explanation for f in flags] == [
+        "Removes established canon: One",
+        "Removes established canon: Ister",
+    ]

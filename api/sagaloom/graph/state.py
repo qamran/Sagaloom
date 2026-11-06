@@ -17,6 +17,9 @@ def merge_proposals(left: list[Proposal] | None, right: Any) -> list[Proposal]:
 
     - a list appends; a proposal whose id is already pending replaces it in place
       (this is how an edit swaps in the new `after`)
+    - a proposal for an entry that already has a pending proposal replaces that one in place and
+      keeps its id, so one entry is one card (parallel tool calls in one AI message share one
+      state snapshot, so only the reducer sees both)
     - `{"clear": [ids]}` removes the proposals with those ids
     """
     current = list(left or [])
@@ -25,6 +28,10 @@ def merge_proposals(left: list[Proposal] | None, right: Any) -> list[Proposal]:
         return [p for p in current if p.proposal_id not in drop]
     for p in right or []:
         idx = next((i for i, q in enumerate(current) if q.proposal_id == p.proposal_id), None)
+        if idx is None and p.entry_id is not None:
+            idx = next((i for i, q in enumerate(current) if q.entry_id == p.entry_id), None)
+            if idx is not None:
+                p = p.model_copy(update={"proposal_id": current[idx].proposal_id})
         if idx is None:
             current.append(p)
         else:

@@ -244,6 +244,34 @@ def test_merge_proposals_clear_removes_ids_and_is_pure():
     assert merge_proposals(None, [P("p1")])[0].proposal_id == "p1"
 
 
+def U(pid, entry_id, body="b"):
+    return Proposal(
+        proposal_id=pid, action="update", world_id=W, entry_id=entry_id, before=None,
+        after=EntryDraft(title="Harbour", type="place", body=body),
+    )
+
+
+def test_merge_proposals_replaces_same_entry():
+    out = merge_proposals([P("p0"), U("p1", "ent_0002", "first"), P("p3")], [U("p2", "ent_0002", "second")])
+    assert [p.proposal_id for p in out] == ["p0", "p1", "p3"]
+    assert out[1].after == U("p2", "ent_0002", "second").after
+    # creates (no entry id) never collapse
+    assert [p.proposal_id for p in merge_proposals([P("p1")], [P("p2")])] == ["p1", "p2"]
+    # same id still replaces in place, even with an entry id
+    assert merge_proposals([U("p1", "ent_0002", "a")], [U("p1", "ent_0002", "b")])[0].after.body == "b"
+
+
+def test_failed_check_copy_is_one_constant():
+    from sagaloom.check.contradiction import CHECK_FAILED_EXPLANATION
+    from sagaloom.graph.nodes import _failed_result
+
+    assert _failed_result(P("p1")).flags[0].explanation == CHECK_FAILED_EXPLANATION
+    assert CHECK_FAILED_EXPLANATION == (
+        "The contradiction check could not run, so clashes with other entries are unknown. "
+        "Review this change carefully before approving it."
+    )
+
+
 def test_merge_dict_merges_and_none_deletes():
     left = {"a": 1, "b": 2}
     assert merge_dict(left, {"b": None, "c": 3}) == {"a": 1, "c": 3}
@@ -596,6 +624,26 @@ async def test_batch_keeps_decisions_while_edited_proposal_is_rechecked(store):
     assert sorted((e.title, e.body) for e in store.list_entries(W)) == [
         ("Ostra", "A port."), ("Peak", "A tall mountain.")
     ]
+
+
+async def test_same_entry_proposals_collapse_to_one_card(store):
+    seed(store, id="ent_0002", title="Harbour", body="A harbour.", facts=[])
+    two = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "create_or_update_entry", "id": "c1", "type": "tool_call",
+             "args": {"action": "update", "entry_id": "ent_0002", "body": "First wording.", "facts": []}},
+            {"name": "create_or_update_entry", "id": "c2", "type": "tool_call",
+             "args": {"action": "update", "entry_id": "ent_0002", "body": "Second wording.", "facts": []}},
+        ],
+    )
+    graph, *_ = make(store, [two, AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start("Reword the harbour"), cfg)
+    payload = await interrupt_payload(graph, cfg)
+    [p] = payload["proposals"]
+    assert p["after"]["body"] == "Second wording."
+    assert list(payload["checks"]) == [p["proposal_id"]]
 
 
 async def test_malformed_resume_asks_again_and_valid_resume_still_works(store):

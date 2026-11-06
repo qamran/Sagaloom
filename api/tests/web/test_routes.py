@@ -158,9 +158,56 @@ async def test_pending_threads_listing(make_env):
     idle = await env.new_thread()
     await env.send(waiting)
     r = await env.client.get("/api/threads", params={"pending": "true"})
-    assert r.json() == [{"thread_id": waiting, "world_id": W, "pending": 1}]
-    everything = {t["thread_id"]: t["pending"] for t in (await env.client.get("/api/threads")).json()}
-    assert everything == {waiting: 1, idle: 0}
+    [row] = r.json()
+    assert row == {
+        "thread_id": waiting, "world_id": W, "pending": 1, "created_at": row["created_at"],
+        "kind": "chat", "title": "Add Ostra", "badge": "clear",
+    }
+    listed = (await env.client.get("/api/threads")).json()
+    assert [t["thread_id"] for t in listed] == [idle, waiting]  # newest first
+    everything = {t["thread_id"]: (t["pending"], t["title"], t["badge"]) for t in listed}
+    assert everything == {waiting: (1, "Add Ostra", "clear"), idle: (0, None, None)}
+
+
+async def test_list_threads_scoped_by_world(make_env):
+    long = "Add   Ostra,\nthe port " + "x" * 100
+    env = make_env([create_call(), create_call("Peak")])
+    env.deps.worlds.create("Velmar", world_id="velmar")
+    other = await env.new_thread(W)
+    velmar = await env.new_thread("velmar")
+    await env.send(other, "Add Ostra")
+    await env.send(velmar, long)
+    r = await env.client.get("/api/threads", params={"pending": "true", "world_id": "velmar"})
+    [row] = r.json()
+    assert (row["thread_id"], row["world_id"], row["pending"], row["kind"]) == (velmar, "velmar", 1, "chat")
+    assert row["badge"] == "clear"
+    assert len(row["title"]) == 80 and row["title"].endswith("…")
+    assert row["title"].startswith("Add Ostra, the port xxx")
+    assert (await env.client.get("/api/threads", params={"world_id": "nope"})).json() == []
+
+
+async def test_thread_title_prefers_the_registry_title(make_env):
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    await env.send(tid)
+    with env.deps.threads._connect() as conn:
+        conn.execute("UPDATE threads SET title = ? WHERE thread_id = ?", ("Harbour work", tid))
+    [row] = (await env.client.get("/api/threads")).json()
+    assert row["title"] == "Harbour work"
+
+
+async def test_pending_payload_gets_badges_for_old_checkpoints(make_env):
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    _, events = await env.send(tid)
+    state = await env.deps.graph.aget_state({"configurable": {"thread_id": tid}})
+    stored = state.interrupts[0].value
+    assert all("badge" not in c for c in stored["checks"].values())  # the gate's payload is unchanged
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    [pid] = body["pending_interrupt"]["checks"]
+    assert body["pending_interrupt"]["checks"][pid]["badge"] == "clear"
+    interrupt = next(d for e, d in events if e == "interrupt")
+    assert interrupt["checks"][pid]["badge"] == "clear"
 
 
 # ---------- worlds and entries ----------

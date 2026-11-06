@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, ValidationError
 
 from sagaloom.check.dependency import dependency_check
+from sagaloom.check.duplicate import duplicate_flags
 from sagaloom.check.prompts import JUDGE_SYSTEM
 from sagaloom.check.retcon import detect_retcons
 from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Flag, Proposal
@@ -23,7 +24,7 @@ log = logging.getLogger(__name__)
 SEARCH_K = 8
 MAX_ATTEMPTS = 2  # "retry once"
 _BELIEFS = ("myth", "rumour")
-_FAILED_EXPLANATION = (
+CHECK_FAILED_EXPLANATION = (
     "The contradiction check could not run, so clashes with other entries are unknown. "
     "Review this change carefully before approving it."
 )
@@ -239,15 +240,29 @@ def _to_flag(jf: JudgeFlag, entry: Entry, draft: EntryDraft) -> Flag:
     )
 
 
-def _failed(proposal: Proposal, draft: EntryDraft, retcons: list[Flag]) -> CheckResult:
+def _failed(proposal: Proposal, draft: EntryDraft, retcons: list[Flag], dups: list[Flag]) -> CheckResult:
     notice = Flag(
         kind="note",
         entry_id=proposal.entry_id or "",
         title=draft.title,
         severity="note",
-        explanation=_FAILED_EXPLANATION,
+        explanation=CHECK_FAILED_EXPLANATION,
     )
-    return CheckResult(proposal_id=proposal.proposal_id, verdict="failed", flags=[*retcons, notice])
+    return CheckResult(
+        proposal_id=proposal.proposal_id, verdict="failed", flags=[*retcons, notice, *dups]
+    )
+
+
+def _duplicates(store, proposal: Proposal, draft: EntryDraft) -> list[Flag]:
+    """Duplicate notes for a create (spec §3.9). A note only, so a failure here costs the note,
+    never the check."""
+    if proposal.action != "create":
+        return []
+    try:
+        return duplicate_flags(store, proposal.world_id, draft)
+    except Exception:
+        log.exception("Duplicate check failed for %s", proposal.proposal_id)
+        return []
 
 
 async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> CheckResult:
@@ -261,15 +276,16 @@ async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> C
     if proposal.action == "update" and before is None and proposal.entry_id:
         before = store.get_entry(proposal.world_id, proposal.entry_id)
     retcons = detect_retcons(before, draft) if proposal.action == "update" and before else []
+    dups = _duplicates(store, proposal, draft)
 
     try:
         related = _related_entries(store, proposal, draft)
     except Exception:
         log.exception("Contradiction check retrieval failed for %s", proposal.proposal_id)
-        return _failed(proposal, draft, retcons)
+        return _failed(proposal, draft, retcons, dups)
 
     if not related:
-        return CheckResult(proposal_id=proposal.proposal_id, verdict="none", flags=retcons)
+        return CheckResult(proposal_id=proposal.proposal_id, verdict="none", flags=[*retcons, *dups])
 
     messages = [
         SystemMessage(content=JUDGE_SYSTEM),
@@ -279,11 +295,11 @@ async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> C
         out = await _ask_judge(judge, messages)
     except _JudgeInvalid:
         log.error("Judge gave invalid output twice for %s; failing closed", proposal.proposal_id)
-        return _failed(proposal, draft, retcons)
+        return _failed(proposal, draft, retcons, dups)
     except Exception:
         # Network/API errors after the client's own retries: never report "none" (R11.3.7).
         log.exception("Judge call failed for %s; failing closed", proposal.proposal_id)
-        return _failed(proposal, draft, retcons)
+        return _failed(proposal, draft, retcons, dups)
 
     by_id = {e.id: e for e in related}
     flags: list[Flag] = []
@@ -301,4 +317,4 @@ async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> C
         verdict = "possible"
     else:
         verdict = "none"
-    return CheckResult(proposal_id=proposal.proposal_id, verdict=verdict, flags=[*retcons, *flags])
+    return CheckResult(proposal_id=proposal.proposal_id, verdict=verdict, flags=[*retcons, *flags, *dups])

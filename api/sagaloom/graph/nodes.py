@@ -24,7 +24,7 @@ from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
 import sagaloom.router as router_mod
-from sagaloom.check.contradiction import check_proposal
+from sagaloom.check.contradiction import CHECK_FAILED_EXPLANATION, check_proposal
 from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
@@ -358,7 +358,7 @@ def _failed_result(p: Proposal) -> CheckResult:
                 entry_id=p.entry_id or "",
                 title=title,
                 severity="note",
-                explanation="The check could not run. Review this change carefully before approving it.",
+                explanation=CHECK_FAILED_EXPLANATION,
             )
         ],
     )

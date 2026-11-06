@@ -537,3 +537,54 @@ def test_judge_prompt_contains_no_seed_answers():
 def test_judge_prompt_forbids_restating_secret_values():
     text = " ".join(JUDGE_SYSTEM.split())
     assert "Never quote or paraphrase the value of such a fact in `explanation` or `suggested_fix`" in text
+
+
+# ---------- duplicate notes (spec §3.9) ----------
+
+DUP = "Possible duplicate of ent_0001 'Captain Sorn'"
+
+
+def sorn(store):
+    return store.upsert_entry(mk("ent_0001", "Captain Sorn", "Sorn sails the Grey River.", type="character"))
+
+
+async def test_create_gets_duplicate_note_without_judge_change(store):
+    sorn(store)
+    judge = StubJudge(JudgeOutput(flags=[]))
+    res = await check_proposal(store, create("Captain Sorn Vey", "Vey sails the Grey River."), judge)
+    assert res.verdict == "none"
+    [f] = res.flags
+    assert (f.kind, f.severity, f.explanation) == ("note", "note", DUP)
+
+
+async def test_failed_check_keeps_the_duplicate_note(store):
+    sorn(store)
+    judge = StubJudge(RuntimeError("down"))
+    res = await check_proposal(store, create("Captain Sorn Vey", "Vey sails the Grey River."), judge)
+    assert res.verdict == "failed"
+    assert DUP in [f.explanation for f in res.flags]
+
+
+async def test_retrieval_failure_keeps_the_duplicate_note(store, monkeypatch):
+    sorn(store)
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("embeddings down")
+
+    monkeypatch.setattr(store, "search", boom)
+    res = await check_proposal(store, create("Captain Sorn Vey", "Vey."), StubJudge())
+    assert res.verdict == "failed" and DUP in [f.explanation for f in res.flags]
+
+
+async def test_duplicate_note_with_no_related_entries(store, monkeypatch):
+    sorn(store)
+    monkeypatch.setattr("sagaloom.check.contradiction._related_entries", lambda *a: [])
+    res = await check_proposal(store, create("Captain Sorn Vey", "Vey."), StubJudge())
+    assert res.verdict == "none" and [f.explanation for f in res.flags] == [DUP]
+
+
+async def test_update_gets_no_duplicate_note(store):
+    other = sorn(store)
+    vey = store.upsert_entry(mk("ent_0002", "Captain Sorn Vey", "Vey.", type="character"))
+    res = await check_proposal(store, update(vey, "Vey, again."), StubJudge(JudgeOutput(flags=[])))
+    assert other.id not in [f.entry_id for f in res.flags]

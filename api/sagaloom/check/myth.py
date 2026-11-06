@@ -1,5 +1,40 @@
-from sagaloom.models import CheckResult, EntryDraft, Fact, Proposal
+from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Proposal
 from sagaloom.store.canon import norm
+
+_ESTABLISHED = ("canon", "secret")
+
+
+def _renamed(before: Entry | None, result: CheckResult):
+    """A test for a proposed fact under a key `before` does not have: does a flag point at it?
+    Either a conflict/retcon flag quotes it, or the change removed a key and this fact carries
+    a value that key never held (the old value moved under a new name stays canon)."""
+    if before is None:
+        return lambda f: False
+    keys = {norm(f.key) for f in before.facts}
+    quoted = {
+        norm(f.new_fact)
+        for f in result.flags
+        if f.kind in ("conflict", "retcon") and f.new_fact is not None
+    }
+    stored: dict[str, set[str]] = {}
+    for s in before.facts:
+        if s.status in _ESTABLISHED:
+            stored.setdefault(norm(s.key), set()).add(norm(s.value))
+    removed = [
+        stored.get(norm(f.fact_key), set())
+        for f in result.flags
+        if f.kind == "retcon" and f.new_fact is None and f.fact_key
+    ]
+
+    def flagged(f: Fact) -> bool:
+        if norm(f.key) in keys:
+            return False
+        value = norm(f.value)
+        if value in quoted or norm(f"{f.key}: {f.value}") in quoted:
+            return True
+        return any(value not in held for held in removed)
+
+    return flagged
 
 
 def apply_save_as_myth(
@@ -13,6 +48,7 @@ def apply_save_as_myth(
         for f in result.flags
         if f.kind in ("conflict", "retcon") and f.fact_key
     }
+    renamed = _renamed(before, result)
     kept: dict[str, list[Fact]] = {}
     if before is not None:
         for f in before.facts:
@@ -29,6 +65,9 @@ def apply_save_as_myth(
 
     for f in proposal.after.facts:
         key = norm(f.key)
+        if renamed(f):
+            facts.append(f.model_copy(update={"status": "myth", "told_by": told_by}, deep=True))
+            continue
         if key not in flagged:
             facts.append(f.model_copy(deep=True))
             continue

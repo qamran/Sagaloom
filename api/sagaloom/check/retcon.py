@@ -12,32 +12,43 @@ def _group(facts: list[Fact]) -> dict[str, list[Fact]]:
     return out
 
 
+def _flag(before: Entry, fact: Fact, new_fact: str | None, explanation: str, secret: bool) -> Flag:
+    return Flag(
+        kind="retcon",
+        entry_id=before.id,
+        title=before.title,
+        fact_key=fact.key,
+        existing_fact=fact.value,
+        new_fact=new_fact,
+        severity=None,
+        explanation=explanation,
+        existing_secret=before.status == "secret" or secret,
+    )
+
+
 def detect_retcons(before: Entry, after: EntryDraft) -> list[Flag]:
+    """One flag per stored established fact the change drops, so a flag never mixes a secret
+    value with a canon one; a key that only gains values gets one flag."""
     old, new = _group(before.facts), _group(after.facts)
     flags: list[Flag] = []
     for key, old_facts in old.items():
         new_facts = new.get(key, [])
-        if {norm(f.value) for f in old_facts} == {norm(f.value) for f in new_facts}:
+        old_values = {norm(f.value) for f in old_facts}
+        new_values = {norm(f.value) for f in new_facts}
+        if old_values == new_values:
             continue
-        existing = ", ".join(f.value for f in old_facts)
-        proposed = ", ".join(f.value for f in new_facts) if new_facts else None
-        explanation = (
-            f"Removes established canon: {existing}"
-            if proposed is None
-            else f"Changes established canon: {existing} → {proposed}"
-        )
-        flags.append(
-            Flag(
-                kind="retcon",
-                entry_id=before.id,
-                title=before.title,
-                fact_key=old_facts[0].key,
-                existing_fact=existing,
-                new_fact=proposed,
-                severity=None,
-                explanation=explanation,
-                existing_secret=before.status == "secret"
-                or any(f.status == "secret" for f in old_facts),
+        added = ", ".join(f.value for f in new_facts if norm(f.value) not in old_values) or None
+        dropped = [f for f in old_facts if norm(f.value) not in new_values]
+        for f in dropped:
+            explanation = (
+                f"Removes established canon: {f.value}"
+                if added is None
+                else f"Changes established canon: {f.value} → {added}"
             )
-        )
+            flags.append(_flag(before, f, added, explanation, f.status == "secret"))
+        if not dropped:
+            secret = any(f.status == "secret" for f in old_facts)
+            flags.append(
+                _flag(before, old_facts[0], added, f"Adds to established canon: {added}", secret)
+            )
     return flags

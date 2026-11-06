@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
+from sagaloom.check.badge import with_badges, worst_badge
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
 from sagaloom.graph.prompts import SYSTEM
@@ -88,7 +89,23 @@ def message_dict(m: BaseMessage) -> dict:
 
 
 def _pending(state) -> dict | None:
-    return dict(state.interrupts[0].value) if state.interrupts else None
+    """The pending interrupt, each check with its badge (derived here, so a checkpoint written
+    before badges existed still shows them)."""
+    return with_badges(dict(state.interrupts[0].value)) if state.interrupts else None
+
+
+TITLE_CHARS = 80
+
+
+def _thread_title(title: str | None, messages: list) -> str | None:
+    """The registry title, else the author's first message on one line, cut to TITLE_CHARS."""
+    if title:
+        return title
+    first = next((m for m in messages if isinstance(m, HumanMessage) and not m.name), None)
+    if first is None:
+        return None
+    text = " ".join(message_text(first.content).split())
+    return text if len(text) <= TITLE_CHARS else text[: TITLE_CHARS - 1] + "…"
 
 
 def _turn_config(
@@ -241,16 +258,30 @@ def create_thread(body: NewThread, request: Request) -> dict:
 
 
 @router.get("/threads")
-async def list_threads(request: Request, pending: bool = False) -> list[dict]:
+async def list_threads(
+    request: Request, pending: bool = False, world_id: str | None = None
+) -> list[dict]:
+    """Newest first; `badge` is the worst badge among the pending checks."""
     d = _deps(request)
     out = []
-    for t in d.threads.list():
+    for t in reversed(d.threads.list(world_id)):
         state = await d.graph.aget_state({"configurable": {"thread_id": t.thread_id}})
         interrupt = _pending(state)
         count = len(interrupt["proposals"]) if interrupt else 0
         if pending and not count:
             continue
-        out.append({"thread_id": t.thread_id, "world_id": t.world_id, "pending": count})
+        checks = interrupt["checks"].values() if interrupt else []
+        out.append(
+            {
+                "thread_id": t.thread_id,
+                "world_id": t.world_id,
+                "pending": count,
+                "created_at": t.created_at,
+                "kind": "chat",
+                "title": _thread_title(t.title, (state.values or {}).get("messages") or []),
+                "badge": worst_badge(c["badge"] for c in checks),
+            }
+        )
     return out
 
 

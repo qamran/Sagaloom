@@ -39,3 +39,64 @@ def test_save_as_myth_on_create_marks_myth_only():
     out = apply_save_as_myth(prop("create", None), RESULT, "ent_0009")
     assert out.body == "New body."
     assert [(f.value, f.status) for f in out.facts] == [("Three", "myth"), ("Low", "canon")]
+
+
+MOONS = Entry(
+    id="ent_0007", world_id="w1", title="Sky of Velmar", type="place", body="One moon.",
+    facts=[Fact(key="Moons", value="One (Ister)")],
+)
+
+
+def renamed(after_facts, flags):
+    p = Proposal(
+        proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=MOONS,
+        after=EntryDraft(title="Sky of Velmar", type="place", body="Three moons.", facts=after_facts),
+    )
+    return apply_save_as_myth(p, CheckResult(proposal_id="p1", verdict="none", flags=flags), "Old sailors")
+
+
+def test_save_as_myth_renamed_key():
+    removed = Flag(
+        kind="retcon", entry_id="ent_0007", title="Sky of Velmar", fact_key="Moons",
+        existing_fact="One (Ister)", new_fact=None, explanation="Removes established canon: One (Ister)",
+    )
+    out = renamed([Fact(key="Number of moons", value="Three")], [removed])
+    assert [(f.key, f.value, f.status, f.told_by) for f in out.facts] == [
+        ("Number of moons", "Three", "myth", "Old sailors"),
+        ("Moons", "One (Ister)", "canon", None),
+    ]
+
+
+def test_save_as_myth_renamed_key_by_conflict_new_fact():
+    clash = Flag(
+        kind="conflict", entry_id="ent_0012", title="Ister", fact_key=None,
+        new_fact="Number of moons: Three", severity="hard", explanation="One moon only.",
+    )
+    out = renamed(
+        [Fact(key="Moons", value="One (Ister)"), Fact(key="Number of moons", value="Three")], [clash]
+    )
+    assert [(f.key, f.status) for f in out.facts] == [("Moons", "canon"), ("Number of moons", "myth")]
+
+
+def test_save_as_myth_new_unrelated_key_stays_canon():
+    clash = Flag(
+        kind="conflict", entry_id="ent_0012", title="Ister", fact_key=None,
+        new_fact="Number of moons: Three", severity="hard", explanation="One moon only.",
+    )
+    out = renamed(
+        [Fact(key="Moons", value="One (Ister)"), Fact(key="Number of moons", value="Three"),
+         Fact(key="Weather", value="Evening sea fog")],
+        [clash],
+    )
+    assert [(f.key, f.status) for f in out.facts] == [
+        ("Moons", "canon"), ("Number of moons", "myth"), ("Weather", "canon"),
+    ]
+
+
+def test_save_as_myth_renamed_key_keeps_a_moved_stored_value_canon():
+    removed = Flag(
+        kind="retcon", entry_id="ent_0007", title="Sky of Velmar", fact_key="Moons",
+        existing_fact="One (Ister)", new_fact=None, explanation="Removes established canon: One (Ister)",
+    )
+    out = renamed([Fact(key="Night sky", value="One (Ister)")], [removed])
+    assert [(f.key, f.status) for f in out.facts] == [("Night sky", "canon"), ("Moons", "canon")]

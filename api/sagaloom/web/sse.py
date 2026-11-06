@@ -19,6 +19,7 @@ from langgraph.errors import GraphRecursionError
 from sse_starlette import EventSourceResponse
 from starlette.background import BackgroundTask
 
+from sagaloom.check.badge import with_badges
 from sagaloom.models import Usage
 from sagaloom.text import message_text
 
@@ -142,7 +143,7 @@ async def run_turn_events(
                 for node, upd in payload.items():
                     if node == "__interrupt__":
                         for it in upd:
-                            yield _ev("interrupt", dict(it.value))
+                            yield _ev("interrupt", with_badges(dict(it.value)))
                         continue
                     for ev in _update_events(node, upd):
                         yield ev

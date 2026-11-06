@@ -390,3 +390,47 @@ async def test_check_contradiction_never_echoes_secret_flag_text(store, monkeypa
     out = await ts["check_contradiction"].ainvoke({"proposed_text": "x", "world_id": W})
     assert SECRET not in out
     assert "a secret fact of ent_0001 disagrees" in out
+
+
+def _pending_update(pid="p_old", entry_id="ent_0001"):
+    from sagaloom.models import EntryDraft, Proposal
+
+    return Proposal(
+        proposal_id=pid, action="update", world_id=W, entry_id=entry_id, before=None,
+        after=EntryDraft(title="Velmar", type="place", body="Earlier wording."),
+    )
+
+
+async def test_update_of_an_entry_already_pending_invalidates_its_check(store):
+    store.upsert_entry(entry())
+    store.upsert_entry(entry(id="ent_0002", title="Ostra"))
+    ts, *_ = tools_for(store)
+    for action in ("update", "delete"):
+        cmd = await call(
+            ts["create_or_update_entry"],
+            {"action": action, "entry_id": "ent_0001", "body": "Later wording.", "world_id": W,
+             "messages": [], "pending": [_pending_update(), _pending_update("p_other", "ent_0002")]},
+        )
+        assert cmd.update["check_results"] == {"p_old": None}
+
+
+async def test_proposal_for_a_new_entry_leaves_checks_alone(store):
+    store.upsert_entry(entry())
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "body": "Later.", "world_id": W,
+         "messages": [], "pending": [_pending_update("p_other", "ent_0009")]},
+    )
+    assert "check_results" not in cmd.update
+    assert "pending" not in ts["create_or_update_entry"].tool_call_schema.model_json_schema()["properties"]
+
+
+async def test_create_never_invalidates_a_pending_check(store):
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W,
+         "messages": [], "pending": [_pending_update("p_new", None)]},
+    )
+    assert "check_results" not in cmd.update
