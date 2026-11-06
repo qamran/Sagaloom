@@ -91,7 +91,8 @@ test("M1 exit demo", async ({ page }) => {
     await turns.selectOption({ index: i });
     if (await judge.waitFor({ timeout: 5_000 }).then(() => true, () => false)) break;
   }
-  await judge.click();
+  // The turn's first call card starts expanded: click only a collapsed one, or the click would close it.
+  if ((await judge.getAttribute("aria-expanded")) !== "true") await judge.click();
   const request = drawer.getByRole("region", { name: "Request" }).last(); // the judge call, opened after the agent call
   await expect(request).toContainText("untrusted_data");
   await expect(request.getByTestId("untrusted").filter({ hasText: "Ister" }).first()).toBeVisible();
@@ -352,9 +353,11 @@ test("M1 exit demo", async ({ page }) => {
   const seats = factRows.filter({ has: page.getByRole("cell", { name: "Seats", exact: true }) });
   await expect(seats).toHaveCount(1);
   await expect(seats.getByRole("cell").last()).toHaveText(/^(Conflict|Changed \(retcon\))$/);
+  // The agent must have changed only Seats: no other row reads New, Removed or a change. A judge flag on an
+  // unchanged row (Conflict, Possible conflict, Note) is legitimate, e.g. "Meets at" against the Ashen Choir's.
   const others = factRows.filter({ hasNot: page.getByRole("cell", { name: "Seats", exact: true }) });
   for (const result of await others.evaluateAll((rows) => rows.map((r) => r.lastElementChild?.textContent ?? ""))) {
-    expect(result).toBe("Matches");
+    expect(["New", "Removed", "Changed", "Changed (retcon)"], `another fact row changed: ${result}`).not.toContain(result);
   }
 
   // 25. Approve Mira Hale (in bulk when it has no issues), reject the council change, submit both.
