@@ -22,15 +22,17 @@ export default function ImportPage() {
           {run.error}
         </p>
       )}
-      {running ? (
+      {running && (
         <ImportProgress phase={run.phase} candidates={run.candidates} skipped={run.skipped} events={run.events} />
-      ) : (
+      )}
+      {/* Hidden, not unmounted, while running: a failed import keeps the pasted text and the chosen file. */}
+      <div hidden={running}>
         <div className="flex flex-wrap items-stretch gap-4">
           <ImportSourceCard kind="paste" disabled={!world} onExtract={start} />
           <ImportSourceCard kind="upload" disabled={!world} onExtract={start} />
           <ImportSourceCard kind="wiki" />
         </div>
-      )}
+      </div>
       <RecentImports />
     </main>
   );

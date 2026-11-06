@@ -6,6 +6,9 @@ import { getImports } from "@/lib/api";
 import { ago } from "@/lib/time";
 import { useWorld } from "@/lib/world";
 
+const ROW =
+  "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] border border-border bg-panel-2 px-3.5 py-2.5 text-foreground";
+
 /** Past imports in the active world, newest first, each linking to its Review page. */
 export function RecentImports() {
   const { world } = useWorld();
@@ -26,20 +29,32 @@ export function RecentImports() {
       {data?.length === 0 && <p className="m-0 text-muted-foreground">No imports yet.</p>}
       {data && data.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {data.map((t) => (
-            <li key={t.thread_id}>
-              <Link
-                href={`/review/${encodeURIComponent(t.thread_id)}`}
-                className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] border border-border bg-panel-2 px-3.5 py-2.5 text-foreground no-underline hover:bg-panel-3 hover:no-underline"
-              >
+          {data.map((t) => {
+            const content = (
+              <>
                 <span className="text-sm font-semibold">{t.title ?? "Untitled import"}</span>
                 <span className="text-xs text-muted-foreground">{ago(t.created_at)}</span>
                 <span className="text-xs text-muted-foreground sm:ml-auto">
                   {t.running ? "Importing…" : `${t.pending} pending · ${t.approved} approved · ${t.rejected} rejected`}
                 </span>
-              </Link>
-            </li>
-          ))}
+              </>
+            );
+            return (
+              <li key={t.thread_id}>
+                {/* Still extracting: nothing to review yet, so not a link; the import page opens it on done. */}
+                {t.running ? (
+                  <div className={ROW}>{content}</div>
+                ) : (
+                  <Link
+                    href={`/review/${encodeURIComponent(t.thread_id)}`}
+                    className={`${ROW} no-underline hover:bg-panel-3 hover:no-underline`}
+                  >
+                    {content}
+                  </Link>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

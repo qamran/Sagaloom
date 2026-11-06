@@ -23,7 +23,7 @@ The Wave 4 step adds a new character, Mira Hale (Captain Sorn is already committ
 question instead of proposing, the step fails and prints the agent's reply.
 
 The Wave 5 step pastes three paragraphs (Brother Aldo, the Gull Market, and the three moons over the harbour) on the
-Import page and clicks **Extract** in the Paste text card. The extractor's output varies, so the step asserts outcomes,
+Import page and clicks **Extract entries** in the Paste text card. The extractor's output varies, so the step asserts outcomes,
 not exact titles: at least two cards, each with a `From paste:` line; one sky card (an update of Sky of Velmar or a
 new entry) flagged against Sky of Velmar (`ent_0007`) or Ister (`ent_0012`). The extractor names that card as it
 likes ("Sky of Velmar", but also "Festival night" or "Velmar"), so the step prefers a sky title and otherwise takes a

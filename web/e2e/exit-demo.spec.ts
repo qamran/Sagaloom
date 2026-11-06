@@ -390,7 +390,7 @@ test("M1 exit demo", async ({ page }) => {
   await expect(page).toHaveURL(/\/import$/);
   const paste = page.locator('section[aria-label="Paste text"]');
   await paste.getByLabel("Text to import").fill(NOTES);
-  await paste.getByRole("button", { name: "Extract", exact: true }).click();
+  await paste.getByRole("button", { name: "Extract entries" }).click();
   await expect(page).toHaveURL(/\/review\/[^/]+$/, { timeout: 120_000 });
 
   // 28. At least two cards, each with its "From paste:" provenance line (shown above the selected card).

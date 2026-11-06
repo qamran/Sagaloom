@@ -93,7 +93,10 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
   if (!s.loaded) return page(<p className="m-0 text-muted-foreground">Loading…</p>);
 
   const otherWorld = !!s.worldId && !!world && s.worldId !== world.id;
-  if (otherWorld || (!shown && notesBefore === null)) {
+  // A decided import has only this page for its outcome (no Open in Chat), so its notes show even
+  // when nothing was submitted in this session (F7).
+  const decided = isImport && s.messages.some((m) => m.role === "review");
+  if (otherWorld || (!shown && notesBefore === null && !decided)) {
     return page(
       <>
         <p className="m-0 text-[17px] text-[#c9c6bd]">{isImport && !otherWorld ? NOTHING_IMPORTED : NOTHING_WAITING}</p>

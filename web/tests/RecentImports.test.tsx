@@ -37,6 +37,9 @@ describe("RecentImports", () => {
     renderIt();
     expect(await screen.findByText("Importing…")).toBeInTheDocument();
     expect(screen.queryByText(/pending/)).toBeNull();
+    // Still extracting: there is nothing to review yet, so the row is not a link.
+    expect(screen.getByText("notes.md")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("falls back to Untitled import", async () => {

@@ -59,7 +59,7 @@ function Paste({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) {
         </p>
       )}
       <button type="button" disabled={disabled || blank || over} onClick={() => onExtract?.({ text })} className={BTN}>
-        Extract
+        Extract entries
       </button>
     </section>
   );
@@ -100,6 +100,7 @@ function Upload({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) 
       <input
         id={id}
         type="file"
+        accept=".md,.txt"
         onChange={(e) => void pick(e.target.files?.[0])}
         className="min-h-11 text-sm"
       />
@@ -114,7 +115,7 @@ function Upload({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) 
         </p>
       )}
       <button type="button" disabled={disabled || !staged} onClick={() => staged && onExtract?.(staged)} className={BTN}>
-        Extract
+        Extract entries
       </button>
     </section>
   );

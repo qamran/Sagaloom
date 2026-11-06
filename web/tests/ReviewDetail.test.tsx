@@ -297,6 +297,26 @@ describe("ReviewDetail for an import thread", () => {
     expect(screen.getByRole("link", { name: "Back to Review" })).toBeInTheDocument();
   });
 
+  it("shows a decided import's notes when opened later, with no submit in this session", () => {
+    stream = importStream({
+      pending: null,
+      messages: [
+        { role: "import", content: "Imported text: 2 proposals for review, 1 not imported." },
+        { role: "review", content: "Tide Council committed as ent_0020." },
+        { role: "review", content: "Sky of Velmar rejected." },
+      ],
+    });
+    render(ui());
+    expect(screen.queryByText("Nothing from this import needs review.")).toBeNull();
+    const notes = screen.getByRole("list", { name: "Decision notes" });
+    expect(within(notes).getByText("Tide Council committed as ent_0020.")).toBeInTheDocument();
+    expect(within(notes).getByText("Sky of Velmar rejected.")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Not imported" })).getByText("Old Mill")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Review" })).toHaveAttribute("href", "/review");
+    expect(screen.getByRole("link", { name: "Back to Import" })).toHaveAttribute("href", "/import");
+    expect(screen.queryByRole("link", { name: "Open in Chat" })).toBeNull();
+  });
+
   it("says nothing needs review when the import has no proposals, and lists what was left out", () => {
     stream = importStream({ pending: null });
     render(ui());
