@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { badgeOf, existingSecretOf, proposalSummary } from "@/lib/review";
+import { badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
 import type { CheckResult, Entry, Flag, Proposal } from "@/lib/types";
 
 const flag = (over: Partial<Flag>): Flag => ({
@@ -106,5 +106,29 @@ describe("existingSecretOf", () => {
     expect(existingSecretOf(create, [])(flag({ existing_secret: true }))).toBe(true);
     expect(existingSecretOf(create, [entry("secret")])(cited)).toBe(true);
     expect(existingSecretOf(create, [entry("canon")])(cited)).toBe(false);
+  });
+});
+
+describe("proseSecretOf", () => {
+  const dup = flag({ kind: "note", entry_id: "ent_0012", fact_key: null, explanation: "Possible duplicate of ent_0012 'The Salt Guild'" });
+  const entryWithSecretFact = {
+    id: "ent_0012", status: "canon",
+    facts: [{ key: "Members", value: "x", refs: [], status: "secret", told_by: null }],
+  } as unknown as Entry;
+
+  it("hides a keyless note about a non-secret entry that holds a secret fact", () => {
+    const secret = proseSecretOf(create, [entryWithSecretFact]);
+    expect(proposalSummary(create, check([dup]), existingSecretOf(create, [entryWithSecretFact]), secret)).toBe(
+      "Possible duplicate of ent_0012",
+    );
+  });
+
+  it("hides it when the draft holds a secret fact", () => {
+    const draft: Proposal = {
+      ...create,
+      after: { ...create.after!, facts: [{ key: "k", value: "v", refs: [], status: "secret", told_by: null }] },
+    };
+    expect(proseSecretOf(draft, [])(dup)).toBe(true);
+    expect(proseSecretOf(create, [])(dup)).toBe(false);
   });
 });

@@ -167,6 +167,8 @@ function ReviewCount() {
     <>
       {" "}
       <span className="ml-1 rounded-full bg-background px-1.5 text-[11px] font-semibold text-conflict">{count}</span>
+      {" "}
+      <span className="sr-only">pending</span>
     </>
   );
 }

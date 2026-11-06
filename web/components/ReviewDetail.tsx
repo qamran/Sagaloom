@@ -8,7 +8,7 @@ import { ReviewQueue } from "@/components/ReviewQueue";
 import { getEntries } from "@/lib/api";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
-import type { Decision, PendingInterrupt } from "@/lib/types";
+import type { CheckResult, Decision, PendingInterrupt } from "@/lib/types";
 
 const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
@@ -37,7 +37,17 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
   }
 
   const busy = s.status === "streaming" || s.status === "reconnecting";
-  const shown = s.pending ?? (busy ? held?.pending : null) ?? null;
+  const live = s.pending ?? (busy ? held?.pending : null) ?? null;
+  // A proposal the server sent without a check counts as a failed one, so it still gets a row and a decision.
+  const shown: PendingInterrupt | null = live && {
+    ...live,
+    checks: Object.fromEntries(
+      live.proposals.map((p): [string, CheckResult] => [
+        p.proposal_id,
+        live.checks[p.proposal_id] ?? { proposal_id: p.proposal_id, verdict: "failed", flags: [], dependents: [], badge: "failed" },
+      ]),
+    ),
+  };
   const chosen = s.pending ? s.chosen : (held?.chosen ?? {});
   const worldId = shown?.proposals[0]?.world_id ?? world?.id;
   const { data: canon } = useQuery({
@@ -100,7 +110,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
     );
   }
 
-  const proposals = shown.proposals.filter((p) => shown.checks[p.proposal_id]);
+  const proposals = shown.proposals;
   const current = proposals.find((p) => p.proposal_id === selected) ?? proposals[0];
   const n = proposals.length;
   const clean = proposals.filter((p) => {

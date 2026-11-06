@@ -78,7 +78,13 @@ const DUPLICATE = "Possible duplicate of ";
  * One line about a proposal for a list: its first conflicting, else retconned, fact; else a
  * duplicate note; else what a delete touches. `secret` says a flag's existing side is masked.
  */
-export function proposalSummary(p: Proposal, c: CheckResult, secret: (f: Flag) => boolean): string {
+export function proposalSummary(
+  p: Proposal,
+  c: CheckResult,
+  secret: (f: Flag) => boolean,
+  /** Masks a keyless flag's prose, like the card; defaults to `secret`. */
+  proseSecret: (f: Flag) => boolean = secret,
+): string {
   const keyed = (kind: Flag["kind"]) => c.flags.find((f) => f.kind === kind && f.fact_key);
   const flag = keyed("conflict") ?? keyed("retcon");
   if (flag?.fact_key) {
@@ -93,12 +99,20 @@ export function proposalSummary(p: Proposal, c: CheckResult, secret: (f: Flag) =
   }
   const dup = c.flags.find((f) => f.kind === "note" && !f.fact_key && f.explanation.startsWith(DUPLICATE));
   // The explanation names the other entry's title: a secret entry is cited by ID only.
-  if (dup) return secret(dup) ? `${DUPLICATE}${dup.entry_id}` : dup.explanation;
+  if (dup) return proseSecret(dup) ? `${DUPLICATE}${dup.entry_id}` : dup.explanation;
   if (p.action === "delete") {
     const n = c.dependents.length;
     return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
   }
   return "No conflicts found";
+}
+
+function secretIndex(proposal: Proposal, canon: Entry[] | undefined) {
+  const byId = new Map<string, Pick<Entry, "status" | "facts">>();
+  for (const e of canon ?? []) byId.set(e.id, e);
+  if (proposal.before) byId.set(proposal.before.id, proposal.before);
+  const unknown = (id: string) => !!id && id !== proposal.entry_id && canon === undefined;
+  return { byId, unknown };
 }
 
 /**
@@ -107,9 +121,33 @@ export function proposalSummary(p: Proposal, c: CheckResult, secret: (f: Flag) =
  * loaded, any flag citing another entry counts as secret (R12.12).
  */
 export function existingSecretOf(proposal: Proposal, canon: Entry[] | undefined): (f: Flag) => boolean {
-  const byId = new Map<string, Pick<Entry, "status" | "facts">>();
-  for (const e of canon ?? []) byId.set(e.id, e);
-  if (proposal.before) byId.set(proposal.before.id, proposal.before);
-  const unknown = (id: string) => !!id && id !== proposal.entry_id && canon === undefined;
+  const { byId, unknown } = secretIndex(proposal, canon);
   return (f) => f.existing_secret || unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
+}
+
+/**
+ * Whether a flag's text about the existing side (a quote, or the prose of a keyless flag) is
+ * secret. A quote can come from a secret fact's text, so a keyless flag is masked when its entry
+ * holds any secret.
+ */
+export function textSecretOf(proposal: Proposal, canon: Entry[] | undefined): (f: Flag) => boolean {
+  const { byId, unknown } = secretIndex(proposal, canon);
+  const existing = existingSecretOf(proposal, canon);
+  return (f) => {
+    if (f.fact_key) return existing(f);
+    if (f.existing_secret || unknown(f.entry_id)) return true;
+    const e = byId.get(f.entry_id);
+    return !!e && (e.status === "secret" || e.facts.some((x) => x.status === "secret"));
+  };
+}
+
+/** True when the draft side is a secret entry or holds any secret fact. */
+export const draftHoldsSecret = (p: Proposal) =>
+  !!p.after && (p.after.status === "secret" || p.after.facts.some((x) => x.status === "secret"));
+
+/** Prose about a flag (explanation, suggested fix) can quote either side. */
+export function proseSecretOf(proposal: Proposal, canon: Entry[] | undefined): (f: Flag) => boolean {
+  const text = textSecretOf(proposal, canon);
+  const draft = draftHoldsSecret(proposal);
+  return (f) => text(f) || draft;
 }

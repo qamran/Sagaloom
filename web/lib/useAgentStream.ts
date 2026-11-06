@@ -326,9 +326,17 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
         if (ended === null) {
           await reconnect();
         } else if (ended === "done") {
-          setStatus("idle");
-          // Commit review notes are not streamed; re-read them after a decision.
-          if (kind === "decision") await restore().catch(() => undefined);
+          // Commit review notes are not streamed; re-read them after a decision, and stay
+          // "streaming" until they land so a page never shows a finished turn without them.
+          if (kind === "decision") {
+            await restore().then(
+              () => setStatus("idle"),
+              () => {
+                setStatus("error");
+                setError(LOST);
+              },
+            );
+          } else setStatus("idle");
         } else {
           await restore().catch(() => undefined);
         }

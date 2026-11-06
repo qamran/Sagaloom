@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewDetail } from "@/components/ReviewDetail";
 import type { AgentStream } from "@/lib/useAgentStream";
-import type { CheckResult, Decision, Flag, PendingInterrupt, Proposal } from "@/lib/types";
+import { getEntries } from "@/lib/api";
+import type { CheckResult, Entry, Decision, Flag, PendingInterrupt, Proposal } from "@/lib/types";
 
 vi.mock("@/lib/world", () => ({
   useWorld: () => ({ world: { id: "w1", name: "Velmar" }, isLoading: false, error: null }),
@@ -51,6 +52,7 @@ const ui = () => (
 );
 
 beforeEach(() => {
+  vi.mocked(getEntries).mockReset().mockResolvedValue([]);
   stream = base({ pending: two });
 });
 
@@ -115,6 +117,10 @@ describe("ReviewDetail", () => {
     const { unmount } = render(ui());
     expect(screen.getByRole("button", { name: "Submit 2 decisions" })).toBeDisabled();
     unmount();
+    stream = base({ pending: two, chosen: { p_a: { proposal_id: "p_a", action: "approve" } } });
+    const half = render(ui());
+    expect(screen.getByRole("button", { name: "Submit 2 decisions" })).toBeDisabled();
+    half.unmount();
     const chosen: Record<string, Decision> = {
       p_a: { proposal_id: "p_a", action: "approve" },
       p_b: { proposal_id: "p_b", action: "reject" },
@@ -187,5 +193,68 @@ describe("ReviewDetail", () => {
     render(ui());
     expect(screen.getByText("This conversation has nothing waiting for review.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reject all" })).toBeNull();
+  });
+
+  it("has exactly one main landmark", () => {
+    render(ui());
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+  });
+
+  it("shows the hook's error instead of an empty outcome when the re-read fails", async () => {
+    stream = base({
+      pending: pendingOf([proposal("p_a", "Tide Council"), clean("p_a")]),
+      chosen: { p_a: { proposal_id: "p_a", action: "approve" } },
+    });
+    const { rerender } = render(ui());
+    await userEvent.click(screen.getByRole("button", { name: "Submit 1 decision" }));
+    stream = base({ pending: null, status: "error", error: "Lost the connection and could not reload." });
+    rerender(ui());
+    expect(screen.getByRole("alert")).toHaveTextContent("could not reload");
+  });
+
+  it("gives a proposal without a check a Check failed row and still submits it", async () => {
+    const bare: PendingInterrupt = {
+      proposals: [proposal("p_a", "Tide Council"), proposal("p_x", "Unchecked")],
+      checks: { p_a: clean("p_a") },
+    };
+    const chosen: Record<string, Decision> = {
+      p_a: { proposal_id: "p_a", action: "approve" },
+      p_x: { proposal_id: "p_x", action: "reject" },
+    };
+    stream = base({ pending: bare, chosen });
+    render(ui());
+    const row = screen.getByRole("button", { name: /Unchecked/ });
+    expect(within(row).getByText("Check failed")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Submit 2 decisions" }));
+    expect(stream.decide).toHaveBeenCalledWith([chosen.p_a, chosen.p_x]);
+  });
+
+  it("masks a keyless duplicate note in the queue like the card does", async () => {
+    const dup = (entry: string, title: string): CheckResult => ({
+      proposal_id: "x", verdict: "none", badge: "note", dependents: [],
+      flags: [
+        {
+          ...conflictFlag, kind: "note", entry_id: entry, fact_key: null, existing_fact: null, new_fact: null,
+          severity: null, explanation: `Possible duplicate of ${entry} '${title}'`,
+        },
+      ],
+    });
+    const entry = (id: string, title: string, secret: boolean) =>
+      ({
+        id, title, type: "place", status: "canon",
+        facts: secret ? [{ key: "Members", value: "x", refs: [], status: "secret", told_by: null }] : [],
+      }) as unknown as Entry;
+    vi.mocked(getEntries).mockResolvedValue([entry("ent_0012", "Ister", true), entry("ent_0013", "Plain", false)]);
+    stream = base({
+      pending: pendingOf(
+        [proposal("p_s", "Hides"), { ...dup("ent_0012", "Ister"), proposal_id: "p_s" }],
+        [proposal("p_o", "Shows"), { ...dup("ent_0013", "Plain"), proposal_id: "p_o" }],
+      ),
+    });
+    render(ui());
+    // Once canon has loaded the plain entry's title shows; the one holding a secret fact stays hidden.
+    expect(await screen.findByText("Possible duplicate of ent_0013 'Plain'")).toBeInTheDocument();
+    expect(screen.getByText("Possible duplicate of ent_0012")).toBeInTheDocument();
+    expect(screen.queryByText(/'Ister'/)).toBeNull();
   });
 });

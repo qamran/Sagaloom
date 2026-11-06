@@ -445,6 +445,40 @@ describe("useAgentStream", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["review"] });
   });
 
+  it("stays streaming until the post-decision re-read lands", async () => {
+    getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_1") }));
+    const reread = deferred<ThreadState>();
+    getThreadMock.mockReturnValueOnce(reread.promise);
+    fetchMock.mockResolvedValue(streamResponse([sse("done", {})]));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.pending).not.toBeNull());
+    let done!: Promise<void>;
+    act(() => {
+      done = result.current.choose({ proposal_id: "p_1", action: "approve" });
+    });
+    await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(2));
+    expect(result.current.status).toBe("streaming");
+    await act(async () => {
+      reread.resolve(thread({ messages: [{ role: "review", content: "Done." }] }));
+      await done;
+    });
+    expect(result.current.status).toBe("idle");
+    expect(result.current.messages.at(-1)?.content).toBe("Done.");
+  });
+
+  it("reports an error when the post-decision re-read fails", async () => {
+    getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_1") }));
+    getThreadMock.mockRejectedValueOnce(new Error("down"));
+    fetchMock.mockResolvedValue(streamResponse([sse("done", {})]));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.pending).not.toBeNull());
+    await act(async () => {
+      await result.current.choose({ proposal_id: "p_1", action: "approve" });
+    });
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toMatch(/could not reload/);
+  });
+
   it("submits at once when there is a single proposal, and marks the myth step", async () => {
     getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_1") }));
     getThreadMock.mockResolvedValueOnce(

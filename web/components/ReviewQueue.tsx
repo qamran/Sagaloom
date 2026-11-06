@@ -1,5 +1,6 @@
+import { CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
 import { TYPE_DOT } from "@/lib/entity";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, existingSecretOf, proposalSummary } from "@/lib/review";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
 import type { Decision, Entry, PendingInterrupt, Proposal } from "@/lib/types";
 
 const ACTION_LABEL: Record<Proposal["action"], string> = { create: "New", update: "Update", delete: "Delete" };
@@ -51,7 +52,9 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
                 <span className="text-sm font-semibold">{draft?.title ?? "Untitled"}</span>
               </span>
               <span className="text-xs text-muted-foreground">
-                {proposalSummary(p, check, existingSecretOf(p, canon))}
+                {badge === "failed"
+                  ? CHECK_FAILED_TEXT
+                  : proposalSummary(p, check, existingSecretOf(p, canon), proseSecretOf(p, canon))}
               </span>
             </button>
           </li>

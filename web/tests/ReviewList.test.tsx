@@ -5,8 +5,9 @@ import { ReviewList } from "@/components/ReviewList";
 import { getReviewThreads } from "@/lib/api";
 import type { ThreadSummary } from "@/lib/types";
 
+let world: { id: string; name: string } | null = { id: "w1", name: "Velmar" };
 vi.mock("@/lib/world", () => ({
-  useWorld: () => ({ world: { id: "w1", name: "Velmar" }, isLoading: false, error: null }),
+  useWorld: () => ({ world, isLoading: false, error: null }),
 }));
 vi.mock("@/lib/api", () => ({ getReviewThreads: vi.fn() }));
 
@@ -21,7 +22,10 @@ const renderList = () =>
     </QueryClientProvider>,
   );
 
-beforeEach(() => vi.mocked(getReviewThreads).mockReset());
+beforeEach(() => {
+  world = { id: "w1", name: "Velmar" };
+  vi.mocked(getReviewThreads).mockReset();
+});
 
 describe("ReviewList", () => {
   it("renders a linked row per thread with its badge", async () => {
@@ -54,5 +58,19 @@ describe("ReviewList", () => {
     vi.mocked(getReviewThreads).mockResolvedValue([row({ title: null })]);
     renderList();
     expect(await screen.findByRole("link", { name: /Untitled chat/ })).toBeInTheDocument();
+  });
+
+  it("sits in a main landmark", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([]);
+    renderList();
+    expect(screen.getByRole("main")).toContainElement(screen.getByRole("heading", { level: 1, name: "Review" }));
+    await screen.findByText(/Nothing to review/);
+  });
+
+  it("says so when no world is selected, not that the API failed", () => {
+    world = null;
+    renderList();
+    expect(screen.getByText("No world selected.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

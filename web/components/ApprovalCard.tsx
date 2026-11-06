@@ -8,8 +8,8 @@ import { BodyDiff, LineDiff } from "@/components/DiffView";
 import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from "@/components/FactTable";
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, existingSecretOf, isSecretFact } from "@/lib/review";
-import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Flag, Proposal, Status } from "@/lib/types";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, draftHoldsSecret, existingSecretOf, isSecretFact, proseSecretOf, textSecretOf } from "@/lib/review";
+import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Proposal, Status } from "@/lib/types";
 
 export const CHECK_FAILED_TEXT =
   "The contradiction check couldn't run. Review this change yourself before approving.";
@@ -62,17 +62,10 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const citeSecret = (id: string) =>
     unknown(id) || (id !== proposal.entry_id && byId.get(id)?.status === "secret");
   const existingSecret = existingSecretOf(proposal, canon);
-  // A quote can come from a secret fact's text, so mask it if the entry holds any secret.
-  const quoteSecret = (id: string) => {
-    if (unknown(id)) return true;
-    const e = byId.get(id);
-    return !!e && (e.status === "secret" || e.facts.some((x) => x.status === "secret"));
-  };
-
   // The existing side of a flag, and the judge's free text about it (explanation, suggested
   // fix), may restate a secret: the server marks such flags (existing_secret), and the client
-  // heuristics above still apply on top.
-  const textSecret = (f: Flag) => (f.fact_key ? existingSecret(f) : f.existing_secret || quoteSecret(f.entry_id));
+  // heuristics in lib/review.ts still apply on top.
+  const textSecret = textSecretOf(proposal, canon);
 
   const badge = badgeOf(check);
   const failed = badge === "failed";
@@ -96,10 +89,8 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const before = proposal.action === "update" ? proposal.before : null;
   const after = proposal.after;
   const prose = shown.filter((f) => !f.fact_key);
-  // Prose about a flag can quote either side: the draft side counts as secret when the draft is a
-  // secret entry or holds any secret fact (the mirror of quoteSecret for the existing side).
-  const draftHoldsSecret = !!after && (after.status === "secret" || after.facts.some((x) => x.status === "secret"));
-  const proseSecret = (f: Flag) => textSecret(f) || draftHoldsSecret;
+  const proseSecret = proseSecretOf(proposal, canon);
+  const draftSecret = draftHoldsSecret(proposal);
   const ownSecret = (e: { status: Status } | null, f: Fact) => f.status === "secret" || e?.status === "secret";
   const secretOf: SecretOf = {
     canon: (f) => ownSecret(before, f),
@@ -184,7 +175,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
             {f.new_quote && (
               <blockquote className="m-0 border-l-2 border-conflict/60 pl-3 font-heading text-[15px]">
                 Proposed: “
-                <SecretValue value={f.new_quote} secret={draftHoldsSecret} />”
+                <SecretValue value={f.new_quote} secret={draftSecret} />”
               </blockquote>
             )}
             {f.suggested_fix && <FlagFix fix={f.suggested_fix} secret={proseSecret(f)} />}
