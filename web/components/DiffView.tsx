@@ -2,11 +2,15 @@
 
 import { diffWords } from "diff";
 import { useState } from "react";
+import { TYPE_LABEL } from "@/lib/entity";
+import type { LineField } from "@/lib/factRows";
+import type { EntryType } from "@/lib/types";
 
-const FIELD_LABEL = { title: "Title", type: "Type", status: "Status" } as const;
+const FIELD_LABEL: Record<LineField, string> = { title: "Title", type: "Type", status: "Status", aliases: "Aliases" };
+const display = (field: LineField, v: string) => (field === "type" ? (TYPE_LABEL[v as EntryType] ?? v) : v);
 
 /** Changed one-line fields: old struck through, new highlighted. */
-export function LineDiff({ changes }: { changes: { field: keyof typeof FIELD_LABEL; old: string; new: string }[] }) {
+export function LineDiff({ changes }: { changes: { field: LineField; old: string; new: string }[] }) {
   if (changes.length === 0) return null;
   return (
     <dl className="m-0 flex flex-col gap-1.5 text-sm">
@@ -14,11 +18,11 @@ export function LineDiff({ changes }: { changes: { field: keyof typeof FIELD_LAB
         <div key={c.field} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <dt className="text-[11px] uppercase tracking-[0.9px] text-muted-foreground">{FIELD_LABEL[c.field]}</dt>
           <dd className="m-0 flex flex-wrap items-baseline gap-2">
-            <span className="line-through text-muted-foreground">{c.old}</span>
+            <span className="line-through text-muted-foreground">{display(c.field, c.old)}</span>
             <span aria-hidden="true" className="text-muted-foreground">
               →
             </span>
-            <span className="rounded px-1 text-foreground bg-accent/15">{c.new}</span>
+            <span className="rounded px-1 text-foreground bg-accent/15">{display(c.field, c.new)}</span>
           </dd>
         </div>
       ))}
@@ -53,10 +57,12 @@ export function BodyDiff({ before, after, secret }: { before: string; after: str
           {diffWords(before, after).map((part, i) =>
             part.added ? (
               <ins key={i} className="rounded bg-accent/15 text-foreground no-underline">
+                <span className="sr-only">added: </span>
                 {part.value}
               </ins>
             ) : part.removed ? (
               <del key={i} className="text-muted-foreground">
+                <span className="sr-only">removed: </span>
                 {part.value}
               </del>
             ) : (

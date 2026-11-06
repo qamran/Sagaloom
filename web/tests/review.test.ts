@@ -54,7 +54,10 @@ describe("proposalSummary", () => {
     expect(proposalSummary(create, check([dup]), () => true)).toBe("Possible duplicate of ent_0002");
     const del: Proposal = { ...create, action: "delete", after: null };
     const refs = [{ id: "ent_0003", title: "Mayor", type: "character" as const }];
-    expect(proposalSummary(del, check([], { dependents: refs }), open)).toBe("Deletes this entry · 1 entries mention it");
+    expect(proposalSummary(del, check([], { dependents: refs }), open)).toBe("Deletes this entry · 1 entry mentions it");
+    expect(proposalSummary(del, check([], { dependents: [...refs, ...refs] }), open)).toBe(
+      "Deletes this entry · 2 entries mention it",
+    );
     expect(proposalSummary(create, check([]), open)).toBe("No conflicts found");
   });
 });

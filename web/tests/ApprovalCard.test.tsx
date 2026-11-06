@@ -58,6 +58,12 @@ const check = (verdict: CheckResult["verdict"], flags: Flag[]): CheckResult => (
   proposal_id: "p_1", verdict, flags, dependents: [],
 });
 
+/** The cell of `table` in the row whose Fact is `key`; column 1 is In canon, 2 Proposed. */
+const cellOf = (table: HTMLElement, key: string, col: number) => {
+  const row = within(table).getAllByRole("row").find((r) => within(r).queryByText(key)) as HTMLElement;
+  return within(row).getAllByRole("cell")[col];
+};
+
 // A loaded, non-secret Ister: cited values may be shown.
 const ister = {
   ...before, id: "ent_0012", title: "Ister", type: "place", facts: [fact("Moons", "One")],
@@ -230,9 +236,9 @@ describe("ApprovalCard", () => {
     );
     const table = screen.getByRole("table");
     expect(within(table).queryByText(/^One/)).toBeNull();
-    // The first Show is the cited value's; the flag's explanation under the row has its own.
-    await userEvent.click(within(table).getAllByRole("button", { name: /show secret fact/i })[0]);
-    expect(within(table).getByText(/^One/)).toBeInTheDocument();
+    const inCanon = cellOf(table, "Moons", 1);
+    await userEvent.click(within(inCanon).getByRole("button", { name: /show secret fact/i }));
+    expect(within(inCanon).getByText(/^One/)).toBeInTheDocument();
   });
 
   it("uses real buttons at least 44px tall", () => {
@@ -251,9 +257,9 @@ describe("ApprovalCard", () => {
     expect(screen.getAllByText("hidden secret").length).toBeGreaterThanOrEqual(3);
     // IDs are still cited (R4.3), and Show reveals the value.
     expect(within(table).getByText("ent_0012")).toBeInTheDocument();
-    // The first Show is the cited value's; the flag's explanation under the row has its own.
-    await userEvent.click(within(table).getAllByRole("button", { name: /show secret fact/i })[0]);
-    expect(within(table).getByText(/^One/)).toBeInTheDocument();
+    const inCanon = cellOf(table, "Moons", 1);
+    await userEvent.click(within(inCanon).getByRole("button", { name: /show secret fact/i }));
+    expect(within(inCanon).getByText(/^One/)).toBeInTheDocument();
   });
 
   it("masks a prose quote from an entry that holds a secret fact", async () => {
@@ -286,7 +292,9 @@ describe("ApprovalCard", () => {
       kind: "conflict", severity: "hard", existing_quote: "one moon", new_quote: "three moons",
       explanation: "Ister is the only moon.", suggested_fix: "Keep one moon.",
     });
-    render(<ApprovalCard proposal={update} check={check("conflict", [plain])} canon={[ister]} onDecide={vi.fn()} />);
+    // A draft with no secret fact: prose about it may be shown.
+    const open: Proposal = { ...update, after: { ...update.after!, facts: [fact("Moons", "Three")] } };
+    render(<ApprovalCard proposal={open} check={check("conflict", [plain])} canon={[ister]} onDecide={vi.fn()} />);
     expect(screen.getByText("Ister is the only moon.")).toBeInTheDocument();
     expect(screen.getByText("Keep one moon.")).toBeInTheDocument();
   });
@@ -412,9 +420,12 @@ describe("ApprovalCard complete table", () => {
     expect(screen.queryByText("Yes, at every full Ister")).toBeNull();
     expect(screen.queryByText("Sings with the Ashen Choir")).toBeNull();
     const secretRow = within(table).getByText("Matches").closest("tr") as HTMLElement;
-    expect(within(secretRow).getAllByRole("button", { name: /show secret fact/i }).length).toBeGreaterThan(0);
-    await userEvent.click(within(secretRow).getAllByRole("button", { name: /show secret fact/i })[1]);
-    expect(within(secretRow).getByText("Yes, at every full Ister")).toBeInTheDocument();
+    const [keyCell, inCanon] = within(secretRow).getAllByRole("cell");
+    expect(within(keyCell).getByRole("button", { name: /show secret fact/i })).toBeInTheDocument();
+    await userEvent.click(within(inCanon).getByRole("button", { name: /show secret fact/i }));
+    expect(within(inCanon).getByText("Yes, at every full Ister")).toBeInTheDocument();
+    // Its status tag was hidden with the value and shows with it.
+    expect(within(inCanon).getByText("secret")).toBeInTheDocument();
   });
 
   it("masks only the secret retcon row", () => {
@@ -462,6 +473,78 @@ describe("ApprovalCard complete table", () => {
     render(<ApprovalCard proposal={renamed} check={check("none", [])} canon={[council]} onDecide={vi.fn()} />);
     expect(screen.getByText("Harbour Council")).toHaveClass("line-through");
     expect(document.querySelector("ins")).toHaveTextContent("Five");
+  });
+
+  it("never shows a secret proposed value through a retcon's explanation", () => {
+    const choir = entry({ id: "ent_0004", title: "Ashen Choir", facts: [fact("Members", "About sixty")] });
+    const grown = updateOf(choir, { facts: [fact("Members", "Lantern-bearers", "secret")] });
+    const retconFlag = flag({
+      kind: "retcon", entry_id: "ent_0004", title: "Ashen Choir", fact_key: "Members", existing_fact: "About sixty",
+      new_fact: "Lantern-bearers", explanation: "Changes established canon: About sixty → Lantern-bearers",
+      suggested_fix: "Keep Lantern-bearers as a rumour.",
+    });
+    render(<ApprovalCard proposal={grown} check={check("none", [retconFlag])} canon={[choir]} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/Lantern-bearers/)).toBeNull();
+    expect(screen.getByText("About sixty")).toBeInTheDocument();
+  });
+
+  it("reads Changed and shows the myth tag when only the status changes", () => {
+    const mythic = updateOf(council, {
+      facts: [fact("Seats", "Seven", "myth"), fact("Meets at", "The Tidehall"), fact("Chaired by", "Mayor Elsbeth Varr")],
+    });
+    render(<ApprovalCard proposal={mythic} check={check("none", [])} canon={[council]} onDecide={vi.fn()} />);
+    const table = screen.getByRole("table");
+    expect(within(rowOf(table, "Seats")).getByText("Changed")).toBeInTheDocument();
+    expect(within(cellOf(table, "Seats", 2)).getByText("myth")).toBeInTheDocument();
+    expect(within(cellOf(table, "Seats", 1)).queryByText("myth")).toBeNull();
+  });
+
+  it("shows who told a fact", () => {
+    const told = updateOf(council, {
+      facts: [
+        { ...fact("Seats", "Nine", "myth"), told_by: "The Ashen Choir" },
+        fact("Meets at", "The Tidehall"),
+        fact("Chaired by", "Mayor Elsbeth Varr"),
+      ],
+    });
+    render(<ApprovalCard proposal={told} check={check("none", [])} canon={[council]} onDecide={vi.fn()} />);
+    expect(within(cellOf(screen.getByRole("table"), "Seats", 2)).getByText("told by The Ashen Choir")).toBeInTheDocument();
+  });
+
+  it("puts each other entry's value next to its own Cite, after this entry's values", () => {
+    const guild = entry({ id: "ent_0011", title: "The Salt Guild", facts: [fact("Council seats", "Two of seven")] });
+    const hard = flag({
+      kind: "conflict", severity: "hard", entry_id: "ent_0011", title: "The Salt Guild", fact_key: "Seats", existing_fact: "Two of seven", new_fact: "Five",
+      explanation: "The Salt Guild holds two of seven seats.",
+    });
+    render(
+      <ApprovalCard proposal={fiveSeats} check={check("conflict", [seatsRetcon, hard])} canon={[council, guild]} onDecide={vi.fn()} />,
+    );
+    const items = within(cellOf(screen.getByRole("table"), "Seats", 1)).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Seven");
+    expect(items[0]).not.toHaveTextContent("ent_0002");
+    expect(items[1]).toHaveTextContent("Two of seven");
+    expect(within(items[1]).getByText("ent_0011")).toBeInTheDocument();
+  });
+
+  it("cites the other entry of a keyed note", () => {
+    const keyedNote = flag({ kind: "note", severity: "note", entry_id: "ent_0011", title: "The Salt Guild", fact_key: "Seats", explanation: "Worth a look." });
+    const guild = entry({ id: "ent_0011", title: "The Salt Guild" });
+    render(<ApprovalCard proposal={fiveSeats} check={check("none", [keyedNote])} canon={[council, guild]} onDecide={vi.fn()} />);
+    expect(within(cellOf(screen.getByRole("table"), "Seats", 1)).getByText("ent_0011")).toBeInTheDocument();
+  });
+
+  it("hides a secret new entry's body until Show", async () => {
+    const create: Proposal = {
+      ...update, action: "create", entry_id: null, before: null,
+      after: { ...update.after!, status: "secret", body: "A hidden moon of glass." },
+    };
+    render(<ApprovalCard proposal={create} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/hidden moon of glass/)).toBeNull();
+    const body = screen.getAllByRole("button", { name: /show secret fact/i })[0];
+    await userEvent.click(body);
+    expect(screen.getByText("A hidden moon of glass.")).toBeInTheDocument();
   });
 
   it("no apply-fix button", () => {

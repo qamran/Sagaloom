@@ -5,7 +5,7 @@ import { CourseChip } from "@/components/CourseChip";
 import { EntityChip } from "@/components/EntityChip";
 import { FactList } from "@/components/FactList";
 import { BodyDiff, LineDiff } from "@/components/DiffView";
-import { Cite, FactTable, SecretValue, type SecretOf } from "@/components/FactTable";
+import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from "@/components/FactTable";
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
 import { BADGE_CLASS, BADGE_LABEL, badgeOf, isSecretFact } from "@/lib/review";
@@ -22,7 +22,6 @@ const DECISION_LABEL: Record<Decision["action"], string> = {
   reject: "Reject",
   save_as_myth: "Save as myth",
 };
-const KIND_LABEL: Record<Flag["kind"], string> = { conflict: "Conflict", retcon: "Retcon", note: "Note" };
 
 const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
@@ -95,9 +94,13 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
     ? flags.filter((f) => !(f.kind === "note" && !f.fact_key && !f.existing_quote && !f.new_quote))
     : flags;
   const rows = buildFactRows(proposal, { ...check, flags: shown });
-  const prose = shown.filter((f) => !f.fact_key);
   const before = proposal.action === "update" ? proposal.before : null;
   const after = proposal.after;
+  const prose = shown.filter((f) => !f.fact_key);
+  // Prose about a flag can quote either side: the draft side counts as secret when the draft is a
+  // secret entry or holds any secret fact (the mirror of quoteSecret for the existing side).
+  const draftHoldsSecret = !!after && (after.status === "secret" || after.facts.some((x) => x.status === "secret"));
+  const proseSecret = (f: Flag) => textSecret(f) || draftHoldsSecret;
   const ownSecret = (e: { status: Status } | null, f: Fact) => f.status === "secret" || e?.status === "secret";
   const secretOf: SecretOf = {
     canon: (f) => ownSecret(before, f),
@@ -171,7 +174,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
               <strong className="text-foreground">{KIND_LABEL[f.kind]}</strong>
               <span aria-hidden="true">·</span>
               <Cite id={f.entry_id} title={f.title} type={typeOf(f.entry_id)} secret={citeSecret(f.entry_id)} />
-              {f.explanation && <SecretValue value={f.explanation} secret={textSecret(f)} />}
+              {f.explanation && <SecretValue value={f.explanation} secret={proseSecret(f)} />}
             </div>
             {f.existing_quote && (
               <blockquote className="m-0 border-l-2 border-border-strong pl-3 font-heading text-[15px]">
@@ -181,14 +184,11 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
             )}
             {f.new_quote && (
               <blockquote className="m-0 border-l-2 border-conflict/60 pl-3 font-heading text-[15px]">
-                Proposed: “{f.new_quote}”
+                Proposed: “
+                <SecretValue value={f.new_quote} secret={draftHoldsSecret} />”
               </blockquote>
             )}
-            {f.suggested_fix && (
-              <div className="rounded-[10px] bg-panel-3 px-3.5 py-3">
-                <strong>Suggested fix:</strong> <SecretValue value={f.suggested_fix} secret={textSecret(f)} />
-              </div>
-            )}
+            {f.suggested_fix && <FlagFix fix={f.suggested_fix} secret={proseSecret(f)} />}
           </div>
         ))}
 
@@ -204,7 +204,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
               {proposal.after.source === "reference" && <SourceLine url={proposal.after.source_url} />}
               {proposal.after.body && (
                 <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-[#e3dfd5]">
-                  {proposal.after.body}
+                  <SecretValue value={proposal.after.body} secret={proposal.after.status === "secret"} />
                 </p>
               )}
             </div>

@@ -10,8 +10,8 @@ describe("BodyDiff", () => {
     const details = container.querySelector("details");
     expect(details).toHaveAttribute("open");
     expect(screen.getByText("Body changes")).toBeInTheDocument();
-    expect(container.querySelector("del")).toHaveTextContent("seven");
-    expect(container.querySelector("ins")).toHaveTextContent("five");
+    expect(container.querySelector("del")).toHaveTextContent("removed: seven");
+    expect(container.querySelector("ins")).toHaveTextContent("added: five");
   });
 
   it("renders nothing when the bodies are equal", () => {
@@ -25,5 +25,19 @@ describe("LineDiff", () => {
     render(<LineDiff changes={[{ field: "title", old: "Harbour Council", new: "Tide Council" }]} />);
     expect(screen.getByText("Harbour Council")).toHaveClass("line-through");
     expect(screen.getByText("Tide Council")).toHaveClass("bg-accent/15");
+  });
+
+  it("labels types and joins aliases", () => {
+    render(
+      <LineDiff
+        changes={[
+          { field: "type", old: "faction", new: "place" },
+          { field: "aliases", old: "the Council", new: "the Council, the Seven" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Faction")).toHaveClass("line-through");
+    expect(screen.getByText("Place")).toBeInTheDocument();
+    expect(screen.getByText("the Council, the Seven")).toBeInTheDocument();
   });
 });

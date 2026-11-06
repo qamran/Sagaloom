@@ -85,6 +85,13 @@ describe("buildFactRows", () => {
     expect(changed).toMatchObject([{ key: "Founded by", result: "Changed", flags: [] }]);
   });
 
+  it("marks a same value whose status or teller changed as Changed", () => {
+    const mythic = buildFactRows(update([fact("Seats", "Seven", "myth"), ...council.facts.slice(1)]), check([]));
+    expect(mythic[0].result).toBe("Changed");
+    const told = { ...fact("Seats", "Seven"), told_by: "The Salt Guild" };
+    expect(buildFactRows(update([told, ...council.facts.slice(1)]), check([]))[0].result).toBe("Changed");
+  });
+
   it("matches keys and values after normalising case and spacing", () => {
     const rows = buildFactRows(update([fact("  seats ", "seven"), ...council.facts.slice(1)]), check([]));
     expect(rows.map((r) => r.result)).toEqual(["Matches", "Matches", "Matches"]);
@@ -120,6 +127,12 @@ describe("lineDiff", () => {
   it("reports only the fields that changed", () => {
     expect(lineDiff(council, { ...draftOf(council, council.facts), status: "secret" })).toEqual([
       { field: "status", old: "canon", new: "secret" },
+    ]);
+  });
+
+  it("reports changed aliases joined with commas", () => {
+    expect(lineDiff(council, { ...draftOf(council, council.facts), aliases: ["the Seven", "the Board"] })).toEqual([
+      { field: "aliases", old: "", new: "the Seven, the Board" },
     ]);
   });
 });

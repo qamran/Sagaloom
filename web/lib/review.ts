@@ -91,6 +91,9 @@ export function proposalSummary(p: Proposal, c: CheckResult, secret: (f: Flag) =
   const dup = c.flags.find((f) => f.kind === "note" && !f.fact_key && f.explanation.startsWith(DUPLICATE));
   // The explanation names the other entry's title: a secret entry is cited by ID only.
   if (dup) return secret(dup) ? `${DUPLICATE}${dup.entry_id}` : dup.explanation;
-  if (p.action === "delete") return `Deletes this entry · ${c.dependents.length} entries mention it`;
+  if (p.action === "delete") {
+    const n = c.dependents.length;
+    return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
+  }
   return "No conflicts found";
 }

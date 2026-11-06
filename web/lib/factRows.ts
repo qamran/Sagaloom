@@ -3,7 +3,8 @@ import type { CheckResult, Entry, EntryDraft, Fact, Flag, Proposal } from "@/lib
 
 /**
  * Result column values (spec §3.7). `Changed` (no flag) marks a changed myth or rumour value:
- * beliefs never raise a retcon, but the table still shows the change.
+ * beliefs never raise a retcon, but the table still shows the change. A same value whose status
+ * or teller changed is `Changed` too (Ruling R8).
  */
 export type FactResult =
   | "Matches"
@@ -27,7 +28,8 @@ export interface FactRow {
   cite?: { id: string; title: string };
 }
 
-const valueSet = (facts: Fact[]) => [...new Set(facts.map((f) => norm(f.value)))].sort().join("\n");
+const valueSet = (facts: Fact[]) =>
+  [...new Set(facts.map((f) => JSON.stringify([norm(f.value), f.status, f.told_by ?? null])))].sort().join("\n");
 
 function resultOf(canon: Fact[], proposed: Fact[], flags: Flag[]): FactResult {
   const conflicts = flags.filter((f) => f.kind === "conflict");
@@ -81,16 +83,16 @@ export function buildFactRows(p: Proposal, c: CheckResult): FactRow[] {
   return rows;
 }
 
-const LINE_FIELDS = ["title", "type", "status"] as const;
+const LINE_FIELDS = ["title", "type", "status", "aliases"] as const;
+export type LineField = (typeof LINE_FIELDS)[number];
 
-/** The entry's one-line fields an update changes. */
-export function lineDiff(
-  before: Entry,
-  after: EntryDraft,
-): { field: (typeof LINE_FIELDS)[number]; old: string; new: string }[] {
-  return LINE_FIELDS.filter((field) => before[field] !== after[field]).map((field) => ({
+const lineOf = (e: Entry | EntryDraft, field: LineField) => (field === "aliases" ? e.aliases.join(", ") : e[field]);
+
+/** The entry's one-line fields an update changes (aliases joined with ", "). */
+export function lineDiff(before: Entry, after: EntryDraft): { field: LineField; old: string; new: string }[] {
+  return LINE_FIELDS.filter((field) => lineOf(before, field) !== lineOf(after, field)).map((field) => ({
     field,
-    old: before[field],
-    new: after[field],
+    old: lineOf(before, field),
+    new: lineOf(after, field),
   }));
 }
