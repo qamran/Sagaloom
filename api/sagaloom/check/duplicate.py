@@ -34,8 +34,8 @@ def _flag(entry: Entry) -> Flag:
 
 
 def duplicate_flags(store, world_id: str, draft: EntryDraft) -> list[Flag]:
-    """At most one flag per entry and MAX_FLAGS in all: a title or alias sharing most of the
-    draft title's words, or a near-identical top search hit."""
+    """At most one flag per entry and MAX_FLAGS in all: a near-identical top search hit first,
+    then titles or aliases sharing most of the draft title's words, in entry-id order."""
     entries = store.list_entries(world_id)
     wanted = _tokens(draft.title)
     matched = {
@@ -48,6 +48,7 @@ def duplicate_flags(store, world_id: str, draft: EntryDraft) -> list[Flag]:
     except Exception:  # the token match still stands when search is down
         log.warning("Duplicate search failed in %s", world_id, exc_info=True)
         hits = []
-    if hits and hits[0].score >= SEARCH_SCORE:
-        matched.add(hits[0].id)
-    return [_flag(e) for e in entries if e.id in matched][:MAX_FLAGS]
+    by_id = {e.id: e for e in entries}
+    first = [hits[0].id] if hits and hits[0].score >= SEARCH_SCORE and hits[0].id in by_id else []
+    order = [*first, *(e.id for e in entries if e.id in matched and e.id not in first)]
+    return [_flag(by_id[i]) for i in order[:MAX_FLAGS]]

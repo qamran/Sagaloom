@@ -67,6 +67,8 @@ def test_save_as_myth_renamed_key():
     ]
 
 
+# A conflict flag with fact_key=None reaches the new quote rule; the judge's own flags carry the
+# proposed key, which today's flagged-key rule already covers.
 def test_save_as_myth_renamed_key_by_conflict_new_fact():
     clash = Flag(
         kind="conflict", entry_id="ent_0012", title="Ister", fact_key=None,
@@ -100,3 +102,26 @@ def test_save_as_myth_renamed_key_keeps_a_moved_stored_value_canon():
     )
     out = renamed([Fact(key="Night sky", value="One (Ister)")], [removed])
     assert [(f.key, f.status) for f in out.facts] == [("Night sky", "canon"), ("Moons", "canon")]
+
+
+
+def test_dropping_one_value_of_a_kept_key_is_not_a_removed_key():
+    before = Entry(
+        id="ent_0004", world_id="w1", title="The Ashen Choir", type="faction", body="A choir.",
+        facts=[Fact(key="Members", value="About sixty"), Fact(key="Members", value="Old guard")],
+    )
+    after = EntryDraft(
+        title="The Ashen Choir", type="faction", body="A choir.",
+        facts=[Fact(key="Members", value="About sixty"), Fact(key="Weather", value="Evening sea fog")],
+    )
+    from sagaloom.check.retcon import detect_retcons
+
+    flags = detect_retcons(before, after)
+    assert [f.new_fact for f in flags] == [None]
+    p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0004", before=before, after=after)
+    out = apply_save_as_myth(p, CheckResult(proposal_id="p1", verdict="none", flags=flags), "Old sailors")
+    assert [(f.key, f.value, f.status) for f in out.facts] == [
+        ("Members", "About sixty", "canon"),
+        ("Members", "Old guard", "canon"),
+        ("Weather", "Evening sea fog", "canon"),
+    ]

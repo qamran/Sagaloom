@@ -4,7 +4,7 @@ from sagaloom.store.canon import norm
 _ESTABLISHED = ("canon", "secret")
 
 
-def _renamed(before: Entry | None, result: CheckResult):
+def _renamed(before: Entry | None, after: EntryDraft, result: CheckResult):
     """A test for a proposed fact under a key `before` does not have: does a flag point at it?
     Either a conflict/retcon flag quotes it, or the change removed a key and this fact carries
     a value that key never held (the old value moved under a new name stays canon)."""
@@ -20,10 +20,16 @@ def _renamed(before: Entry | None, result: CheckResult):
     for s in before.facts:
         if s.status in _ESTABLISHED:
             stored.setdefault(norm(s.key), set()).add(norm(s.value))
+    # A retcon with no new value is per stored fact: the key is removed only when the
+    # proposal no longer has it at all.
+    proposed_keys = {norm(f.key) for f in after.facts}
     removed = [
         stored.get(norm(f.fact_key), set())
         for f in result.flags
-        if f.kind == "retcon" and f.new_fact is None and f.fact_key
+        if f.kind == "retcon"
+        and f.new_fact is None
+        and f.fact_key
+        and norm(f.fact_key) not in proposed_keys
     ]
 
     def flagged(f: Fact) -> bool:
@@ -48,7 +54,7 @@ def apply_save_as_myth(
         for f in result.flags
         if f.kind in ("conflict", "retcon") and f.fact_key
     }
-    renamed = _renamed(before, result)
+    renamed = _renamed(before, proposal.after, result)
     kept: dict[str, list[Fact]] = {}
     if before is not None:
         for f in before.facts:

@@ -265,7 +265,9 @@ def _duplicates(store, proposal: Proposal, draft: EntryDraft) -> list[Flag]:
         return []
 
 
-async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> CheckResult:
+async def check_proposal(
+    store, proposal: Proposal, judge: "ChatModelLike", *, duplicates: bool = True
+) -> CheckResult:
     if proposal.action == "delete":
         return dependency_check(store, proposal)
     draft = proposal.after
@@ -276,7 +278,7 @@ async def check_proposal(store, proposal: Proposal, judge: "ChatModelLike") -> C
     if proposal.action == "update" and before is None and proposal.entry_id:
         before = store.get_entry(proposal.world_id, proposal.entry_id)
     retcons = detect_retcons(before, draft) if proposal.action == "update" and before else []
-    dups = _duplicates(store, proposal, draft)
+    dups = _duplicates(store, proposal, draft) if duplicates else []
 
     try:
         related = _related_entries(store, proposal, draft)

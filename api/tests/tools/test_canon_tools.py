@@ -376,7 +376,7 @@ async def test_check_contradiction_never_echoes_secret_flag_text(store, monkeypa
     _with_secret(store)
     ts, *_ = tools_for(store)
 
-    async def judged(_store, proposal, _llm):
+    async def judged(_store, proposal, _llm, **_kw):
         return CheckResult(
             proposal_id=proposal.proposal_id,
             verdict="conflict",
@@ -434,3 +434,10 @@ async def test_create_never_invalidates_a_pending_check(store):
          "messages": [], "pending": [_pending_update("p_new", None)]},
     )
     assert "check_results" not in cmd.update
+
+
+async def test_check_contradiction_adds_no_duplicate_note(store):
+    store.upsert_entry(entry(title="Hypothetical"))  # the tool drafts "(hypothetical)"
+    ts, *_ = tools_for(store)
+    out = await ts["check_contradiction"].ainvoke({"proposed_text": "Red rain falls.", "world_id": W})
+    assert "Possible duplicate" not in out

@@ -82,3 +82,16 @@ def test_search_failure_still_gives_token_matches(store, monkeypatch):
 
     monkeypatch.setattr(store, "search", boom)
     assert [f.entry_id for f in duplicate_flags(store, W, draft("Captain Sorn Vey"))] == ["ent_0021"]
+
+
+def test_search_hit_is_kept_ahead_of_token_matches(store, monkeypatch):
+    for i in range(21, 25):
+        put(store, f"ent_00{i}", f"Captain Sorn {i}")
+    put(store, "ent_0030", "Moonwell")
+
+    class Hit:
+        id, score = "ent_0030", 0.95
+
+    monkeypatch.setattr(store, "search", lambda *a, **k: [Hit()])
+    flags = duplicate_flags(store, W, draft("Captain Sorn"))
+    assert [f.entry_id for f in flags] == ["ent_0030", "ent_0021", "ent_0022"]

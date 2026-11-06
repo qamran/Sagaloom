@@ -318,7 +318,8 @@ def make_tools(
                     title="(hypothetical)", type="rule", body=proposed_text[:4000], facts=facts
                 ),
             )
-            result = await check_proposal(store, proposal, judge_llm)
+            # A hypothetical claim is not a new entry, so it gets no duplicate notes.
+            result = await check_proposal(store, proposal, judge_llm, duplicates=False)
             lines = [f"verdict: {result.verdict}"]
             for f in result.flags:
                 # Never echo a secret back to the agent: the judge's text may quote it.
