@@ -63,8 +63,8 @@ test("M1 exit demo", async ({ page }) => {
   await card(page, "Sky of Velmar").getByRole("button", { name: "Save as myth" }).click();
   const mythCard = card(page, "Sky of Velmar");
   // An update shows its drafted facts in the fact table (Proposed column), where the clashing claim carries a myth tag.
-  const movedRow = mythCard.getByRole("row").filter({ has: page.getByRole("cell", { name: "Moons", exact: true }) });
-  await expect(movedRow.getByRole("cell").nth(2).getByText("myth", { exact: true })).toBeVisible();
+  // Any Proposed cell (3rd column) with a myth tag: the agent may name the drafted fact's key differently.
+  await expect(mythCard.locator("tbody tr td:nth-child(3)").getByText("myth", { exact: true }).first()).toBeVisible();
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
   // A failed re-check also hides the Conflict badge, so rule it out explicitly.
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Check failed")).toHaveCount(0);
