@@ -4,6 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentGraph } from "@/components/AgentGraph";
 import { getLastRun, getThreads } from "@/lib/api";
+import type { ThreadSummary } from "@/lib/types";
+
+const summary = (thread_id: string, world_id: string, pending: number): ThreadSummary => ({
+  thread_id, world_id, pending, created_at: "", kind: "chat", title: null, badge: null,
+});
 
 const mermaidMock = vi.hoisted(() => ({
   initialize: vi.fn(),
@@ -29,8 +34,8 @@ beforeEach(() => {
   vi.mocked(getThreads)
     .mockReset()
     .mockResolvedValue([
-      { thread_id: "t1", world_id: "w", pending: 0 },
-      { thread_id: "t2", world_id: "w", pending: 0 },
+      summary("t1", "w", 0),
+      summary("t2", "w", 0),
     ]);
   vi.mocked(getLastRun)
     .mockReset()

@@ -8,8 +8,9 @@ import { RememberedChip } from "@/components/RememberedChip";
 import { Composer } from "@/components/Composer";
 import { UnderTheHood } from "@/components/UnderTheHood";
 import { getEntries, getLlmLog, getSettings } from "@/lib/api";
+import { checkSummary } from "@/lib/review";
 import { buildTurnViews } from "@/lib/turns";
-import type { ChatMessage, PendingInterrupt } from "@/lib/types";
+import type { ChatMessage } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
 
@@ -22,25 +23,6 @@ const TOOL_LABEL: Record<string, string> = {
   real_world_reference: "Looking it up on Wikipedia",
 };
 const toolLabel = (name: string) => TOOL_LABEL[name] ?? `Used ${name.replaceAll("_", " ")}`;
-
-/** "Checked facts · 1 conflict, 1 retcon" for the pending interrupt. */
-function checkSummary(p: PendingInterrupt): { text: string; warn: boolean } {
-  const checks = Object.values(p.checks);
-  if (checks.some((c) => c.verdict === "failed")) return { text: "Check failed", warn: true };
-  const count = (kind: string) => checks.reduce((n, c) => n + c.flags.filter((f) => f.kind === kind).length, 0);
-  const parts = (
-    [
-      ["conflict", "conflict", "conflicts"],
-      ["retcon", "retcon", "retcons"],
-      ["note", "note", "notes"],
-    ] as const
-  )
-    .map(([kind, one, many]) => [count(kind), one, many] as const)
-    .filter(([n]) => n > 0)
-    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
-  const warn = checks.some((c) => c.verdict === "conflict" || c.verdict === "possible") || parts.length > 0;
-  return { text: parts.length ? parts.join(", ") : "no conflicts found", warn };
-}
 
 function ActivityLine({ label, done, warn, chip }: { label: string; done: boolean; warn?: boolean; chip?: ReactNode }) {
   return (

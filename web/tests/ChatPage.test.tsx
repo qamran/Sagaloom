@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
 import { createThread, forgetMemory, getPendingThreads, getSettings, getThread } from "@/lib/api";
-import type { SettingsPayload } from "@/lib/types";
+import type { SettingsPayload, ThreadSummary } from "@/lib/types";
+
+const summary = (thread_id: string, world_id: string, pending: number): ThreadSummary => ({
+  thread_id, world_id, pending, created_at: "", kind: "chat", title: null, badge: null,
+});
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
@@ -43,8 +47,8 @@ beforeEach(() => {
 describe("/chat", () => {
   it("resumes a thread with a pending approval for the active world instead of creating one", async () => {
     vi.mocked(getPendingThreads).mockResolvedValue([
-      { thread_id: "t_other", world_id: "w2", pending: 1 },
-      { thread_id: "t_pending", world_id: "w1", pending: 1 },
+      summary("t_other", "w2", 1),
+      summary("t_pending", "w1", 1),
     ]);
     render(<NewChat />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat/t_pending"));
@@ -52,7 +56,7 @@ describe("/chat", () => {
   });
 
   it("creates a thread when no pending one exists for the active world", async () => {
-    vi.mocked(getPendingThreads).mockResolvedValue([{ thread_id: "t_other", world_id: "w2", pending: 1 }]);
+    vi.mocked(getPendingThreads).mockResolvedValue([summary("t_other", "w2", 1)]);
     render(<NewChat />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat/t_new"));
     expect(createThread).toHaveBeenCalledWith("w1");

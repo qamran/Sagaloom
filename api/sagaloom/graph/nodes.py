@@ -394,7 +394,10 @@ def _parse_decisions(
     try:
         decisions = [Decision.model_validate(d) for d in answer["decisions"]]
     except ValidationError as e:
-        raise ValueError(f"Invalid decision: {e.errors()[0]['msg']}") from e
+        first = e.errors()[0]
+        field = ".".join(str(p) for p in first["loc"])
+        where = f" ({field})" if field else ""
+        raise ValueError(f"Invalid decision{where}: {first['msg']}") from e
     by_id = {p.proposal_id: p for p in asked}
     given = [d.proposal_id for d in decisions]
     if len(given) != len(set(given)) or set(given) != set(by_id):

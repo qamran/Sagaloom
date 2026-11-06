@@ -15,7 +15,7 @@ const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fac
 const before = {
   id: "ent_0007", world_id: "w1", title: "Sky of Velmar", type: "place", body: "One red moon.",
   status: "canon", source: "user", source_url: null, licence: null, trusted: true, aliases: ["the sky"],
-  links: [], facts: [fact("Moons", "One")], version: 3, created_at: "", updated_at: "",
+  links: [], facts: [fact("Moons", "Just one")], version: 3, created_at: "", updated_at: "",
 } as Entry;
 
 const update: Proposal = {
@@ -47,7 +47,7 @@ const conflict = flag({
 });
 const retcon = flag({
   kind: "retcon", entry_id: "ent_0007", title: "Sky of Velmar", fact_key: "Moons",
-  existing_fact: "One", new_fact: "Three", explanation: "Changes this entry's own fact.",
+  existing_fact: "Just one", new_fact: "Three", explanation: "Changes this entry's own fact.",
 });
 const note = flag({
   kind: "note", severity: "note", existing_quote: "the only light in the night sky",
@@ -163,8 +163,9 @@ describe("ApprovalCard", () => {
     });
   });
 
-  it("ApprovalCard lists the proposal's drafted facts", async () => {
-    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={vi.fn()} />);
+  it("ApprovalCard lists a new entry's drafted facts", async () => {
+    const create: Proposal = { ...update, action: "create", entry_id: null, before: null };
+    render(<ApprovalCard proposal={create} check={check("conflict", [conflict])} onDecide={vi.fn()} />);
     const drafted = screen.getByRole("region", { name: /drafted facts/i });
     expect(within(drafted).getByText("Moons")).toBeInTheDocument();
     expect(within(drafted).getByText("Three")).toBeInTheDocument();
@@ -229,7 +230,8 @@ describe("ApprovalCard", () => {
     );
     const table = screen.getByRole("table");
     expect(within(table).queryByText(/^One/)).toBeNull();
-    await userEvent.click(within(table).getByRole("button", { name: /show secret fact/i }));
+    // The first Show is the cited value's; the flag's explanation under the row has its own.
+    await userEvent.click(within(table).getAllByRole("button", { name: /show secret fact/i })[0]);
     expect(within(table).getByText(/^One/)).toBeInTheDocument();
   });
 
@@ -249,7 +251,8 @@ describe("ApprovalCard", () => {
     expect(screen.getAllByText("hidden secret").length).toBeGreaterThanOrEqual(3);
     // IDs are still cited (R4.3), and Show reveals the value.
     expect(within(table).getByText("ent_0012")).toBeInTheDocument();
-    await userEvent.click(within(table).getByRole("button", { name: /show secret fact/i }));
+    // The first Show is the cited value's; the flag's explanation under the row has its own.
+    await userEvent.click(within(table).getAllByRole("button", { name: /show secret fact/i })[0]);
     expect(within(table).getByText(/^One/)).toBeInTheDocument();
   });
 
@@ -332,5 +335,146 @@ describe("ApprovalCard", () => {
     const own: Proposal = { ...update, after: { ...update.after!, source: "user", source_url: null, trusted: true } };
     render(<ApprovalCard proposal={own} check={check("none", [])} onDecide={vi.fn()} />);
     expect(screen.queryByText(/Source: reference/)).not.toBeInTheDocument();
+  });
+});
+
+// ---------- the complete table (Wave 4) ----------
+
+const entry = (over: Partial<Entry>): Entry =>
+  ({
+    world_id: "w1", type: "faction", body: "", status: "canon", source: "user", source_url: null, licence: null,
+    trusted: true, aliases: [], links: [], facts: [], version: 1, created_at: "", updated_at: "", ...over,
+  }) as Entry;
+
+const updateOf = (e: Entry, after: Partial<Proposal["after"] & object>): Proposal => ({
+  proposal_id: "p_1", action: "update", world_id: "w1", entry_id: e.id, before: e,
+  after: { title: e.title, type: e.type, body: e.body, status: e.status, aliases: e.aliases, facts: e.facts, ...after },
+});
+
+const council = entry({
+  id: "ent_0002", title: "Harbour Council", body: "Seven seats govern the harbour.",
+  facts: [fact("Seats", "Seven"), fact("Meets at", "The Tidehall"), fact("Chaired by", "Mayor Elsbeth Varr")],
+});
+const fiveSeats = updateOf(council, {
+  facts: [fact("Seats", "Five"), fact("Meets at", "The Tidehall"), fact("Chaired by", "Mayor Elsbeth Varr")],
+});
+const seatsRetcon = flag({
+  kind: "retcon", entry_id: "ent_0002", title: "Harbour Council", fact_key: "Seats", existing_fact: "Seven",
+  new_fact: "Five", explanation: "Changes established canon: Seven → Five",
+  suggested_fix: "Keep seven seats and mark two as vacant.",
+});
+const rowOf = (table: HTMLElement, key: string) =>
+  within(table).getAllByRole("row").find((r) => within(r).queryByText(key)) as HTMLElement;
+
+describe("ApprovalCard complete table", () => {
+  it("shows the complete table on an update", () => {
+    render(<ApprovalCard proposal={fiveSeats} check={check("none", [seatsRetcon])} canon={[council]} onDecide={vi.fn()} />);
+    const table = screen.getByRole("table");
+    for (const name of ["Fact", "In canon", "Proposed", "Result"]) {
+      expect(within(table).getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    expect(within(table).getAllByText("Matches")).toHaveLength(2);
+    expect(within(rowOf(table, "Seats")).getByText("Changed (retcon)")).toBeInTheDocument();
+    // The fix sits in the row right under Seats, not pooled at the card bottom.
+    const rows = within(table).getAllByRole("row");
+    const under = rows[rows.indexOf(rowOf(table, "Seats")) + 1];
+    expect(within(under).getByText("Suggested fix:")).toBeInTheDocument();
+    expect(within(under).getByText("Keep seven seats and mark two as vacant.")).toBeInTheDocument();
+    expect(screen.getAllByText("Suggested fix:")).toHaveLength(1);
+    // The table is complete: no separate drafted-facts list on an update.
+    expect(screen.queryByRole("region", { name: /drafted facts/i })).toBeNull();
+  });
+
+  it("labels a possible conflict", () => {
+    const possible = flag({
+      kind: "conflict", severity: "possible", fact_key: "Moons", existing_fact: "One", new_fact: "Three",
+      explanation: "Ister may be the only moon.",
+    });
+    render(<ApprovalCard proposal={update} check={check("possible", [possible])} canon={[ister]} onDecide={vi.fn()} />);
+    const badges = screen.getByRole("list", { name: "Check result" });
+    expect(within(badges).getByText("Possible conflict")).toBeInTheDocument();
+    expect(within(badges).queryByText("Conflict")).toBeNull();
+    expect(within(screen.getByRole("table")).getByText("Possible conflict")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as myth" })).toBeInTheDocument();
+  });
+
+  it("masks own secret facts in the complete table", async () => {
+    const mayor = entry({
+      id: "ent_0003", title: "Mayor Elsbeth Varr", type: "character", body: "Mayor of Velmar.",
+      facts: [fact("Age", "54"), fact("Sings with the Ashen Choir", "Yes, at every full Ister", "secret")],
+    });
+    const older = updateOf(mayor, {
+      facts: [fact("Age", "55"), fact("Sings with the Ashen Choir", "Yes, at every full Ister", "secret")],
+    });
+    render(<ApprovalCard proposal={older} check={check("none", [])} canon={[mayor]} onDecide={vi.fn()} />);
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("55")).toBeInTheDocument();
+    expect(screen.queryByText("Yes, at every full Ister")).toBeNull();
+    expect(screen.queryByText("Sings with the Ashen Choir")).toBeNull();
+    const secretRow = within(table).getByText("Matches").closest("tr") as HTMLElement;
+    expect(within(secretRow).getAllByRole("button", { name: /show secret fact/i }).length).toBeGreaterThan(0);
+    await userEvent.click(within(secretRow).getAllByRole("button", { name: /show secret fact/i })[1]);
+    expect(within(secretRow).getByText("Yes, at every full Ister")).toBeInTheDocument();
+  });
+
+  it("masks only the secret retcon row", () => {
+    const choir = entry({
+      id: "ent_0004", title: "Ashen Choir",
+      facts: [fact("Members", "About sixty"), fact("Members", "Ashen Choir veterans", "secret")],
+    });
+    const grown = updateOf(choir, { facts: [fact("Members", "Several hundred")] });
+    const common = flag({
+      kind: "retcon", entry_id: "ent_0004", title: "Ashen Choir", fact_key: "Members", existing_fact: "About sixty",
+      new_fact: "Several hundred", explanation: "Changes established canon: About sixty → Several hundred",
+    });
+    const hidden = flag({
+      kind: "retcon", entry_id: "ent_0004", title: "Ashen Choir", fact_key: "Members",
+      existing_fact: "Ashen Choir veterans", new_fact: "Several hundred", existing_secret: true,
+      explanation: "Changes established canon: Ashen Choir veterans → Several hundred",
+    });
+    render(<ApprovalCard proposal={grown} check={check("none", [common, hidden])} canon={[choir]} onDecide={vi.fn()} />);
+    const row = rowOf(screen.getByRole("table"), "Members");
+    expect(within(row).getByText("About sixty")).toBeInTheDocument();
+    expect(within(row).getAllByText("hidden secret")).toHaveLength(1);
+    expect(screen.queryByText(/Ashen Choir veterans/)).toBeNull();
+    expect(screen.getByText("Changes established canon: About sixty → Several hundred")).toBeInTheDocument();
+  });
+
+  it("masks the body diff of a secret entry", async () => {
+    const vault = entry({ id: "ent_0020", title: "The Vault", status: "secret", body: "Gold lies under the quay." });
+    render(
+      <ApprovalCard
+        proposal={updateOf(vault, { body: "Silver lies under the quay." })}
+        check={check("none", [])}
+        canon={[vault]}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Body changes")).toBeInTheDocument();
+    expect(screen.queryByText(/Silver/)).toBeNull();
+    expect(screen.queryByText(/Gold/)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /show secret body/i }));
+    expect(screen.getByText(/Silver/)).toBeInTheDocument();
+  });
+
+  it("shows the title change and body diff above the table", () => {
+    const renamed = updateOf(council, { title: "Tide Council", body: "Five seats govern the harbour." });
+    render(<ApprovalCard proposal={renamed} check={check("none", [])} canon={[council]} onDecide={vi.fn()} />);
+    expect(screen.getByText("Harbour Council")).toHaveClass("line-through");
+    expect(document.querySelector("ins")).toHaveTextContent("Five");
+  });
+
+  it("no apply-fix button", () => {
+    render(<ApprovalCard proposal={fiveSeats} check={check("none", [seatsRetcon])} canon={[council]} onDecide={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /apply/i })).toBeNull();
+  });
+
+  it("edit form mirrors the schema limits", async () => {
+    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Title")).toHaveAttribute("maxLength", "120");
+    expect(screen.getByLabelText("Body")).toHaveAttribute("maxLength", "4000");
+    expect(screen.getByLabelText("Fact 1 key")).toHaveAttribute("maxLength", "40");
+    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("maxLength", "200");
   });
 });

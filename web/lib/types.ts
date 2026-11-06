@@ -88,11 +88,16 @@ export interface EntryRef {
   type: EntryType;
 }
 
+/** Review badge, worst first (api/sagaloom/check/badge.py). */
+export type Badge = "conflict" | "failed" | "possible" | "retcon" | "note" | "clear";
+
 export interface CheckResult {
   proposal_id: string;
   verdict: "none" | "possible" | "conflict" | "failed";
   flags: Flag[];
   dependents: EntryRef[];
+  /** Always sent by the API; optional only so hand-built results still type-check. */
+  badge?: Badge;
 }
 
 export interface Decision {
@@ -159,6 +164,10 @@ export interface ThreadSummary {
   thread_id: string;
   world_id: string;
   pending: number;
+  created_at: string;
+  kind: "chat" | "import";
+  title: string | null;
+  badge: Badge | null;
 }
 
 // SSE events (R19.2), mirroring api/sagaloom/web/sse.py. llm_request / llm_response payloads

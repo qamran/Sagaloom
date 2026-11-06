@@ -422,6 +422,24 @@ describe("useAgentStream", () => {
     expect(localStorage.getItem(TOUR_KEYS.myth)).toBe("1");
   });
 
+  it("shows field names for a 422 list detail", async () => {
+    getThreadMock.mockResolvedValue(thread({ pending_interrupt: pendingOf("p_1") }));
+    fetchMock.mockResolvedValue({
+      ok: false, status: 422, body: null,
+      json: async () => ({
+        detail: [
+          { loc: ["body", "decisions", 0, "edited", "title"], msg: "String should have at most 120 characters" },
+        ],
+      }),
+    });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.pending).not.toBeNull());
+    await act(async () => {
+      await result.current.choose({ proposal_id: "p_1", action: "approve" });
+    });
+    expect(result.current.error).toContain("edited.title: String should have at most 120 characters");
+  });
+
   it("refuses to send decisions that do not name exactly the pending ids", async () => {
     getThreadMock.mockResolvedValue(thread({ pending_interrupt: pendingOf("p_a", "p_b") }));
     const { result } = setup();

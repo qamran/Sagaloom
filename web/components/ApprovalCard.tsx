@@ -4,9 +4,12 @@ import { useState, type FormEvent } from "react";
 import { CourseChip } from "@/components/CourseChip";
 import { EntityChip } from "@/components/EntityChip";
 import { FactList } from "@/components/FactList";
-import { Cite, FactTable, SecretValue, type FactTableRow } from "@/components/FactTable";
+import { BodyDiff, LineDiff } from "@/components/DiffView";
+import { Cite, FactTable, SecretValue, type SecretOf } from "@/components/FactTable";
 import { TYPE_LABEL } from "@/lib/entity";
-import type { CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Flag, Proposal, Status } from "@/lib/types";
+import { buildFactRows, lineDiff } from "@/lib/factRows";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, isSecretFact } from "@/lib/review";
+import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Flag, Proposal, Status } from "@/lib/types";
 
 export const CHECK_FAILED_TEXT =
   "The contradiction check couldn't run. Review this change yourself before approving.";
@@ -25,22 +28,9 @@ const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
 const BTN_SECONDARY = `${BTN} border border-border-strong bg-transparent text-foreground hover:bg-panel-3`;
 const BTN_REJECT = `${BTN} border border-[#5a4228] bg-transparent text-[#f0b98a] hover:bg-[#221c15]`;
-const BADGE = "rounded-full px-2.5 py-0.5 text-xs font-semibold text-background";
+const BADGE = "rounded-full px-2.5 py-0.5 text-xs font-semibold";
 const INPUT =
   "min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground sm:min-h-9";
-
-const sameKey = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-
-/** True when the cited value is (or most likely is) a secret fact of `entry`. */
-function isSecretFact(entry: Pick<Entry, "status" | "facts"> | EntryDraft | null | undefined, key: string | null, value: string | null) {
-  if (!entry) return false;
-  if (entry.status === "secret") return true;
-  if (key === null || value === null) return false;
-  const withKey = entry.facts.filter((f) => sameKey(f.key, key));
-  const exact = withKey.find((f) => f.value === value);
-  if (exact) return exact.status === "secret";
-  return withKey.length > 0 && withKey.every((f) => f.status === "secret");
-}
 
 interface Props {
   proposal: Proposal;
@@ -86,13 +76,17 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   // heuristics above still apply on top.
   const textSecret = (f: Flag) => (f.fact_key ? existingSecret(f) : f.existing_secret || quoteSecret(f.entry_id));
 
-  const failed = check.verdict === "failed";
+  const badge = badgeOf(check);
+  const failed = badge === "failed";
   const flags = check.flags;
-  const hasConflictFlag = flags.some((f) => f.kind === "conflict");
-  const conflict = !failed && (check.verdict === "conflict" || check.verdict === "possible" || hasConflictFlag);
+  const conflict = badge === "conflict" || badge === "possible";
   const retcon = flags.some((f) => f.kind === "retcon");
-  const note = !failed && flags.some((f) => f.kind === "note");
-  const clean = !failed && flags.length === 0 && proposal.action !== "delete";
+  const note = flags.some((f) => f.kind === "note");
+  // The worst badge first, then Retcon and Note when flags of that kind sit under a worse one.
+  const badges: Badge[] = [badge];
+  if (retcon && badge !== "retcon") badges.push("retcon");
+  if (note && !failed && badge !== "note") badges.push("note");
+  const shownBadges = badges.filter((b) => b !== "clear" || proposal.action !== "delete");
   const canMyth = proposal.after !== null && !failed && (conflict || retcon);
   const approveLabel = conflict || retcon || failed ? "Approve anyway" : "Approve";
 
@@ -100,18 +94,19 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const shown = failed
     ? flags.filter((f) => !(f.kind === "note" && !f.fact_key && !f.existing_quote && !f.new_quote))
     : flags;
-  const rows: FactTableRow[] = shown
-    .filter((f) => f.fact_key)
-    .map((flag) => ({
-      flag,
-      type: typeOf(flag.entry_id),
-      existingSecret: existingSecret(flag),
-      proposedSecret: isSecretFact(proposal.after, flag.fact_key, flag.new_fact),
-      citeSecret: citeSecret(flag.entry_id),
-    }));
+  const rows = buildFactRows(proposal, { ...check, flags: shown });
   const prose = shown.filter((f) => !f.fact_key);
-  const fixes = [...new Set(flags.map((f) => f.suggested_fix).filter((s): s is string => !!s))];
-  const fixSecret = (fix: string) => flags.some((f) => f.suggested_fix === fix && textSecret(f));
+  const before = proposal.action === "update" ? proposal.before : null;
+  const after = proposal.after;
+  const ownSecret = (e: { status: Status } | null, f: Fact) => f.status === "secret" || e?.status === "secret";
+  const secretOf: SecretOf = {
+    canon: (f) => ownSecret(before, f),
+    proposed: (f) => ownSecret(after, f),
+    existing: existingSecret,
+    incoming: (f) => isSecretFact(after, f.fact_key, f.new_fact),
+    text: textSecret,
+    cite: citeSecret,
+  };
 
   const tone =
     conflict || failed
@@ -134,15 +129,11 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
     <section aria-label={`Review proposal: ${title}`} className={`overflow-hidden rounded-[14px] border bg-panel-2 ${tone.box}`}>
       <div className={`flex flex-wrap items-center gap-2.5 border-b px-[18px] py-3 ${tone.head}`}>
         <ul aria-label="Check result" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
-          {conflict && (
-            <li className={`${BADGE} bg-conflict`} title={check.verdict === "possible" ? "Possible conflict" : undefined}>
-              Conflict
+          {shownBadges.map((b) => (
+            <li key={b} className={`${BADGE} ${BADGE_CLASS[b]}`}>
+              {b === "clear" ? "No conflicts found" : BADGE_LABEL[b]}
             </li>
-          )}
-          {retcon && <li className={`${BADGE} bg-event`}>Retcon</li>}
-          {note && <li className={`${BADGE} bg-myth`}>Note</li>}
-          {failed && <li className={`${BADGE} bg-destructive`}>Check failed</li>}
-          {clean && <li className={`${BADGE} bg-accent`}>No conflicts found</li>}
+          ))}
         </ul>
         <h3 className="m-0 font-heading text-[17px] font-semibold">Commit to canon?</h3>
         <CourseChip card="human_in_the_loop" label="Human-in-the-loop · interrupt()" />
@@ -161,7 +152,18 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
           </p>
         )}
 
-        <FactTable rows={rows} />
+        {before && after && (
+          <>
+            <LineDiff changes={lineDiff(before, after)} />
+            <BodyDiff
+              before={before.body}
+              after={after.body}
+              secret={before.status === "secret" || after.status === "secret"}
+            />
+          </>
+        )}
+
+        <FactTable rows={rows} secretOf={secretOf} typeOf={typeOf} />
 
         {prose.map((f, i) => (
           <div key={`${f.kind}-${f.entry_id}-${i}`} className="flex flex-col gap-1 text-[13px] text-[#c9c6bd]">
@@ -182,37 +184,24 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
                 Proposed: “{f.new_quote}”
               </blockquote>
             )}
+            {f.suggested_fix && (
+              <div className="rounded-[10px] bg-panel-3 px-3.5 py-3">
+                <strong>Suggested fix:</strong> <SecretValue value={f.suggested_fix} secret={textSecret(f)} />
+              </div>
+            )}
           </div>
         ))}
 
-        {fixes.map((fix) => (
-          <div key={fix} className="rounded-[10px] bg-panel-3 px-3.5 py-3 text-[13px]">
-            <strong>Suggested fix:</strong> <SecretValue value={fix} secret={fixSecret(fix)} />
-          </div>
-        ))}
-
-        {proposal.after ? (
+        {before && after ? (
+          after.source === "reference" && <SourceLine url={after.source_url} />
+        ) : proposal.after ? (
           <div className="flex flex-col gap-3 rounded-[10px] border border-border px-3.5 py-3">
             <div>
               <div className="text-[11px] uppercase tracking-[0.9px] text-muted-foreground">
                 {type ? TYPE_LABEL[type] : "Entry"} · {proposal.after.status}
               </div>
               <div className="font-heading text-lg font-semibold">{proposal.after.title}</div>
-              {proposal.after.source === "reference" && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  <span>Source: reference (Wikipedia)</span>
-                  {proposal.after.source_url && /^https:\/\//.test(proposal.after.source_url) && (
-                    <a
-                      href={proposal.after.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="break-all text-accent underline underline-offset-2"
-                    >
-                      {proposal.after.source_url}
-                    </a>
-                  )}
-                </div>
-              )}
+              {proposal.after.source === "reference" && <SourceLine url={proposal.after.source_url} />}
               {proposal.after.body && (
                 <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-[#e3dfd5]">
                   {proposal.after.body}
@@ -310,6 +299,19 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   );
 }
 
+function SourceLine({ url }: { url?: string | null }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span>Source: reference (Wikipedia)</span>
+      {url && /^https:\/\//.test(url) && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline underline-offset-2">
+          {url}
+        </a>
+      )}
+    </div>
+  );
+}
+
 function EditForm({
   draft,
   disabled,
@@ -343,7 +345,7 @@ function EditForm({
     <form onSubmit={submit} aria-label="Edit proposal" className="flex flex-col gap-3 rounded-[10px] border border-border-strong px-3.5 py-3">
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className={INPUT} />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} className={INPUT} />
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Body
@@ -351,6 +353,7 @@ function EditForm({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={4}
+          maxLength={4000}
           className="w-full rounded-lg border border-border bg-background px-3 py-2 font-heading text-[15px] text-foreground"
         />
       </label>
@@ -361,12 +364,13 @@ function EditForm({
           const hide = f.status === "secret" && !revealed.has(i);
           return (
             <div key={i} className="flex flex-wrap items-center gap-2">
-              <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />
+              <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />
               <input
                 aria-label={`Fact ${n} value`}
                 type={hide ? "password" : "text"}
                 value={f.value}
                 onChange={(e) => setFact(i, { value: e.target.value })}
+                maxLength={200}
                 placeholder="Value"
                 className={`${INPUT} flex-[2_1_180px]`}
               />

@@ -668,6 +668,18 @@ async def test_malformed_resume_asks_again_and_valid_resume_still_works(store):
     assert [e.title for e in store.list_entries(W)] == ["Ostra"]
 
 
+async def test_invalid_decision_names_field(store):
+    graph, *_ = make(store, [create_call(), AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    edited = {"title": "x" * 121, "type": "place", "body": "A port.", "facts": []}
+    await run(graph, resume({"proposal_id": pid, "action": "edit", "edited": edited}), cfg)
+    payload = await interrupt_payload(graph, cfg)
+    assert payload["error"].startswith("Invalid decision (edited.title)")
+    assert store.list_entries(W) == []
+
+
 # ---------- limits, persistence, memory, usage ----------
 
 
