@@ -47,7 +47,7 @@ def _renamed(before: Entry | None, after: EntryDraft, result: CheckResult):
 
 
 def apply_save_as_myth(
-    proposal: Proposal, result: CheckResult, told_by: str | None
+    proposal: Proposal, result: CheckResult, told_by: str | None, *, imported: bool = False
 ) -> EntryDraft:
     if proposal.after is None:
         raise ValueError("Save as myth needs a proposed entry")
@@ -88,8 +88,10 @@ def apply_save_as_myth(
         restore(key)
 
     # An update gets its stored body back, so a myth never rewrites canon prose; but an import merge
-    # only appends the author's passage under its heading, and that passage is kept (R3.5).
+    # only appends the author's passage under its heading, and that passage is kept (R3.5). The
+    # caller says whether the proposal came from an import: the body's shape alone is not enough.
     body = proposal.after.body
-    if before is not None and proposal.action == "update" and not is_import_merge(before.body, body):
-        body = before.body
+    if before is not None and proposal.action == "update":
+        if not (imported and is_import_merge(before.body, body)):
+            body = before.body
     return proposal.after.model_copy(update={"facts": facts, "body": body}, deep=True)

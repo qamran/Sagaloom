@@ -169,7 +169,7 @@ def test_save_as_myth_keeps_imported_section():
         facts=[Fact(key="Moons", value="Three")],
     )
     p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
-    out = apply_save_as_myth(p, SKY_RETCON, None)
+    out = apply_save_as_myth(p, SKY_RETCON, None, imported=True)
     assert out.body == merged
     assert [(f.value, f.status) for f in out.facts] == [("One (Ister)", "canon"), ("Three", "myth")]
     assert out.trusted is False
@@ -182,7 +182,7 @@ def test_save_as_myth_restores_body_for_chat_update():
         facts=[Fact(key="Moons", value="Three")],
     )
     p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
-    assert apply_save_as_myth(p, SKY_RETCON, None).body == SKY.body
+    assert apply_save_as_myth(p, SKY_RETCON, None, imported=True).body == SKY.body
 
 
 def test_save_as_myth_restores_body_when_a_heading_follows_a_rewrite():
@@ -193,4 +193,17 @@ def test_save_as_myth_restores_body_when_a_heading_follows_a_rewrite():
         facts=[Fact(key="Moons", value="Three")],
     )
     p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
+    assert apply_save_as_myth(p, SKY_RETCON, None, imported=True).body == SKY.body
+
+
+def test_save_as_myth_restores_body_for_merge_shaped_chat_update():
+    """The kept section is a rule about imports, not about a body's shape: a chat update whose
+    body looks like an import merge still gets the stored body back on Save as myth."""
+    merged = "One moon, Ister.\n\n## Imported from paste (2026-11-06)\n\nThe three moons rose together."
+    after = EntryDraft(
+        title="Sky of Velmar", type="place", body=merged,
+        facts=[Fact(key="Moons", value="Three")],
+    )
+    p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
+    assert apply_save_as_myth(p, SKY_RETCON, None, imported=False).body == SKY.body
     assert apply_save_as_myth(p, SKY_RETCON, None).body == SKY.body

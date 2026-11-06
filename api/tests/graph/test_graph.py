@@ -659,6 +659,41 @@ async def test_save_as_myth_reruns_check_and_commits_myth_fact(store):
     assert store.get_entry(W, "ent_0001").facts == [Fact(key="moons", value="One")]
 
 
+MERGE_SHAPED = "A city under one moon.\n\n## Imported from paste (2026-11-06)\n\nThree moons rose together."
+
+
+@pytest.mark.parametrize("entry", ["chat", "import"])
+async def test_save_as_myth_keeps_a_merge_shaped_body_only_on_an_import_thread(store, entry):
+    """R-W5-11 is a rule about imports: the gate tells Save as myth where the proposal came from.
+    On a chat thread a body shaped like an import merge still gets the stored body back."""
+    stored = seed(store)
+    after = EntryDraft(
+        title="Velmar", type="place", body=MERGE_SHAPED, trusted=False,
+        facts=[Fact(key="moons", value="Three")],
+    )
+    cfg = run_config("t1", W)
+    if entry == "chat":
+        update = tc(
+            "create_or_update_entry",
+            {"action": "update", "entry_id": "ent_0001", "body": MERGE_SHAPED, "facts": [{"key": "moons", "value": "Three"}]},
+        )
+        graph, _, _ = make(store, [update, AIMessage(content="ok")], judge_reply=conflict_on_moons())
+        await run(graph, start("Velmar has three moons"), cfg)
+    else:
+        graph, _, _ = make(store, [], judge_reply=conflict_on_moons())
+        p = Proposal(proposal_id="p_1", action="update", world_id=W, entry_id="ent_0001", before=stored, after=after)
+        await run(graph, import_input(p), cfg)
+    pid = await only_pid(graph, cfg)
+    [proposal] = (await interrupt_payload(graph, cfg))["proposals"]
+    assert proposal["after"]["body"] == MERGE_SHAPED
+
+    nodes = await run(graph, resume({"proposal_id": pid, "action": "save_as_myth", "told_by": None}), cfg)
+    assert nodes == ["approval_gate", "check", "__interrupt__"]
+    [rechecked] = (await interrupt_payload(graph, cfg))["proposals"]
+    expected = MERGE_SHAPED if entry == "import" else stored.body
+    assert rechecked["after"]["body"] == expected
+
+
 async def test_delete_runs_dependency_check_and_lists_dependents(store):
     seed(store)
     seed(store, id="ent_0002", title="Ostra", body="A port south of Velmar.", facts=[])

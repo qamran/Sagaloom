@@ -1,5 +1,7 @@
 """POST /api/worlds/{id}/imports (R3.1, R3.2, R3.5, R13.6, R13.7, R18.10). No real LLM calls."""
 
+import asyncio
+
 from langchain_core.messages import AIMessage
 
 from sagaloom.importing.extract import NOT_LOCATED, Candidate, ExtractionOutput
@@ -93,7 +95,7 @@ async def test_import_rejects_blank_text_without_creating_a_thread(make_env):
 
 async def test_import_rejects_bad_filename(make_env):
     env = make_env(extraction=found())
-    for bad in ["notes.pdf", "../a.md", "a\\b.txt", "x" * 118 + ".md"]:
+    for bad in ["notes.pdf", "../a.md", "a\\b.txt", "x" * 118 + ".md", "a\n.md", "a\x01b.txt", "a\x7f.md"]:
         r, _ = await post_import(env, OSTRA, filename=bad)
         assert r.status_code == 422, bad
     r, _ = await post_import(env, OSTRA, filename="Notes.MD")
@@ -166,3 +168,43 @@ async def test_import_while_chat_pending_is_not_blocked(make_env):
     r, events = await post_import(env, OSTRA)
     assert r.status_code == 200 and names(events)[-1] == "done"
     assert events[-1][1]["thread_id"] != chat
+
+
+class BlockingExtractor:
+    """An extractor whose call waits until the test lets it go (or the task is cancelled)."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    def with_structured_output(self, schema, **kwargs):
+        return self
+
+    async def ainvoke(self, messages, config=None):
+        self.started.set()
+        await asyncio.Event().wait()
+
+
+async def test_shutdown_during_extraction_removes_the_import_row(make_env):
+    """R-W5-5 extended (M6): a shutdown that cancels the run before any plan exists leaves no
+    empty import row behind, and the turn lock is released."""
+    from sagaloom.graph.build import run_config
+    from sagaloom.models import Usage
+    from sagaloom.web.app import _cancel_turns
+    from sagaloom.web.imports import import_events
+    from sagaloom.web.sse import shielded
+
+    env = make_env(extraction=found())
+    tid = env.deps.threads.create(W, kind="import", title="notes.md")
+    lock = env.deps.locks.setdefault(tid, asyncio.Lock())
+    await lock.acquire()
+    extractor = BlockingExtractor()
+    events = import_events(
+        env.deps.graph, env.deps.store, extractor, W, tid, OSTRA, "notes.md",
+        run_config(tid, W), asyncio.Queue(), lambda: (Usage(), Usage()), env.deps.threads,
+    )
+    gen = shielded(events, on_finish=lock.release, tasks=env.deps.tasks)
+    assert (await gen.__anext__()) == {"event": "node", "data": {"name": "extract", "phase": "start"}}
+    await asyncio.wait_for(extractor.started.wait(), 5)
+    await asyncio.wait_for(_cancel_turns(env.deps.tasks), 5)
+    assert import_threads(env) == []
+    assert not lock.locked() and env.deps.tasks == set()

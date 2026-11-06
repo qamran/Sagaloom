@@ -186,6 +186,28 @@ async def test_title_match_is_merge_update(store):
     assert flag.explanation.startswith("Changes established canon")
 
 
+async def test_merge_replaces_the_established_fact_not_a_belief_ahead_of_it(store):
+    """R-W5-1 (refined after the Wave 5 review): an imported fact replaces the first canon or secret
+    fact with its key, so a myth stored ahead of the canon fact keeps its value and the change to
+    canon shows as a retcon."""
+    before = seed(
+        store,
+        facts=[
+            Fact(key="Moons", value="Three", status="myth", told_by="Old sailors"),
+            Fact(key="Moons", value="One (Ister)"),
+        ],
+    )
+    text = "The sky of Velmar holds two moons."
+    plan = await plan_for(store, text, cand("Sky of Velmar", text, facts=[("moons", "Two")]))
+    [p] = plan.proposals
+    assert [(f.key, f.value, f.status) for f in p.after.facts] == [
+        ("Moons", "Three", "myth"),
+        ("Moons", "Two", "canon"),
+    ]
+    [flag] = detect_retcons(before, p.after)
+    assert flag.fact_key == "Moons" and flag.new_fact == "Two"
+
+
 async def test_alias_match_is_merge_update(store):
     before = seed(store, aliases=["the sky", "Heavens"])
     plan = await plan_for(store, "The heavens are grey.", cand("Grey Sky", "The heavens are grey.", aliases=["heavens"]))

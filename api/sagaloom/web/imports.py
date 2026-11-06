@@ -78,6 +78,10 @@ async def import_events(
     try:
         async for ev in _extraction(job, queue):
             yield ev
+    except asyncio.CancelledError:
+        # Shut down before any plan existed: the graph never ran, so no row stays behind (R-W5-5).
+        registry.delete(thread_id)
+        raise
     finally:
         if not job.done():
             job.cancel()

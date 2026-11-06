@@ -171,11 +171,14 @@ def key_norm(key: str) -> str:
 
 def merge_facts(existing: list[Fact], imported: list[Fact]) -> list[Fact]:
     """Every stored fact is kept, in order. An imported fact with a stored key replaces the value
-    of the first stored fact with that key, keeping its key spelling, status and teller (so a
-    secret stays secret, and the change shows as a retcon); the rest are appended as canon."""
+    of the first established (canon or secret) stored fact with that key, else the first with that
+    key, keeping its key spelling, status and teller (so a secret stays secret, a belief stored
+    ahead of the canon fact keeps its value, and the change shows as a retcon); the rest are
+    appended as canon (R-W5-1, refined after the Wave 5 review)."""
     out = list(existing)
     for f in imported:
-        idx = next((i for i, e in enumerate(existing) if key_norm(e.key) == key_norm(f.key)), None)
+        same = [i for i, e in enumerate(existing) if key_norm(e.key) == key_norm(f.key)]
+        idx = next((i for i in same if existing[i].status in ("canon", "secret")), same[0] if same else None)
         if idx is None:
             out.append(Fact(key=f.key, value=f.value))
         else:

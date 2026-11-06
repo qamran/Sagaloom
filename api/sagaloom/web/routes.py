@@ -51,7 +51,7 @@ class DecisionBody(BaseModel):
 
 class NewImport(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_CHARS)
-    filename: str | None = Field(default=None, max_length=120, pattern=r"(?i)^[^/\\]+\.(md|txt)$")
+    filename: str | None = Field(default=None, max_length=120, pattern=r"(?i)^[^/\\\x00-\x1f\x7f]+\.(md|txt)$")
 
 
 def _deps(request: Request):
