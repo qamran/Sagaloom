@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
-// The exit demo (M1, then Waves 1 to 3), end to end, against the real seed and real models.
+// The exit demo (M1, then Waves 1 to 4), end to end, against the real seed and real models.
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
 const scripted: { name: string; draft: { body: string } }[] = JSON.parse(fs.readFileSync(SEED, "utf-8"));
 const SORN_TEXT = scripted.find((s) => s.name === "captain_sorn")!.draft.body;
@@ -62,7 +62,8 @@ test("M1 exit demo", async ({ page }) => {
   // the agent may name the drafted fact differently from run to run.
   await card(page, "Sky of Velmar").getByRole("button", { name: "Save as myth" }).click();
   const mythCard = card(page, "Sky of Velmar");
-  await expect(mythCard.getByRole("region", { name: "Drafted facts" }).getByText("myth", { exact: true }).first()).toBeVisible();
+  // An update shows its drafted facts in the fact table (Proposed column), where the clashing claim carries a myth tag.
+  await expect(mythCard.getByRole("table").getByText("myth", { exact: true }).first()).toBeVisible();
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
   // A failed re-check also hides the Conflict badge, so rule it out explicitly.
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Check failed")).toHaveCount(0);
@@ -162,6 +163,19 @@ test("M1 exit demo", async ({ page }) => {
   // ---- Wave 2: the reference tool, Markdown export and tool toggles ----
   const QUESTION = "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that.";
   const wikiLine = (p: Page) => log(p).getByText("Looking it up on Wikipedia");
+  const settle = (p: Page) =>
+    expect
+      .poll(async () => (await anyProposal(p).count()) > 0 || (await p.getByLabel("Message Sagaloom").isEnabled()), {
+        timeout: 180_000,
+      })
+      .toBe(true);
+  // Error alerts in the thread itself (an alert inside a card, like "Check failed", is not one).
+  const threadAlerts = (p: Page) =>
+    log(p)
+      .getByRole("alert")
+      .evaluateAll((els) =>
+        els.filter((e) => !e.closest('section[aria-label^="Review proposal:"]')).map((e) => e.textContent ?? ""),
+      );
   // Reject every proposal card (none may be left), optionally checking each one's source line.
   async function rejectAll(p: Page, source?: string) {
     const open = anyProposal(p).filter({ has: p.getByRole("button", { name: "Reject" }) });
@@ -171,17 +185,25 @@ test("M1 exit demo", async ({ page }) => {
       const first = open.first();
       if (source) await expect(first.getByText(source)).toBeVisible();
       await first.getByRole("button", { name: "Reject" }).click();
-      // The card stays mounted (Reject disabled) until /decisions answers: wait for it to go before looping.
-      await expect(open).toHaveCount(before - 1, { timeout: 120_000 });
+      // The card stays mounted (Reject disabled) until /decisions answers: wait on the card count, or
+      // on an error alert in the thread, which fails at once with its text.
+      let outcome = "waiting";
+      await expect
+        .poll(
+          async () => {
+            const alerts = await threadAlerts(p);
+            if (alerts.length > 0) return (outcome = `alert: ${alerts.join(" | ")}`);
+            return (outcome = (await open.count()) < before ? "dropped" : "waiting");
+          },
+          { timeout: 120_000 },
+        )
+        .not.toBe("waiting");
+      expect(outcome, "rejecting a card ended in an error").toBe("dropped");
+      // A decision can re-ask a card (1 -> 0 -> 1): let the turn settle before counting again.
+      await settle(p);
     }
     await expect(anyProposal(p)).toHaveCount(0);
   }
-  const settle = (p: Page) =>
-    expect
-      .poll(async () => (await anyProposal(p).count()) > 0 || (await p.getByLabel("Message Sagaloom").isEnabled()), {
-        timeout: 180_000,
-      })
-      .toBe(true);
 
   // 13. The reference tool runs, the reply finishes, and nothing enters canon.
   await page.getByRole("link", { name: "Chat", exact: true }).click();
@@ -293,4 +315,63 @@ test("M1 exit demo", async ({ page }) => {
   await memory.getByRole("button", { name: "Delete tone: grim" }).click();
   await memory.getByRole("button", { name: "Delete banned_tropes: chosen-one prophecies" }).click();
   await expect(memory.getByText("No preferences yet.")).toBeVisible();
+
+  // ---- Wave 4: the Review tab and the complete approval card ----
+  // 22. Captain Sorn is committed in step 4, so the new character is Mira Hale.
+  await newThread();
+  const reviewThread = currentThread();
+  await send(
+    page,
+    "Add Mira Hale, a harbour pilot who guides ships past the Drowned Bell, and make the Harbour Council five members.",
+  );
+  await settle(page);
+  if ((await anyProposal(page).count()) < 2) {
+    throw new Error(`the agent did not propose both changes. Its reply: ${await log(page).innerText()}`);
+  }
+  await expect(anyProposal(page)).toHaveCount(2);
+
+  // 23. The Review tab: the pill counts at least 2 pending proposals, and the thread has a row.
+  const nav = page.getByRole("navigation", { name: "Main" });
+  const reviewLink = nav.getByRole("link", { name: /^Review/ });
+  const pending = async () =>
+    Number(/Review\s+(\d+)\s+pending/.exec(((await reviewLink.textContent()) ?? "").trim())?.[1] ?? 0);
+  await expect.poll(pending, { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
+  await reviewLink.click();
+  await expect(page).toHaveURL(/\/review$/);
+  await page.locator(`a[href="/review/${encodeURIComponent(reviewThread)}"]`).click();
+  await expect(page).toHaveURL(/\/review\/[^/]+/);
+
+  // 24. Two queue rows; the Harbour Council card shows Seats as a conflict or retcon, the rest Matches.
+  const queue = page.getByRole("complementary", { name: "Pending proposals" });
+  await expect(queue.getByRole("listitem")).toHaveCount(2);
+  await queue.getByRole("listitem").filter({ hasText: "Harbour Council" }).getByRole("button").click();
+  const council = card(page, "The Harbour Council");
+  await expect(council).toBeVisible();
+  const factRows = council.getByRole("row").filter({ has: page.getByRole("cell") }).filter({ hasNot: page.locator("td[colspan]") });
+  const seats = factRows.filter({ has: page.getByRole("cell", { name: "Seats", exact: true }) });
+  await expect(seats).toHaveCount(1);
+  await expect(seats.getByRole("cell").last()).toHaveText(/^(Conflict|Changed \(retcon\))$/);
+  const others = factRows.filter({ hasNot: page.getByRole("cell", { name: "Seats", exact: true }) });
+  for (const result of await others.evaluateAll((rows) => rows.map((r) => r.lastElementChild?.textContent ?? ""))) {
+    expect(result).toBe("Matches");
+  }
+
+  // 25. Approve Mira Hale (in bulk when it has no issues), reject the council change, submit both.
+  const bulk = page.getByRole("button", { name: "Approve 1 with no issues" });
+  if (await bulk.isVisible()) {
+    await bulk.click();
+  } else {
+    await queue.getByRole("listitem").filter({ hasText: "Mira Hale" }).getByRole("button").click();
+    await card(page, "Mira Hale").getByRole("button", { name: /^Approve/ }).click();
+  }
+  await queue.getByRole("listitem").filter({ hasText: "Harbour Council" }).getByRole("button").click();
+  await card(page, "The Harbour Council").getByRole("button", { name: "Reject" }).click();
+  await page.getByRole("button", { name: "Submit 2 decisions" }).click();
+
+  // 26. The outcome lists one commit and one rejection, and the pill is gone.
+  const notes = page.getByRole("list", { name: "Decision notes" });
+  await expect(notes).toContainText(/committed as ent_\d{4}/, { timeout: 120_000 });
+  await expect(notes.getByRole("listitem")).toHaveCount(2);
+  await expect(notes).toContainText(/rejected/);
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Review", exact: true })).toBeVisible({ timeout: 40_000 });
 });

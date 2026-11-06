@@ -712,3 +712,4 @@ Each milestone ends with a working, demo-able app. Required items belong to the 
 | 2026-11-06 | One retcon flag per stored fact, so a flag never mixes a secret with a canon value (M1 review M3) | R11.3.10, R12.12, `api/sagaloom/check/retcon.py` |
 | 2026-11-06 | Badges are derived from the check result at the API edge (`check/badge.py`), not stored, so old checkpoints show them | R4.4, R12.9, R19.1, R19.2 (`interrupt` event) |
 | 2026-11-06 | Save as myth also marks a renamed key's new fact as myth | R5.6, `api/sagaloom/check/myth.py` |
+| 2026-11-06 | Wave 4 demo uses Mira Hale, not Captain Sorn (already committed in exit-demo step 4); R4.10 measured with ten consistent proposals | R4.10 (`test_consistent_proposals_rarely_hard`), R12.9, R18.5, `web/e2e/exit-demo.spec.ts` step 22 |
