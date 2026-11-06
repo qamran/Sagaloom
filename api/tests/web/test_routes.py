@@ -409,7 +409,7 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
 async def test_studio_endpoint_shape(make_env):
     env = make_env()
     body = (await env.client.get("/api/studio")).json()
-    assert len(body["features"]) == 11 and len(body["providers"]) == 2
+    assert len(body["features"]) == 12 and len(body["providers"]) == 2
     assert set(body["usage"]) >= {"prompt_tokens", "completion_tokens", "cost_usd"}
 
 

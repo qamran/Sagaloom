@@ -193,3 +193,115 @@ def test_gemini_error_becomes_an_error_event_with_switch_back():
     assert ev["event"] == "error"
     assert ev["data"]["message"] == "Gemini's free tier is out of requests right now."
     assert ev["data"]["switch_back"] == "openrouter"
+
+
+# ---------- shielded turns (Review Focus 5) ----------
+
+
+async def test_disconnect_does_not_cancel_the_turn():
+    from sagaloom.web.sse import shielded
+
+    gate, finished = asyncio.Event(), []
+    finishes: list[int] = []
+    tasks: set[asyncio.Task] = set()
+
+    async def source():
+        yield {"event": "node", "data": {"n": 1}}
+        await gate.wait()  # still running when the client goes away
+        yield {"event": "node", "data": {"n": 2}}
+        finished.append(True)
+
+    gen = shielded(source(), on_finish=lambda: finishes.append(1), tasks=tasks)
+    [task] = tasks
+    assert (await gen.__anext__())["data"] == {"n": 1}
+    await gen.aclose()  # the client went away
+    assert not task.cancelled() and not task.done()
+    gate.set()
+    await asyncio.wait_for(task, 5)
+    assert finished == [True] and finishes == [1]
+    assert tasks == set()
+
+
+async def test_shielded_passes_events_in_order():
+    from sagaloom.web.sse import shielded
+
+    finishes: list[int] = []
+    tasks: set[asyncio.Task] = set()
+
+    async def source():
+        for i in range(5):
+            await asyncio.sleep(0)
+            yield {"event": "token", "data": {"i": i}}
+
+    events = [ev async for ev in shielded(source(), on_finish=lambda: finishes.append(1), tasks=tasks)]
+    assert [ev["data"]["i"] for ev in events] == [0, 1, 2, 3, 4]
+    assert finishes == [1]
+
+
+async def test_shielded_source_error_ends_the_stream_with_an_error_event():
+    from sagaloom.web.sse import UNEXPECTED, shielded
+
+    finishes: list[int] = []
+
+    async def source():
+        yield {"event": "token", "data": {"text": "a"}}
+        raise RuntimeError("boom")
+
+    events = [ev async for ev in shielded(source(), on_finish=lambda: finishes.append(1), tasks=set())]
+    assert events == [
+        {"event": "token", "data": {"text": "a"}},
+        {"event": "error", "data": {"message": UNEXPECTED, "retryable": True}},
+    ]
+    assert finishes == [1]
+
+
+async def test_turn_lock_is_held_until_the_run_finishes_after_a_disconnect(make_env):
+    """The route's stream is shielded: dropping the response leaves the run going and the thread
+    locked (a second message gets 409); the lock is released when the run itself ends."""
+    from sagaloom.web.sse import shielded
+
+    env = make_env([AIMessage(content="Three moons.")])
+    tid = await env.new_thread()
+    lock = env.deps.locks.setdefault(tid, asyncio.Lock())
+    await lock.acquire()
+    gate = asyncio.Event()
+    inner = run_turn_events(
+        env.deps.graph,
+        {"messages": [HumanMessage(content="How many moons?")], "world_id": W},
+        run_config(tid, W),
+        usage_fn=lambda: (Usage(), Usage()),
+    )
+
+    async def slow():
+        await gate.wait()
+        async for ev in inner:
+            yield ev
+
+    gen = shielded(slow(), on_finish=lock.release, tasks=env.deps.tasks)
+    [task] = env.deps.tasks
+    await gen.aclose()  # the client went away before the first event
+    r, _ = await env.send(tid, "again")
+    assert r.status_code == 409 and lock.locked()
+    gate.set()
+    await asyncio.wait_for(task, 5)
+    assert not lock.locked()
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
+
+
+async def test_shutdown_cancels_running_turns_and_runs_on_finish():
+    from sagaloom.web.app import _cancel_turns
+    from sagaloom.web.sse import shielded
+
+    finishes: list[int] = []
+    tasks: set[asyncio.Task] = set()
+
+    async def forever():
+        yield {"event": "node", "data": {}}
+        await asyncio.Event().wait()
+
+    gen = shielded(forever(), on_finish=lambda: finishes.append(1), tasks=tasks)
+    await gen.__anext__()
+    await asyncio.wait_for(_cancel_turns(tasks), 5)
+    assert finishes == [1] and tasks == set()
+    assert [ev async for ev in gen] == []  # the reader ends too

@@ -20,6 +20,7 @@ from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
 from sagaloom.guard import GuardVerdict
+from sagaloom.importing.extract import ExtractionOutput
 from sagaloom.models import Fact
 from sagaloom.promptlog import PromptLog
 from sagaloom.router import RouteDecision
@@ -96,7 +97,10 @@ class FakeJudge(BaseChatModel):
 
 
 class FakeExtractor(BaseChatModel):
-    """A fact extractor that IS a chat model, so its call is captured like the judge's."""
+    """A fact extractor that IS a chat model, so its call is captured like the judge's.
+    `extraction` answers the import extraction (an ExtractionOutput, or an exception to raise)."""
+
+    extraction: Any = None
 
     @property
     def _llm_type(self) -> str:
@@ -110,7 +114,14 @@ class FakeExtractor(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=msg)])
 
     def with_structured_output(self, schema, **kwargs):
+        if schema is ExtractionOutput:
+            return self | RunnableLambda(self._extraction_reply)
         return self | RunnableLambda(lambda _: FactList(facts=[Fact(key="harbour", value="deep")]))
+
+    def _extraction_reply(self, _):
+        if isinstance(self.extraction, Exception):
+            raise self.extraction
+        return self.extraction if self.extraction is not None else ExtractionOutput(candidates=[])
 
 
 class StubLLM:
@@ -190,7 +201,7 @@ class Env:
 def make_env(store, tmp_path):
     def build(
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
-        guard=None, router=None,
+        guard=None, router=None, extraction=None,
     ) -> Env:
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
@@ -201,8 +212,8 @@ def make_env(store, tmp_path):
             "judge": FakeJudge()
             if real_judge
             else StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[])),
-            "extractor": FakeExtractor(metadata={"role": "extractor"})
-            if real_extractor
+            "extractor": FakeExtractor(metadata={"role": "extractor"}, extraction=extraction)
+            if real_extractor or extraction is not None
             else StubLLM(FactList(facts=[Fact(key="k", value="v")])),
             "guard": guard or StubLLM(guard_reply or GuardVerdict(verdict="safe", reason="ok")),
             "router": router or StubLLM(RouteDecision(mode="edit")),
@@ -224,6 +235,7 @@ def make_env(store, tmp_path):
             settings=settings,
             promptlog=PromptLog(tmp_path / "prompts.sqlite"),
             memory=memory,
+            model_for=lambda role: roles[role],
         )
         app = create_app(settings, deps)
         client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)

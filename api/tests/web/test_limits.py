@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from httpx import ASGITransport, AsyncClient
 
-from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
+from sagaloom.web.limits import TURN_PATH, BodyLimitMiddleware, RateLimitMiddleware
 
 
 class Clock:
@@ -44,6 +44,10 @@ def build(**kw) -> FastAPI:
 
     @app.post("/api/threads/{tid}/decisions")
     def decisions(tid: str):
+        return {"ok": True}
+
+    @app.post("/api/worlds/{wid}/imports")
+    def imports(wid: str):
         return {"ok": True}
 
     if "max_bytes" in kw:
@@ -87,6 +91,16 @@ async def test_turn_limit_per_client():
         assert other.status_code == 200
         clock.now += 61
         assert (await c.post("/api/threads/x/messages", headers=one)).status_code == 200
+
+
+async def test_import_counts_as_a_turn():
+    assert TURN_PATH.match("/api/worlds/w/imports")
+    assert not TURN_PATH.match("/api/worlds/w/imports/x")
+    assert not TURN_PATH.match("/api/worlds/w/entries")
+    async with client(build(turn_limit=1, clock=Clock())) as c:
+        one = {"X-Forwarded-For": "1.1.1.1"}
+        assert (await c.post("/api/worlds/w/imports", headers=one)).status_code == 200
+        assert (await c.post("/api/threads/x/messages", headers=one)).status_code == 429
 
 
 async def test_first_forwarded_hop_is_the_key():

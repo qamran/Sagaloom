@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+from collections.abc import Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +43,10 @@ class AppDeps:
     memory: BaseStore | None = None  # long-term author preferences (R10.2)
     seed_dir: Path | None = SEED_DIR
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
+    # role -> chat model, the same factory the graph uses (the import extractor runs on it).
+    model_for: Callable[[str], Any] | None = None
+    # Running turns, shielded from client disconnects; cancelled at shutdown.
+    tasks: set[asyncio.Task] = field(default_factory=set)
 
 
 # Roles that run on another role's model choice; not switchable on their own.
@@ -106,9 +111,10 @@ async def _open_runtime(app: FastAPI):
                     AsyncSqliteStore.from_conn_string(str(Path(settings.data_dir) / "store.sqlite"))
                 )
                 await deps.memory.setup()
+            deps.model_for = make_model_for(settings, deps.model_settings)
             deps.graph = build_graph(
                 store=deps.store,
-                model_for=make_model_for(settings, deps.model_settings),
+                model_for=deps.model_for,
                 checkpointer=saver,
                 dev=deps.dev_settings.get,
                 wiki=deps.wiki,
@@ -116,7 +122,17 @@ async def _open_runtime(app: FastAPI):
             )
         if deps.seed_dir is not None:
             await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)
-        yield
+        try:
+            yield
+        finally:
+            await _cancel_turns(deps.tasks)  # while the checkpointer is still open
+
+
+async def _cancel_turns(tasks: set[asyncio.Task]) -> None:
+    pending = list(tasks)
+    for t in pending:
+        t.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 def make_require_secret(secret: str):

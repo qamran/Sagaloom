@@ -11,7 +11,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 
-TURN_PATH = re.compile(r"^/api/threads/[^/]+/(messages|decisions)$")
+TURN_PATH = re.compile(r"^/api/(threads/[^/]+/(messages|decisions)|worlds/[^/]+/imports)$")
 HEALTH_PATH = "/api/health"
 
 

@@ -198,6 +198,16 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             try_href=prompt
             + "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that.",
         ),
+        FeatureCard(
+            id="injection_safe_extraction",
+            title="Injection-safe extraction",
+            brief_ref="Course (security)",
+            req_ids=["R13.6", "R13.7", "R3.5"],
+            status="live",
+            detail="Imported text is extracted with structured output and no tools, wrapped as untrusted "
+            "data, and kept verbatim: every candidate goes through the check and the approval gate.",
+            try_href="/import",
+        ),
     ]
 
 

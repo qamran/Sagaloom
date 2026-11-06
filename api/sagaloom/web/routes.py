@@ -14,9 +14,11 @@ from pydantic import BaseModel, Field
 from sagaloom.check.badge import with_badges, worst_badge
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
+from sagaloom.graph.nodes import RoleModel
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.runs import last_run_nodes
 from sagaloom.guard import GUARD_POLICY, parse_verdict
+from sagaloom.importing.extract import MAX_CHARS
 from sagaloom.memory import CAP, count_items, forget, read_preferences
 from sagaloom.models import Decision, Entry, PreferenceKey, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
@@ -25,7 +27,8 @@ from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
 from sagaloom.text import message_text
 from sagaloom.tools.canon_tools import TOOL_SPECS
-from sagaloom.web.sse import run_turn_events, sse_response
+from sagaloom.web.imports import import_events
+from sagaloom.web.sse import run_turn_events, shielded, sse_response
 
 router = APIRouter()
 
@@ -44,6 +47,11 @@ class NewMessage(BaseModel):
 
 class DecisionBody(BaseModel):
     decisions: list[Decision]
+
+
+class NewImport(BaseModel):
+    text: str = Field(min_length=1, max_length=MAX_CHARS)
+    filename: str | None = Field(default=None, max_length=120, pattern=r"(?i)^[^/\\]+\.(md|txt)$")
 
 
 def _deps(request: Request):
@@ -158,7 +166,9 @@ async def _take_turn(request: Request, thread_id: str) -> Callable[[], None]:
     return release
 
 
-def _stream_run(request: Request, thread, input_or_command: Any, release: Callable[[], None]):
+def _turn(request: Request, thread) -> tuple[asyncio.Queue, dict, Callable[[], tuple[Usage, Usage]]]:
+    """One turn's prompt-event queue, run config (prompt capture under a new turn id) and
+    usage function (turn, total), read from the prompt log (R12)."""
     d = _deps(request)
     queue: asyncio.Queue = asyncio.Queue()
     turn_id = uuid.uuid4().hex
@@ -172,9 +182,20 @@ def _stream_run(request: Request, thread, input_or_command: Any, release: Callab
             d.promptlog.usage(thread.thread_id),
         )
 
+    return queue, cfg, usage_fn
+
+
+def _stream_run(request: Request, thread, input_or_command: Any, release: Callable[[], None]):
+    d = _deps(request)
+    queue, cfg, usage_fn = _turn(request, thread)
+    # Shielded: a client that goes away does not cancel the run; the lock is released when the
+    # run itself ends (Review Focus 5).
     return sse_response(
-        run_turn_events(d.graph, input_or_command, cfg, extra=queue, usage_fn=usage_fn),
-        on_close=release,
+        shielded(
+            run_turn_events(d.graph, input_or_command, cfg, extra=queue, usage_fn=usage_fn),
+            on_finish=release,
+            tasks=d.tasks,
+        )
     )
 
 
@@ -221,6 +242,57 @@ def export_world(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------- import (R3.1, R3.2, R18.10) ----------
+
+BLANK_IMPORT = "Paste or upload some text first."
+PASTE_TITLE_CHARS = 60
+
+
+def _first_line(text: str) -> str:
+    return next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+
+
+@router.post("/worlds/{world_id}/imports")
+async def post_import(world_id: str, body: NewImport, request: Request):
+    """A new `import` thread: extraction, then the graph run from `check` (spec §3.1)."""
+    d = _deps(request)
+    if d.worlds.get(world_id) is None:
+        raise HTTPException(status_code=404, detail="world not found")
+    if not body.text.strip():
+        raise HTTPException(status_code=422, detail=BLANK_IMPORT)
+    if d.model_for is None:
+        raise HTTPException(status_code=503, detail="import is not available")
+    label = body.filename or "paste"
+    title = body.filename or "Pasted text: " + _first_line(body.text)[:PASTE_TITLE_CHARS]
+    thread_id = d.threads.create(world_id, kind="import", title=title)
+    try:
+        release = await _take_turn(request, thread_id)
+    except BaseException:
+        d.threads.delete(thread_id)
+        raise
+    try:
+        thread = d.threads.get(thread_id)
+        queue, cfg, usage_fn = _turn(request, thread)
+        events = import_events(
+            d.graph,
+            d.store,
+            RoleModel(d.model_for, "extractor"),
+            world_id,
+            thread_id,
+            body.text,
+            label,
+            cfg,
+            queue,
+            usage_fn,
+            d.threads,
+        )
+        return sse_response(shielded(events, on_finish=release, tasks=d.tasks))
+    except BaseException:
+        release()
+        d.threads.delete(thread_id)
+        raise
 
 
 # ---------- long-term memory (R10.2) ----------
