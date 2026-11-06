@@ -1,4 +1,5 @@
 from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Proposal
+from sagaloom.provenance import is_import_merge
 from sagaloom.store.canon import norm
 
 _ESTABLISHED = ("canon", "secret")
@@ -86,5 +87,9 @@ def apply_save_as_myth(
     for key in kept:
         restore(key)
 
-    body = before.body if before is not None and proposal.action == "update" else proposal.after.body
+    # An update gets its stored body back, so a myth never rewrites canon prose; but an import merge
+    # only appends the author's passage under its heading, and that passage is kept (R3.5).
+    body = proposal.after.body
+    if before is not None and proposal.action == "update" and not is_import_merge(before.body, body):
+        body = before.body
     return proposal.after.model_copy(update={"facts": facts, "body": body}, deep=True)

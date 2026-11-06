@@ -17,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
 from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal
-from sagaloom.provenance import merge_provenance
+from sagaloom.provenance import IMPORTED_HEADING, merge_provenance
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
 
@@ -280,7 +280,7 @@ def _proposal(world_id: str, g: _Group, label: str, today: date) -> tuple[Propos
             return Proposal(
                 proposal_id=pid, action="create", world_id=world_id, entry_id=None, before=None, after=after
             ), body
-        prefix = before.body.rstrip() + f"\n\n## Imported from {label} ({today:%Y-%m-%d})\n\n"
+        prefix = before.body.rstrip() + f"\n\n{IMPORTED_HEADING}{label} ({today:%Y-%m-%d})\n\n"
         body = fit(excerpt, BODY_MAX - len(prefix))
         if body is None:
             return ENTRY_FULL

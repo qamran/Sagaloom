@@ -148,3 +148,49 @@ def test_dropping_one_value_of_a_kept_key_is_not_a_removed_key():
         ("Members", "Old guard", "canon"),
         ("Weather", "Evening sea fog", "canon"),
     ]
+
+
+SKY = Entry(
+    id="ent_0007", world_id="w1", title="Sky of Velmar", type="place", body="One moon, Ister.\n",
+    facts=[Fact(key="Moons", value="One (Ister)")],
+)
+SKY_RETCON = CheckResult(
+    proposal_id="p1", verdict="conflict",
+    flags=[Flag(kind="retcon", entry_id="ent_0007", title="Sky of Velmar", fact_key="Moons", explanation="x")],
+)
+
+
+def test_save_as_myth_keeps_imported_section():
+    """An import merge appends the author's passage under its heading: Save as myth keeps it (R3.5),
+    while the flagged fact becomes a myth and the stored canon fact is restored."""
+    merged = "One moon, Ister.\n\n## Imported from paste (2026-11-06)\n\nThe three moons rose together."
+    after = EntryDraft(
+        title="Sky of Velmar", type="place", body=merged, trusted=False,
+        facts=[Fact(key="Moons", value="Three")],
+    )
+    p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
+    out = apply_save_as_myth(p, SKY_RETCON, None)
+    assert out.body == merged
+    assert [(f.value, f.status) for f in out.facts] == [("One (Ister)", "canon"), ("Three", "myth")]
+    assert out.trusted is False
+
+
+def test_save_as_myth_restores_body_for_chat_update():
+    """A chat update that rewrote the body in place gets the stored body back, as before."""
+    after = EntryDraft(
+        title="Sky of Velmar", type="place", body="Three moons rise together.",
+        facts=[Fact(key="Moons", value="Three")],
+    )
+    p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
+    assert apply_save_as_myth(p, SKY_RETCON, None).body == SKY.body
+
+
+def test_save_as_myth_restores_body_when_a_heading_follows_a_rewrite():
+    """A heading after a changed body is not an import merge: the stored body comes back."""
+    after = EntryDraft(
+        title="Sky of Velmar", type="place",
+        body="Three moons.\n\n## Imported from paste (2026-11-06)\n\nText.",
+        facts=[Fact(key="Moons", value="Three")],
+    )
+    p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=SKY, after=after)
+    assert apply_save_as_myth(p, SKY_RETCON, None).body == SKY.body
