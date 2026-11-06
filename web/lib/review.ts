@@ -93,8 +93,9 @@ function keySecret(entry: Pick<EntryDraft, "status" | "facts"> | null | undefine
 }
 
 /**
- * One line about a proposal for a list: its first conflicting, else retconned, fact; else a
- * duplicate note; else what a delete touches; else the first conflict's, else note's, prose.
+ * One line about a proposal for a list, in the badge's precedence (api/sagaloom/check/badge.py) so
+ * the line explains the badge: the worst conflict (hard before possible, keyed before prose);
+ * else a retconned fact; else a duplicate note; else what a delete touches; else a note's prose.
  * `secret` says a flag's existing side is masked.
  */
 export function proposalSummary(
@@ -104,8 +105,17 @@ export function proposalSummary(
   /** Masks a flag's prose, like the card; defaults to `secret`. */
   proseSecret: (f: Flag) => boolean = secret,
 ): string {
-  const first = (kind: Flag["kind"], keyed = false) => c.flags.find((f) => f.kind === kind && (!keyed || f.fact_key));
-  const flag = first("conflict", true) ?? first("retcon", true);
+  // A flag's prose, or, when masked, the badge and the cited entry's ID, as the card shows a
+  // masked flag (its Cite and a hidden explanation).
+  const proseLine = (f: Flag) => {
+    if (f.explanation && !proseSecret(f)) return f.explanation;
+    const label = BADGE_LABEL[f.kind === "conflict" && f.severity !== "hard" ? "possible" : f.kind];
+    return f.entry_id ? `${label} with ${f.entry_id}` : label;
+  };
+  const rank = (f: Flag) => (f.severity === "hard" ? 0 : 2) + (f.fact_key ? 0 : 1);
+  const conflict = c.flags.filter((f) => f.kind === "conflict").sort((a, b) => rank(a) - rank(b))[0];
+  if (conflict && !conflict.fact_key) return proseLine(conflict);
+  const flag = conflict ?? c.flags.find((f) => f.kind === "retcon" && f.fact_key);
   if (flag?.fact_key) {
     const existing =
       flag.existing_fact === null ? "not set" : secret(flag) ? SECRET : flagValue(flag, flag.existing_fact);
@@ -126,15 +136,8 @@ export function proposalSummary(
     const n = c.dependents.length;
     return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
   }
-  // A prose-only conflict or a keyed note: its explanation, or, when masked, the badge and the
-  // cited entry's ID, as the card shows a masked flag (its Cite and a hidden explanation).
-  const prose = first("conflict") ?? first("note");
-  if (prose) {
-    if (prose.explanation && !proseSecret(prose)) return prose.explanation;
-    const label = BADGE_LABEL[prose.severity === "possible" ? "possible" : prose.kind];
-    return prose.entry_id ? `${label} with ${prose.entry_id}` : label;
-  }
-  return "No conflicts found";
+  const note = c.flags.find((f) => f.kind === "note");
+  return note ? proseLine(note) : "No conflicts found";
 }
 
 function secretIndex(proposal: Proposal, canon: Entry[] | undefined) {

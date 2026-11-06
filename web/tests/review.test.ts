@@ -111,6 +111,24 @@ describe("proposalSummary", () => {
     );
   });
 
+  it("follows the badge precedence: the line explains the badge", () => {
+    const prose = flag({ entry_id: "ent_0012", severity: "hard", explanation: "Ister is the only moon." });
+    const dup = flag({ kind: "note", entry_id: "ent_0002", explanation: "Possible duplicate of ent_0002 'Harbour Council'" });
+    const retcon = flag({ kind: "retcon", fact_key: "Seats", existing_fact: "Seven", new_fact: "Five" });
+    expect(proposalSummary(create, check([dup, prose]), open)).toBe("Ister is the only moon.");
+    expect(proposalSummary(create, check([retcon, prose]), open)).toBe("Ister is the only moon.");
+    expect(proposalSummary(create, check([dup, retcon, prose]), open, () => true)).toBe("Conflict with ent_0012");
+    // Hard before possible, keyed or not.
+    const possibleKeyed = flag({
+      fact_key: "Seats", existing_fact: "Seats: Seven", new_fact: "Seats: Five", severity: "possible",
+    });
+    expect(proposalSummary(create, check([possibleKeyed, prose]), open)).toBe("Ister is the only moon.");
+    const possibleProse = { ...prose, severity: "possible" as const, explanation: "Maybe one moon." };
+    expect(proposalSummary(create, check([possibleProse, possibleKeyed]), open)).toBe("Seats: Seven → Five");
+    // A retcon still outranks a duplicate note.
+    expect(proposalSummary(create, check([dup, retcon]), open)).toBe("Seats: Seven → Five");
+  });
+
   it("masks a key whose every fact is secret, in the draft or before, or a secret entry's key", () => {
     const heir = (status: "canon" | "secret") => ({ key: "True heir", value: "Mira", refs: [], status, told_by: null });
     const retcon = flag({
