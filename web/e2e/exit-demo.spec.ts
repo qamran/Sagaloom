@@ -63,7 +63,8 @@ test("M1 exit demo", async ({ page }) => {
   await card(page, "Sky of Velmar").getByRole("button", { name: "Save as myth" }).click();
   const mythCard = card(page, "Sky of Velmar");
   // An update shows its drafted facts in the fact table (Proposed column), where the clashing claim carries a myth tag.
-  await expect(mythCard.getByRole("table").getByText("myth", { exact: true }).first()).toBeVisible();
+  const movedRow = mythCard.getByRole("row").filter({ has: page.getByRole("cell", { name: "Moons", exact: true }) });
+  await expect(movedRow.getByRole("cell").nth(2).getByText("myth", { exact: true })).toBeVisible();
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Conflict", { exact: true })).toHaveCount(0);
   // A failed re-check also hides the Conflict badge, so rule it out explicitly.
   await expect(mythCard.getByRole("list", { name: "Check result" }).getByText("Check failed")).toHaveCount(0);
@@ -322,7 +323,7 @@ test("M1 exit demo", async ({ page }) => {
   const reviewThread = currentThread();
   await send(
     page,
-    "Add Mira Hale, a harbour pilot who guides ships past the Drowned Bell, and make the Harbour Council five members.",
+    "Add Mira Hale, a harbour pilot who guides ships past the Drowned Bell, and make the Harbour Council five seats.",
   );
   await settle(page);
   if ((await anyProposal(page).count()) < 2) {
@@ -357,11 +358,11 @@ test("M1 exit demo", async ({ page }) => {
   }
 
   // 25. Approve Mira Hale (in bulk when it has no issues), reject the council change, submit both.
-  const bulk = page.getByRole("button", { name: "Approve 1 with no issues" });
-  if (await bulk.isVisible()) {
-    await bulk.click();
+  const miraRow = queue.getByRole("listitem").filter({ hasText: "Mira Hale" });
+  if (((await miraRow.innerText()).match(/Clear/)) !== null) {
+    await page.getByRole("button", { name: "Approve 1 with no issues" }).click();
   } else {
-    await queue.getByRole("listitem").filter({ hasText: "Mira Hale" }).getByRole("button").click();
+    await miraRow.getByRole("button").click();
     await card(page, "Mira Hale").getByRole("button", { name: /^Approve/ }).click();
   }
   await queue.getByRole("listitem").filter({ hasText: "Harbour Council" }).getByRole("button").click();

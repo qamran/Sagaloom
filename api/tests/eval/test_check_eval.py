@@ -24,8 +24,8 @@ RUNS = 10
 MIN_PASSES = 9
 
 
-@pytest.mark.eval
-async def test_scripted_contradictions_caught(tmp_path):
+def _seeded_store_and_judge(tmp_path):
+    """An isolated copy of the Velmar seed and the real judge, shared by the check evals."""
     settings = Settings()
     store = CanonStore(
         chromadb.EphemeralClient(),
@@ -33,7 +33,12 @@ async def test_scripted_contradictions_caught(tmp_path):
         collection_name=f"eval_{uuid.uuid4().hex}",
     )
     load_seed(store, WorldRegistry(tmp_path / "worlds.json"), SEED)
-    judge = make_chat_model(settings, model=settings.judge_model)
+    return store, make_chat_model(settings, model=settings.judge_model)
+
+
+@pytest.mark.eval
+async def test_scripted_contradictions_caught(tmp_path):
+    store, judge = _seeded_store_and_judge(tmp_path)
     scripted = json.loads((SEED / "scripted_proposals.json").read_text(encoding="utf-8"))
 
     report: dict[str, list[str]] = {}
@@ -127,14 +132,7 @@ CONSISTENT_UPDATES = [
 @pytest.mark.eval
 async def test_consistent_proposals_rarely_hard(tmp_path):
     """R4.10: ten proposals that agree with the seed raise at most one hard conflict flag in all."""
-    settings = Settings()
-    store = CanonStore(
-        chromadb.EphemeralClient(),
-        make_embeddings(settings),
-        collection_name=f"eval_{uuid.uuid4().hex}",
-    )
-    load_seed(store, WorldRegistry(tmp_path / "worlds.json"), SEED)
-    judge = make_chat_model(settings, model=settings.judge_model)
+    store, judge = _seeded_store_and_judge(tmp_path)
 
     proposals = [_create(*c) for c in CONSISTENT_CREATES]
     for entry_id, (key, value) in CONSISTENT_UPDATES:
@@ -159,8 +157,11 @@ async def test_consistent_proposals_rarely_hard(tmp_path):
     assert len(proposals) == 10
 
     hard_flags = []
+    failed = []
     for proposal in proposals:
         res = await check_proposal(store, proposal, judge)
+        if res.verdict == "failed":
+            failed.append(proposal.proposal_id)
         for f in res.flags:
             print(f"{proposal.proposal_id}: verdict={res.verdict} {f.kind}/{f.severity} {f.entry_id} {f.explanation}")
             if f.kind == "conflict" and f.severity == "hard":
@@ -168,4 +169,5 @@ async def test_consistent_proposals_rarely_hard(tmp_path):
         if not res.flags:
             print(f"{proposal.proposal_id}: verdict={res.verdict} no flags")
     print(f"hard conflict flags: {len(hard_flags)}")
+    assert not failed, f"the check failed for {failed}; a failed check proves nothing about false alarms"
     assert len(hard_flags) <= 1, f"{len(hard_flags)} hard flags on consistent proposals: {hard_flags}"
