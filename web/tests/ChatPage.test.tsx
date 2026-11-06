@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
-import { createThread, forgetMemory, getPendingThreads, getSettings, getThread } from "@/lib/api";
+import { createThread, forgetMemory, getReviewThreads, getSettings, getThread } from "@/lib/api";
 import type { SettingsPayload, ThreadSummary } from "@/lib/types";
 
 const summary = (thread_id: string, world_id: string, pending: number): ThreadSummary => ({
@@ -23,7 +23,7 @@ vi.mock("@/lib/world", () => ({
 }));
 vi.mock("@/lib/api", () => ({
   createThread: vi.fn(),
-  getPendingThreads: vi.fn(),
+  getReviewThreads: vi.fn(),
   getThread: vi.fn(),
   getEntries: vi.fn(async () => []),
   getLlmLog: vi.fn(async () => []),
@@ -41,29 +41,30 @@ beforeEach(() => {
   vi.mocked(getSettings).mockReset().mockResolvedValue(settings(true));
   replace.mockReset();
   vi.mocked(createThread).mockReset().mockResolvedValue({ thread_id: "t_new" });
-  vi.mocked(getPendingThreads).mockReset();
+  vi.mocked(getReviewThreads).mockReset();
 });
 
 describe("/chat", () => {
   it("resumes a thread with a pending approval for the active world instead of creating one", async () => {
-    vi.mocked(getPendingThreads).mockResolvedValue([
-      summary("t_other", "w2", 1),
-      summary("t_pending", "w1", 1),
+    vi.mocked(getReviewThreads).mockResolvedValue([
+      summary("t_pending", "w1", 2),
+      summary("t_older", "w1", 1),
     ]);
     render(<NewChat />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat/t_pending"));
+    expect(getReviewThreads).toHaveBeenCalledWith("w1");
     expect(createThread).not.toHaveBeenCalled();
   });
 
   it("creates a thread when no pending one exists for the active world", async () => {
-    vi.mocked(getPendingThreads).mockResolvedValue([summary("t_other", "w2", 1)]);
+    vi.mocked(getReviewThreads).mockResolvedValue([]);
     render(<NewChat />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat/t_new"));
     expect(createThread).toHaveBeenCalledWith("w1");
   });
 
   it("still creates a thread when the pending lookup fails", async () => {
-    vi.mocked(getPendingThreads).mockRejectedValue(new Error("down"));
+    vi.mocked(getReviewThreads).mockRejectedValue(new Error("down"));
     render(<NewChat />);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/chat/t_new"));
   });

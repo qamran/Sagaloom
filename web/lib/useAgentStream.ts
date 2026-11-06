@@ -41,8 +41,10 @@ export interface AgentStream {
   send: (content: string) => Promise<void>;
   /** Sends decisions now. They must name exactly the pending proposal ids. */
   decide: (decisions: Decision[]) => Promise<void>;
-  /** Records one card's decision; submits all of them once every pending proposal has one. */
+  /** Records one card's decision; submits all of them once every pending proposal has one (unless `autoSubmit` is off). */
   choose: (decision: Decision) => Promise<void>;
+  /** Records several decisions at once (the bulk buttons); same submit rule as `choose`. */
+  chooseMany: (decisions: Decision[]) => Promise<void>;
   /** Takes back one card's decision before the set is submitted. */
   unchoose: (proposalId: string) => void;
 }
@@ -122,7 +124,8 @@ function withMode(msgs: ChatMessage[], mode: Mode): ChatMessage[] {
   return msgs;
 }
 
-export function useAgentStream(threadId: string): AgentStream {
+export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } = {}): AgentStream {
+  const autoSubmit = opts.autoSubmit ?? true;
   const qc = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPendingState] = useState<PendingInterrupt | null>(null);
@@ -335,6 +338,7 @@ export function useAgentStream(threadId: string): AgentStream {
         void qc.invalidateQueries({ queryKey: ["thread", threadId] });
         void qc.invalidateQueries({ queryKey: ["llm-log", threadId] });
         if (kind === "decision") void qc.invalidateQueries({ queryKey: ["entries"] });
+        void qc.invalidateQueries({ queryKey: ["review"] });
       }
     },
     [threadId, qc, restore, setPending],
@@ -378,16 +382,18 @@ export function useAgentStream(threadId: string): AgentStream {
     [run, setPending],
   );
 
-  const choose = useCallback(
-    async (decision: Decision) => {
+  const chooseMany = useCallback(
+    async (decisions: Decision[]) => {
       const asked = pendingRef.current?.proposals.map((p) => p.proposal_id) ?? [];
-      if (!asked.includes(decision.proposal_id)) return;
-      const next = { ...chosenRef.current, [decision.proposal_id]: decision };
+      const next = { ...chosenRef.current };
+      for (const d of decisions) if (asked.includes(d.proposal_id)) next[d.proposal_id] = d;
       setChosen(next);
-      if (asked.every((id) => next[id])) await decide(asked.map((id) => next[id]));
+      if (autoSubmit && asked.length > 0 && asked.every((id) => next[id])) await decide(asked.map((id) => next[id]));
     },
-    [decide, setChosen],
+    [decide, setChosen, autoSubmit],
   );
+
+  const choose = useCallback((decision: Decision) => chooseMany([decision]), [chooseMany]);
 
   const unchoose = useCallback(
     (proposalId: string) => {
@@ -412,6 +418,7 @@ export function useAgentStream(threadId: string): AgentStream {
     send,
     decide,
     choose,
+    chooseMany,
     unchoose,
   };
 }

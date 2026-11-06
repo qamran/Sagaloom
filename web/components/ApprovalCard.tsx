@@ -8,7 +8,7 @@ import { BodyDiff, LineDiff } from "@/components/DiffView";
 import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from "@/components/FactTable";
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, isSecretFact } from "@/lib/review";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, existingSecretOf, isSecretFact } from "@/lib/review";
 import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Flag, Proposal, Status } from "@/lib/types";
 
 export const CHECK_FAILED_TEXT =
@@ -61,8 +61,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
   const unknown = (id: string) => !!id && id !== proposal.entry_id && !canonLoaded;
   const citeSecret = (id: string) =>
     unknown(id) || (id !== proposal.entry_id && byId.get(id)?.status === "secret");
-  const existingSecret = (f: Flag) =>
-    f.existing_secret || unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
+  const existingSecret = existingSecretOf(proposal, canon);
   // A quote can come from a secret fact's text, so mask it if the entry holds any secret.
   const quoteSecret = (id: string) => {
     if (unknown(id)) return true;

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createThread, getPendingThreads } from "@/lib/api";
+import { createThread, getReviewThreads } from "@/lib/api";
 import { useWorld } from "@/lib/world";
 
 /**
@@ -22,7 +22,7 @@ export default function NewChat() {
     (async () => {
       let threadId: string | null = null;
       try {
-        threadId = (await getPendingThreads()).find((t) => t.world_id === worldId && t.pending > 0)?.thread_id ?? null;
+        threadId = (await getReviewThreads(worldId))[0]?.thread_id ?? null;
       } catch {
         /* lookup failed: start a new thread instead */
       }

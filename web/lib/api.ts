@@ -60,7 +60,8 @@ export const getEntry = (worldId: string, id: string) =>
 export const createThread = (worldId: string) =>
   request<{ thread_id: string }>("/threads", post({ world_id: worldId }));
 export const getThread = (id: string) => request<ThreadState>(`/threads/${encodeURIComponent(id)}`);
-export const getPendingThreads = () => request<ThreadSummary[]>("/threads?pending=true");
+export const getReviewThreads = (worldId: string) =>
+  request<ThreadSummary[]>(`/threads?pending=true&world_id=${encodeURIComponent(worldId)}`);
 export const getStudio = () => request<StudioData>("/studio");
 export const getModels = () => request<ModelsPayload>("/settings/models");
 export const putModel = (role: ModelRole, model: string) =>

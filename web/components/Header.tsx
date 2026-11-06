@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { getThread } from "@/lib/api";
+import { getReviewThreads, getThread } from "@/lib/api";
 import { useCourseNotes } from "@/lib/courseNotes";
+import { REVIEW_KEY } from "@/lib/review";
 import { useWorld } from "@/lib/world";
 
 const NEW_WORLD = "__new__";
@@ -13,6 +14,7 @@ const NEW_WORLD = "__new__";
 const TABS = [
   { href: "/canon", label: "Canon" },
   { href: "/chat", label: "Chat" },
+  { href: "/review", label: "Review" },
 ];
 
 function Logo() {
@@ -150,6 +152,25 @@ function CostPill() {
   );
 }
 
+/** Proposals waiting for a decision in the active world; nothing while there are none. */
+function ReviewCount() {
+  const { world } = useWorld();
+  const { data } = useQuery({
+    queryKey: REVIEW_KEY(world?.id ?? ""),
+    queryFn: () => getReviewThreads(world?.id as string),
+    enabled: !!world,
+    refetchInterval: 15000,
+  });
+  const count = data?.reduce((n, t) => n + t.pending, 0) ?? 0;
+  if (!count) return null;
+  return (
+    <>
+      {" "}
+      <span className="ml-1 rounded-full bg-background px-1.5 text-[11px] font-semibold text-conflict">{count}</span>
+    </>
+  );
+}
+
 function CourseNotesToggle() {
   const [on, setOn] = useCourseNotes();
   return (
@@ -189,6 +210,7 @@ export function Header() {
               }`}
             >
               {t.label}
+              {t.href === "/review" && <ReviewCount />}
             </Link>
           );
         })}

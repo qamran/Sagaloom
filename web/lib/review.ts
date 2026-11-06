@@ -1,4 +1,7 @@
-import type { Badge, CheckResult, EntryDraft, Flag, PendingInterrupt, Proposal } from "@/lib/types";
+import type { Badge, CheckResult, Entry, EntryDraft, Flag, PendingInterrupt, Proposal } from "@/lib/types";
+
+/** TanStack Query key for a world's pending review threads; invalidate `["review"]` for every world. */
+export const REVIEW_KEY = (worldId: string) => ["review", worldId] as const;
 
 /** Badge labels, worst first (spec §3.8). The card says "No conflicts found" in place of "Clear". */
 export const BADGE_LABEL: Record<Badge, string> = {
@@ -96,4 +99,17 @@ export function proposalSummary(p: Proposal, c: CheckResult, secret: (f: Flag) =
     return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
   }
   return "No conflicts found";
+}
+
+/**
+ * Whether a flag's existing side is secret, as the card masks it: the server's mark, a secret fact
+ * or entry among `canon` (plus the proposal's own `before`), and fail closed: until `canon` has
+ * loaded, any flag citing another entry counts as secret (R12.12).
+ */
+export function existingSecretOf(proposal: Proposal, canon: Entry[] | undefined): (f: Flag) => boolean {
+  const byId = new Map<string, Pick<Entry, "status" | "facts">>();
+  for (const e of canon ?? []) byId.set(e.id, e);
+  if (proposal.before) byId.set(proposal.before.id, proposal.before);
+  const unknown = (id: string) => !!id && id !== proposal.entry_id && canon === undefined;
+  return (f) => f.existing_secret || unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
 }

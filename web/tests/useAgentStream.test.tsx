@@ -57,14 +57,14 @@ const errorResponse = (status: number, detail: string) => ({
 let fetchMock: ReturnType<typeof vi.fn>;
 let qc: QueryClient;
 
-function setup() {
+function setup(opts?: { autoSubmit?: boolean }) {
   const statuses: string[] = [];
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
   const hook = renderHook(
     () => {
-      const s = useAgentStream("t1");
+      const s = useAgentStream("t1", opts);
       if (statuses[statuses.length - 1] !== s.status) statuses.push(s.status);
       return s;
     },
@@ -401,6 +401,48 @@ describe("useAgentStream", () => {
     // The re-check asks again about p_a: the old choice must not carry over.
     expect(result.current.pending?.proposals.map((p) => p.proposal_id)).toEqual(["p_a"]);
     expect(result.current.chosen).toEqual({});
+  });
+
+  it("autoSubmit false records without sending", async () => {
+    getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_a", "p_b") }));
+    const { result } = setup({ autoSubmit: false });
+    await waitFor(() => expect(result.current.pending?.proposals).toHaveLength(2));
+    await act(async () => {
+      await result.current.choose({ proposal_id: "p_a", action: "approve" });
+      await result.current.choose({ proposal_id: "p_b", action: "reject" });
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(Object.keys(result.current.chosen)).toEqual(["p_a", "p_b"]);
+  });
+
+  it("chooseMany records several", async () => {
+    getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_a", "p_b") }));
+    const { result } = setup({ autoSubmit: false });
+    await waitFor(() => expect(result.current.pending?.proposals).toHaveLength(2));
+    await act(async () => {
+      await result.current.chooseMany([
+        { proposal_id: "p_a", action: "approve" },
+        { proposal_id: "p_b", action: "reject" },
+        { proposal_id: "p_zzz", action: "approve" },
+      ]);
+    });
+    expect(result.current.chosen).toEqual({
+      p_a: { proposal_id: "p_a", action: "approve" },
+      p_b: { proposal_id: "p_b", action: "reject" },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the review queue after a turn", async () => {
+    getThreadMock.mockResolvedValue(thread({ pending_interrupt: pendingOf("p_1") }));
+    fetchMock.mockResolvedValue(streamResponse([sse("done", {})]));
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    const { result } = setup();
+    await waitFor(() => expect(result.current.pending).not.toBeNull());
+    await act(async () => {
+      await result.current.choose({ proposal_id: "p_1", action: "approve" });
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["review"] });
   });
 
   it("submits at once when there is a single proposal, and marks the myth step", async () => {

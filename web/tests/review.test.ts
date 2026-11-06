@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { badgeOf, proposalSummary } from "@/lib/review";
-import type { CheckResult, Flag, Proposal } from "@/lib/types";
+import { badgeOf, existingSecretOf, proposalSummary } from "@/lib/review";
+import type { CheckResult, Entry, Flag, Proposal } from "@/lib/types";
 
 const flag = (over: Partial<Flag>): Flag => ({
   kind: "conflict", entry_id: "ent_0011", title: "The Salt Guild", fact_key: null, existing_fact: null,
@@ -82,5 +82,29 @@ describe("proposalSummary", () => {
       "Deletes this entry · 2 entries mention it",
     );
     expect(proposalSummary(create, check([]), open)).toBe("No conflicts found");
+  });
+});
+
+describe("existingSecretOf", () => {
+  const cited = flag({ entry_id: "ent_0012", fact_key: "Members", existing_fact: "Ashen Choir" });
+  const entry = (status: "canon" | "secret") =>
+    ({
+      id: "ent_0012", status,
+      facts: [{ key: "Members", value: "Ashen Choir", refs: [], status, told_by: null }],
+    }) as unknown as Entry;
+
+  it("fails closed for another entry until canon has loaded", () => {
+    expect(existingSecretOf(create, undefined)(cited)).toBe(true);
+    expect(existingSecretOf(create, [])(cited)).toBe(false);
+  });
+
+  it("does not fail closed for the proposal's own entry", () => {
+    expect(existingSecretOf({ ...create, entry_id: "ent_0012" }, undefined)(cited)).toBe(false);
+  });
+
+  it("trusts the server's mark and a secret fact in canon", () => {
+    expect(existingSecretOf(create, [])(flag({ existing_secret: true }))).toBe(true);
+    expect(existingSecretOf(create, [entry("secret")])(cited)).toBe(true);
+    expect(existingSecretOf(create, [entry("canon")])(cited)).toBe(false);
   });
 });
