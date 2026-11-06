@@ -384,7 +384,7 @@ test("M1 exit demo", async ({ page }) => {
   const NOTES = [
     "Brother Aldo is a lamplighter of Lantern Quay. He tends the iron lanterns on the night watch and keeps a ledger of every flame that gutters before dawn.",
     "The Gull Market is held on the shingle below the harbour wall every morning. Its stalls sell gull eggs, salt cod and tarred rope, and it closes when the noon bell rings.",
-    "On the festival night the three moons rose together over the harbour, and the whole sky of Velmar shone silver until dawn.",
+    "On the festival night the three moons rose together over the harbour. The Sky of Velmar has three moons, and that night it shone silver until dawn.",
   ].join("\n\n");
   await nav.getByRole("link", { name: "Import", exact: true }).click();
   await expect(page).toHaveURL(/\/import$/);
@@ -398,7 +398,9 @@ test("M1 exit demo", async ({ page }) => {
   const importRows = importQueue.getByRole("listitem");
   await expect.poll(() => importRows.count()).toBeGreaterThanOrEqual(2);
   const shownCard = page.getByRole("region", { name: /^Review proposal: / });
-  const imported: { title: string; update: boolean }[] = [];
+  type Imported = { title: string; update: boolean; cites: boolean; myth: boolean };
+  const imported: Imported[] = [];
+  const skyCite = shownCard.locator('a[href="/canon/ent_0007"], a[href="/canon/ent_0012"]');
   const pick = async (i: number) => {
     const button = importRows.nth(i).getByRole("button");
     await button.click();
@@ -408,16 +410,28 @@ test("M1 exit demo", async ({ page }) => {
     await pick(i);
     await expect(page.getByText(/^From paste: “/)).toBeVisible();
     const title = ((await shownCard.getAttribute("aria-label")) ?? "").replace(/^Review proposal: /, "");
-    imported.push({ title, update: /\bUpdate\b/.test(await importRows.nth(i).innerText()) });
+    imported.push({
+      title,
+      update: /\bUpdate\b/.test(await importRows.nth(i).innerText()),
+      cites: (await skyCite.count()) > 0,
+      myth: (await shownCard.getByRole("button", { name: "Save as myth" }).count()) > 0,
+    });
   }
   console.log(`demo step 28: imported cards ${JSON.stringify(imported)}`);
 
-  // 29. The sky card: an update of Sky of Velmar or a new sky entry, either way flagged against Sky of
-  // Velmar (ent_0007) or Ister (ent_0012). Other flags the judge adds are legitimate (Ruling R17).
-  const sky = imported.findIndex((c) => /Sky of Velmar|sky/i.test(c.title));
-  if (sky < 0) throw new Error(`no imported card is about the sky: ${JSON.stringify(imported)}`);
+  // 29. The sky card: an update of Sky of Velmar or a new entry, either way flagged against Sky of Velmar
+  // (ent_0007) or Ister (ent_0012). The extractor names it as it likes (run 1 of this demo gave "Festival
+  // night" and "Velmar"), so a sky title is preferred, then a citing card that offers Save as myth, then any
+  // citing card. Other flags the judge adds are legitimate (Ruling R17).
+  const order: ((c: Imported) => boolean)[] = [
+    (c) => c.cites && /Sky of Velmar|sky/i.test(c.title),
+    (c) => c.cites && c.myth,
+    (c) => c.cites,
+  ];
+  const sky = order.map((test) => imported.findIndex(test)).find((i) => i >= 0) ?? -1;
+  if (sky < 0) throw new Error(`no imported card is flagged against Sky of Velmar or Ister: ${JSON.stringify(imported)}`);
   await pick(sky);
-  await expect(shownCard.locator('a[href="/canon/ent_0007"], a[href="/canon/ent_0012"]').first()).toBeVisible();
+  await expect(skyCite.first()).toBeVisible();
   const skyEntry = imported[sky].update ? /\b(ent_\d{4})\b/.exec(await shownCard.innerText())?.[1] : undefined;
 
   // 30. Save the sky card as myth, approve one new entry, reject the rest, and submit.

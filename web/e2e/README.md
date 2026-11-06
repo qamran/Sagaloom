@@ -24,9 +24,10 @@ question instead of proposing, the step fails and prints the agent's reply.
 
 The Wave 5 step pastes three paragraphs (Brother Aldo, the Gull Market, and the three moons over the harbour) on the
 Import page and clicks **Extract** in the Paste text card. The extractor's output varies, so the step asserts outcomes,
-not exact titles: at least two cards, each with a `From paste:` line; one card whose title mentions the sky (an update
-of Sky of Velmar or a new sky entry), flagged against Sky of Velmar (`ent_0007`) or Ister (`ent_0012`); extra judge
-flags are fine (Ruling R17). It saves the sky card as myth, approves one new entry, rejects the rest, then approves
+not exact titles: at least two cards, each with a `From paste:` line; one sky card (an update of Sky of Velmar or a
+new entry) flagged against Sky of Velmar (`ent_0007`) or Ister (`ent_0012`). The extractor names that card as it
+likes ("Sky of Velmar", but also "Festival night" or "Velmar"), so the step prefers a sky title and otherwise takes a
+card citing those entries that offers Save as myth. Extra judge flags are fine (Ruling R17). It saves the sky card as myth, approves one new entry, rejects the rest, then approves
 the re-checked myth card. If the sky card was an update, the entry page must show **Contains imported text**. The
 step prints the imported cards (`demo step 28: ...`), and fails with the card text if no sky card or no Save as myth
 is offered.
