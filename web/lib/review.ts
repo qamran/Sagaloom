@@ -73,29 +73,51 @@ export function isSecretFact(
 }
 
 const DUPLICATE = "Possible duplicate of ";
+const SECRET = "a secret fact";
+
+/**
+ * A flag's fact value without the judge's key. The judge's flags (conflict, note) carry
+ * `"<key>: <value>"`, where the key may be another entry's (api/sagaloom/check/contradiction.py
+ * `_to_flag`); a retcon's value is the bare stored value, which may itself hold a colon.
+ */
+export function flagValue(f: Flag, value: string): string {
+  return f.kind === "retcon" ? value : value.replace(/^[^:\n]{1,60}:\s+/, "");
+}
+
+/** True when the entry is secret, or holds facts under `key` and every one of them is secret. */
+function keySecret(entry: Pick<EntryDraft, "status" | "facts"> | null | undefined, key: string) {
+  if (!entry) return false;
+  if (entry.status === "secret") return true;
+  const under = entry.facts.filter((f) => norm(f.key) === key);
+  return under.length > 0 && under.every((f) => f.status === "secret");
+}
 
 /**
  * One line about a proposal for a list: its first conflicting, else retconned, fact; else a
- * duplicate note; else what a delete touches. `secret` says a flag's existing side is masked.
+ * duplicate note; else what a delete touches; else the first conflict's, else note's, prose.
+ * `secret` says a flag's existing side is masked.
  */
 export function proposalSummary(
   p: Proposal,
   c: CheckResult,
   secret: (f: Flag) => boolean,
-  /** Masks a keyless flag's prose, like the card; defaults to `secret`. */
+  /** Masks a flag's prose, like the card; defaults to `secret`. */
   proseSecret: (f: Flag) => boolean = secret,
 ): string {
-  const keyed = (kind: Flag["kind"]) => c.flags.find((f) => f.kind === kind && f.fact_key);
-  const flag = keyed("conflict") ?? keyed("retcon");
+  const first = (kind: Flag["kind"], keyed = false) => c.flags.find((f) => f.kind === kind && (!keyed || f.fact_key));
+  const flag = first("conflict", true) ?? first("retcon", true);
   if (flag?.fact_key) {
-    const existing = flag.existing_fact === null ? "not set" : secret(flag) ? "a secret fact" : flag.existing_fact;
+    const existing =
+      flag.existing_fact === null ? "not set" : secret(flag) ? SECRET : flagValue(flag, flag.existing_fact);
     // The server joins every added value under the key ("a, b"), so fail closed: any secret
     // proposed fact under the key, or a secret draft, hides the new side.
     const key = norm(flag.fact_key);
     const draftSecret =
       p.after?.status === "secret" || !!p.after?.facts.some((f) => norm(f.key) === key && f.status === "secret");
-    const proposed = flag.new_fact === null ? "removed" : draftSecret ? "a secret fact" : flag.new_fact;
-    return `${flag.fact_key}: ${existing} → ${proposed}`;
+    const proposed = flag.new_fact === null ? "removed" : draftSecret ? SECRET : flagValue(flag, flag.new_fact);
+    // Like FactTable: a key whose facts are all secret names the secret, so it is masked too.
+    const name = keySecret(p.after, key) || keySecret(p.before, key) ? SECRET : flag.fact_key;
+    return `${name}: ${existing} → ${proposed}`;
   }
   const dup = c.flags.find((f) => f.kind === "note" && !f.fact_key && f.explanation.startsWith(DUPLICATE));
   // The explanation names the other entry's title: a secret entry is cited by ID only.
@@ -103,6 +125,14 @@ export function proposalSummary(
   if (p.action === "delete") {
     const n = c.dependents.length;
     return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
+  }
+  // A prose-only conflict or a keyed note: its explanation, or, when masked, the badge and the
+  // cited entry's ID, as the card shows a masked flag (its Cite and a hidden explanation).
+  const prose = first("conflict") ?? first("note");
+  if (prose) {
+    if (prose.explanation && !proseSecret(prose)) return prose.explanation;
+    const label = BADGE_LABEL[prose.severity === "possible" ? "possible" : prose.kind];
+    return prose.entry_id ? `${label} with ${prose.entry_id}` : label;
   }
   return "No conflicts found";
 }

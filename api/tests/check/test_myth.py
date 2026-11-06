@@ -104,6 +104,29 @@ def test_save_as_myth_renamed_key_keeps_a_moved_stored_value_canon():
     assert [(f.key, f.status) for f in out.facts] == [("Night sky", "canon"), ("Moons", "canon")]
 
 
+def test_save_as_myth_two_removed_keys_test_the_union_of_their_values():
+    before = Entry(
+        id="ent_0007", world_id="w1", title="Sky of Velmar", type="place", body="One moon.",
+        facts=[Fact(key="Moons", value="One (Ister)"), Fact(key="Tide", value="High")],
+    )
+    after = EntryDraft(
+        title="Sky of Velmar", type="place", body="Three moons.",
+        facts=[Fact(key="Night sky", value="One (Ister)"), Fact(key="Number of moons", value="Three")],
+    )
+    from sagaloom.check.retcon import detect_retcons
+
+    flags = detect_retcons(before, after)
+    assert sorted(f.fact_key for f in flags if f.new_fact is None) == ["Moons", "Tide"]
+    p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=before, after=after)
+    out = apply_save_as_myth(p, CheckResult(proposal_id="p1", verdict="none", flags=flags), "Old sailors")
+    assert [(f.key, f.value, f.status) for f in out.facts] == [
+        ("Night sky", "One (Ister)", "canon"),  # moved from Moons: not in Tide's values, still canon
+        ("Number of moons", "Three", "myth"),  # a value neither removed key held
+        ("Moons", "One (Ister)", "canon"),  # removed keys are restored, as Save as myth keeps canon
+        ("Tide", "High", "canon"),
+    ]
+
+
 
 def test_dropping_one_value_of_a_kept_key_is_not_a_removed_key():
     before = Entry(

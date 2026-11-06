@@ -41,7 +41,7 @@ const flag = (over: Partial<Flag>): Flag => ({
 });
 
 const conflict = flag({
-  kind: "conflict", fact_key: "Moons", existing_fact: "One", new_fact: "Three", severity: "hard",
+  kind: "conflict", fact_key: "Moons", existing_fact: "Moons: One", new_fact: "Moons: Three", severity: "hard",
   explanation: "Ister is the only moon.",
   suggested_fix: "Keep one moon, and save three moons as a myth told by the Ashen Choir.",
 });
@@ -235,10 +235,10 @@ describe("ApprovalCard", () => {
       />,
     );
     const table = screen.getByRole("table");
-    expect(within(table).queryByText(/^One/)).toBeNull();
+    expect(within(table).queryByText(/^Moons: One/)).toBeNull();
     const inCanon = cellOf(table, "Moons", 1);
     await userEvent.click(within(inCanon).getByRole("button", { name: /show secret fact/i }));
-    expect(within(inCanon).getByText(/^One/)).toBeInTheDocument();
+    expect(within(inCanon).getByText(/^Moons: One/)).toBeInTheDocument();
   });
 
   it("uses real buttons at least 44px tall", () => {
@@ -251,7 +251,7 @@ describe("ApprovalCard", () => {
   it("fails closed while canon is not loaded: cross-entry values, quotes and titles stay hidden", async () => {
     render(<ApprovalCard proposal={update} check={check("conflict", [conflict, note])} onDecide={vi.fn()} />);
     const table = screen.getByRole("table");
-    expect(within(table).queryByText(/^One/)).toBeNull();
+    expect(within(table).queryByText(/^Moons: One/)).toBeNull();
     expect(screen.queryByText("Ister")).toBeNull();
     expect(screen.queryByText(/the only light in the night sky/)).toBeNull();
     expect(screen.getAllByText("hidden secret").length).toBeGreaterThanOrEqual(3);
@@ -259,7 +259,7 @@ describe("ApprovalCard", () => {
     expect(within(table).getByText("ent_0012")).toBeInTheDocument();
     const inCanon = cellOf(table, "Moons", 1);
     await userEvent.click(within(inCanon).getByRole("button", { name: /show secret fact/i }));
-    expect(within(inCanon).getByText(/^One/)).toBeInTheDocument();
+    expect(within(inCanon).getByText(/^Moons: One/)).toBeInTheDocument();
   });
 
   it("masks a prose quote from an entry that holds a secret fact", async () => {
@@ -395,7 +395,7 @@ describe("ApprovalCard complete table", () => {
 
   it("labels a possible conflict", () => {
     const possible = flag({
-      kind: "conflict", severity: "possible", fact_key: "Moons", existing_fact: "One", new_fact: "Three",
+      kind: "conflict", severity: "possible", fact_key: "Moons", existing_fact: "Moons: One", new_fact: "Moons: Three",
       explanation: "Ister may be the only moon.",
     });
     render(<ApprovalCard proposal={update} check={check("possible", [possible])} canon={[ister]} onDecide={vi.fn()} />);
@@ -514,7 +514,7 @@ describe("ApprovalCard complete table", () => {
   it("puts each other entry's value next to its own Cite, after this entry's values", () => {
     const guild = entry({ id: "ent_0011", title: "The Salt Guild", facts: [fact("Council seats", "Two of seven")] });
     const hard = flag({
-      kind: "conflict", severity: "hard", entry_id: "ent_0011", title: "The Salt Guild", fact_key: "Seats", existing_fact: "Two of seven", new_fact: "Five",
+      kind: "conflict", severity: "hard", entry_id: "ent_0011", title: "The Salt Guild", fact_key: "Seats", existing_fact: "Council seats: Two of seven", new_fact: "Seats: Five",
       explanation: "The Salt Guild holds two of seven seats.",
     });
     render(

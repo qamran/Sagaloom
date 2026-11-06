@@ -21,8 +21,8 @@ const proposal = (id: string, title: string, action: Proposal["action"] = "creat
   after: action === "delete" ? null : { title, type: "place", body: "", status: "canon", aliases: [], facts: [] },
 });
 const conflictFlag: Flag = {
-  kind: "conflict", entry_id: "ent_0012", title: "Ister", fact_key: "Moons", existing_fact: "one",
-  new_fact: "three", existing_quote: null, new_quote: null, severity: "hard", explanation: "Moons differ.",
+  kind: "conflict", entry_id: "ent_0012", title: "Ister", fact_key: "Moons", existing_fact: "Moons: one",
+  new_fact: "Moons: three", existing_quote: null, new_quote: null, severity: "hard", explanation: "Moons differ.",
   suggested_fix: null, existing_secret: false,
 };
 const clean = (id: string): CheckResult => ({ proposal_id: id, verdict: "none", flags: [], dependents: [], badge: "clear" });

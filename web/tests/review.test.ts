@@ -40,7 +40,10 @@ describe("proposalSummary", () => {
 
   it("names the first conflicting fact, masking a secret value", () => {
     const retcon = flag({ kind: "retcon", fact_key: "Seats", existing_fact: "Seven", new_fact: "Five" });
-    const hard = flag({ fact_key: "Seats", existing_fact: "Two of seven", new_fact: "Five", severity: "hard" });
+    // The judge's values arrive as "<key>: <value>" (api/sagaloom/check/contradiction.py _to_flag).
+    const hard = flag({
+      fact_key: "Seats", existing_fact: "Council seats: Two of seven", new_fact: "Seats: Five", severity: "hard",
+    });
     expect(proposalSummary(create, check([retcon, hard]), open)).toBe("Seats: Two of seven → Five");
     expect(proposalSummary(create, check([retcon]), open)).toBe("Seats: Seven → Five");
     expect(proposalSummary(create, check([{ ...retcon, new_fact: null }]), () => true)).toBe(
@@ -68,7 +71,70 @@ describe("proposalSummary", () => {
     expect(line).not.toMatch(/Lantern-bearers/);
     const secretDraft: Proposal = { ...create, after: { ...create.after!, status: "secret" } };
     const added = flag({ kind: "retcon", fact_key: "Motto", existing_fact: "Salt", new_fact: "Tide" });
-    expect(proposalSummary(secretDraft, check([added]), open)).toBe("Motto: Salt → a secret fact");
+    // A secret entry's keys are masked too (M2).
+    expect(proposalSummary(secretDraft, check([added]), open)).toBe("a secret fact: Salt → a secret fact");
+  });
+
+  it("strips the judge's key prefix but never a retcon's bare value", () => {
+    const judged = flag({
+      fact_key: "Moons", existing_fact: "Only light in the night sky: Ister", new_fact: "moons: Two", severity: "hard",
+    });
+    expect(proposalSummary(create, check([judged]), open)).toBe("Moons: Ister → Two");
+    const colon = flag({ kind: "retcon", fact_key: "Motto", existing_fact: "Ward: keep", new_fact: "Tide: turn" });
+    expect(proposalSummary(create, check([colon]), open)).toBe("Motto: Ward: keep → Tide: turn");
+  });
+
+  it("falls back to a keyless conflict's prose, then a keyed note's, masked like the card", () => {
+    const prose = flag({
+      entry_id: "ent_0012", severity: "hard", existing_quote: "the only light", new_quote: "three moons",
+      explanation: "Ister is the only moon.",
+    });
+    expect(proposalSummary(create, check([prose]), open)).toBe("Ister is the only moon.");
+    expect(proposalSummary(create, check([prose]), open, () => true)).toBe("Conflict with ent_0012");
+    const possible = { ...prose, severity: "possible" as const };
+    expect(proposalSummary(create, check([possible]), open, () => true)).toBe("Possible conflict with ent_0012");
+    const belief = flag({
+      kind: "note", severity: "note", entry_id: "ent_0004", fact_key: "Moons",
+      existing_fact: "Moons: One", new_fact: "Moons: Three", explanation: "The Choir sings of three moons.",
+    });
+    expect(proposalSummary(create, check([belief]), open)).toBe("The Choir sings of three moons.");
+    expect(proposalSummary(create, check([belief]), open, () => true)).toBe("Note with ent_0004");
+    // A conflict outranks a note, as the badge does.
+    expect(proposalSummary(create, check([belief, prose]), open)).toBe("Ister is the only moon.");
+    // Through the shared rule: an entry holding a secret fact hides the prose.
+    const ister = {
+      id: "ent_0012", status: "canon",
+      facts: [{ key: "Truth", value: "A lantern", refs: [], status: "secret", told_by: null }],
+    } as unknown as Entry;
+    expect(proposalSummary(create, check([prose]), existingSecretOf(create, [ister]), proseSecretOf(create, [ister]))).toBe(
+      "Conflict with ent_0012",
+    );
+  });
+
+  it("masks a key whose every fact is secret, in the draft or before, or a secret entry's key", () => {
+    const heir = (status: "canon" | "secret") => ({ key: "True heir", value: "Mira", refs: [], status, told_by: null });
+    const retcon = flag({
+      kind: "retcon", entry_id: "ent_0007", fact_key: "True heir", existing_fact: "Mira", new_fact: "Oren",
+    });
+    const before = {
+      id: "ent_0007", world_id: "w1", title: "House Varr", type: "faction", body: "", status: "canon", aliases: [],
+      links: [], facts: [heir("secret")], version: 1, created_at: "", updated_at: "",
+    } as unknown as Entry;
+    const update: Proposal = {
+      ...create, action: "update", entry_id: "ent_0007", before,
+      after: { ...create.after!, facts: [{ ...heir("canon"), value: "Oren" }] },
+    };
+    expect(proposalSummary(update, check([retcon]), existingSecretOf(update, []))).toBe(
+      "a secret fact: a secret fact → Oren",
+    );
+    const drafted: Proposal = { ...create, after: { ...create.after!, facts: [heir("secret")] } };
+    const added = flag({ kind: "retcon", fact_key: "true heir", existing_fact: null, new_fact: "Mira" });
+    expect(proposalSummary(drafted, check([added]), open)).not.toMatch(/heir/i);
+    const secretEntry: Proposal = { ...create, after: { ...create.after!, status: "secret" } };
+    expect(proposalSummary(secretEntry, check([added]), open)).toBe("a secret fact: not set → a secret fact");
+    // A key with canon facts on both sides stays readable.
+    const open2: Proposal = { ...create, after: { ...create.after!, facts: [heir("canon")] } };
+    expect(proposalSummary(open2, check([added]), open)).toBe("true heir: not set → Mira");
   });
 
   it("falls back to a duplicate note, a delete, then no conflicts", () => {

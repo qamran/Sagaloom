@@ -7,7 +7,7 @@ _ESTABLISHED = ("canon", "secret")
 def _renamed(before: Entry | None, after: EntryDraft, result: CheckResult):
     """A test for a proposed fact under a key `before` does not have: does a flag point at it?
     Either a conflict/retcon flag quotes it, or the change removed a key and this fact carries
-    a value that key never held (the old value moved under a new name stays canon)."""
+    a value no removed key held (an old value moved under a new name stays canon)."""
     if before is None:
         return lambda f: False
     keys = {norm(f.key) for f in before.facts}
@@ -31,6 +31,8 @@ def _renamed(before: Entry | None, after: EntryDraft, result: CheckResult):
         and f.fact_key
         and norm(f.fact_key) not in proposed_keys
     ]
+    # A value held by any removed key was moved, not invented: test against them all.
+    removed_values: set[str] = set().union(*removed)
 
     def flagged(f: Fact) -> bool:
         if norm(f.key) in keys:
@@ -38,7 +40,7 @@ def _renamed(before: Entry | None, after: EntryDraft, result: CheckResult):
         value = norm(f.value)
         if value in quoted or norm(f"{f.key}: {f.value}") in quoted:
             return True
-        return any(value not in held for held in removed)
+        return bool(removed) and value not in removed_values
 
     return flagged
 
