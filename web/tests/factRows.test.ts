@@ -52,14 +52,12 @@ describe("buildFactRows", () => {
     expect(rows[0].flags).toEqual([retcon, hard]);
     expect(rows[0].canon).toEqual([fact("Seats", "Seven")]);
     expect(rows[0].proposed).toEqual([fact("Seats", "Five")]);
-    expect(rows[0].cite).toEqual({ id: "ent_0011", title: "The Salt Guild" });
     expect(rows[1].flags).toEqual([]);
   });
 
   it("marks a retcon-only key as Changed (retcon)", () => {
     const rows = buildFactRows(update(fiveSeats), check([retcon]));
     expect(rows[0].result).toBe("Changed (retcon)");
-    expect(rows[0].cite).toBeUndefined();
   });
 
   it("marks a possible conflict, a note, a new key, a dropped key and a changed myth", () => {
@@ -103,7 +101,7 @@ describe("buildFactRows", () => {
     expect(rows.at(-1)).toMatchObject({ key: "Harbour master", canon: [], proposed: [], result: "Conflict", flags: [other] });
   });
 
-  it("gives a create one row per keyed flag, citing the flagged entry", () => {
+  it("gives a create one row per keyed flag", () => {
     const create: Proposal = {
       proposal_id: "p_1", action: "create", world_id: "w1", entry_id: null, before: null,
       after: draftOf(council, [fact("Seats", "Five")]),
@@ -112,7 +110,6 @@ describe("buildFactRows", () => {
     expect(rows).toEqual([
       {
         key: "seats", canon: [], proposed: [fact("Seats", "Five")], result: "Conflict", flags: [hard],
-        cite: { id: "ent_0011", title: "The Salt Guild" },
       },
     ]);
   });

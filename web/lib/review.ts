@@ -80,12 +80,12 @@ export function proposalSummary(p: Proposal, c: CheckResult, secret: (f: Flag) =
   const flag = keyed("conflict") ?? keyed("retcon");
   if (flag?.fact_key) {
     const existing = flag.existing_fact === null ? "not set" : secret(flag) ? "a secret fact" : flag.existing_fact;
-    const proposed =
-      flag.new_fact === null
-        ? "removed"
-        : isSecretFact(p.after, flag.fact_key, flag.new_fact)
-          ? "a secret fact"
-          : flag.new_fact;
+    // The server joins every added value under the key ("a, b"), so fail closed: any secret
+    // proposed fact under the key, or a secret draft, hides the new side.
+    const key = norm(flag.fact_key);
+    const draftSecret =
+      p.after?.status === "secret" || !!p.after?.facts.some((f) => norm(f.key) === key && f.status === "secret");
+    const proposed = flag.new_fact === null ? "removed" : draftSecret ? "a secret fact" : flag.new_fact;
     return `${flag.fact_key}: ${existing} → ${proposed}`;
   }
   const dup = c.flags.find((f) => f.kind === "note" && !f.fact_key && f.explanation.startsWith(DUPLICATE));

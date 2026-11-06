@@ -48,6 +48,29 @@ describe("proposalSummary", () => {
     );
   });
 
+  it("masks the new side when the key holds a secret proposed value among canon ones", () => {
+    const mixed: Proposal = {
+      ...create,
+      action: "update",
+      after: {
+        ...create.after!,
+        facts: [
+          { key: "Members", value: "Several hundred", refs: [], status: "canon", told_by: null },
+          { key: "members", value: "Lantern-bearers", refs: [], status: "secret", told_by: null },
+        ],
+      },
+    };
+    const retcon = flag({
+      kind: "retcon", fact_key: "Members", existing_fact: "About sixty", new_fact: "Several hundred, Lantern-bearers",
+    });
+    const line = proposalSummary(mixed, check([retcon]), open);
+    expect(line).toBe("Members: About sixty → a secret fact");
+    expect(line).not.toMatch(/Lantern-bearers/);
+    const secretDraft: Proposal = { ...create, after: { ...create.after!, status: "secret" } };
+    const added = flag({ kind: "retcon", fact_key: "Motto", existing_fact: "Salt", new_fact: "Tide" });
+    expect(proposalSummary(secretDraft, check([added]), open)).toBe("Motto: Salt → a secret fact");
+  });
+
   it("falls back to a duplicate note, a delete, then no conflicts", () => {
     const dup = flag({ kind: "note", entry_id: "ent_0002", title: "Harbour Council", explanation: "Possible duplicate of ent_0002 'Harbour Council'" });
     expect(proposalSummary(create, check([dup]), open)).toBe("Possible duplicate of ent_0002 'Harbour Council'");

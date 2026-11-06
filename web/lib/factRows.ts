@@ -24,8 +24,6 @@ export interface FactRow {
   proposed: Fact[];
   result: FactResult;
   flags: Flag[];
-  /** The other entry a conflict on this key comes from (or, on a create, the flagged entry). */
-  cite?: { id: string; title: string };
 }
 
 const valueSet = (facts: Fact[]) =>
@@ -41,8 +39,6 @@ function resultOf(canon: Fact[], proposed: Fact[], flags: Flag[]): FactResult {
   if (!proposed.length) return "Removed";
   return valueSet(canon) === valueSet(proposed) ? "Matches" : "Changed";
 }
-
-const citeOf = (f: Flag | undefined) => (f ? { id: f.entry_id, title: f.title } : undefined);
 
 /** The approval card's fact table: every key on either side of an update, plus keyed flags. */
 export function buildFactRows(p: Proposal, c: CheckResult): FactRow[] {
@@ -60,7 +56,6 @@ export function buildFactRows(p: Proposal, c: CheckResult): FactRow[] {
         proposed,
         result: resultOf([], proposed, [flag]),
         flags: [flag],
-        cite: citeOf(flag),
       };
     });
   }
@@ -72,13 +67,11 @@ export function buildFactRows(p: Proposal, c: CheckResult): FactRow[] {
     const canon = under(before.facts, k);
     const proposed = under(after.facts, k);
     const flags = keyed.filter((f) => norm(f.fact_key) === k);
-    const otherConflict = flags.find((f) => f.kind === "conflict" && f.entry_id !== p.entry_id);
-    return { key, canon, proposed, result: resultOf(canon, proposed, flags), flags, cite: citeOf(otherConflict) };
+    return { key, canon, proposed, result: resultOf(canon, proposed, flags), flags };
   });
   for (const flag of keyed) {
     if (keys.has(norm(flag.fact_key))) continue;
-    const cite = flag.kind === "conflict" && flag.entry_id !== p.entry_id ? citeOf(flag) : undefined;
-    rows.push({ key: flag.fact_key, canon: [], proposed: [], result: resultOf([], [], [flag]), flags: [flag], cite });
+    rows.push({ key: flag.fact_key, canon: [], proposed: [], result: resultOf([], [], [flag]), flags: [flag] });
   }
   return rows;
 }

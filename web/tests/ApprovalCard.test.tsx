@@ -542,8 +542,8 @@ describe("ApprovalCard complete table", () => {
     };
     render(<ApprovalCard proposal={create} check={check("none", [])} onDecide={vi.fn()} />);
     expect(screen.queryByText(/hidden moon of glass/)).toBeNull();
-    const body = screen.getAllByRole("button", { name: /show secret fact/i })[0];
-    await userEvent.click(body);
+    const body = screen.getAllByText("hidden secret").map((e) => e.closest("p")).find(Boolean) as HTMLElement;
+    await userEvent.click(within(body).getByRole("button", { name: /show secret fact/i }));
     expect(screen.getByText("A hidden moon of glass.")).toBeInTheDocument();
   });
 
