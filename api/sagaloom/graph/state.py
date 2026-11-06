@@ -10,6 +10,8 @@ from sagaloom.models import CheckResult, Decision, MemoryUpdate, Proposal
 Role = Literal["agent", "judge", "extractor", "guard", "router"]
 Mode = Literal["brainstorm", "query", "edit"]
 GuardVerdictValue = Literal["safe", "unsafe", "injection", "error", "off"]
+# Where a run starts (R18.10): a chat turn at `guard`, an import at `check`.
+EntryPoint = Literal["chat", "import"]
 
 
 def merge_proposals(left: list[Proposal] | None, right: Any) -> list[Proposal]:
@@ -61,6 +63,9 @@ def merge_memory(left: list[MemoryUpdate] | None, right: list[MemoryUpdate] | No
 class SagaState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
     world_id: str
+    # Set by every run's input (post_message: chat; the import endpoint: import). It persists in
+    # the checkpoint, so a decision resume keeps it; a missing key (older checkpoints) is chat.
+    entry: EntryPoint
     pending_proposals: Annotated[list[Proposal], merge_proposals]
     check_results: Annotated[dict[str, CheckResult], merge_dict]
     # Only approve/reject are stored; edit and save_as_myth are applied at the gate

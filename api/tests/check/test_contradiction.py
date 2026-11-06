@@ -588,3 +588,41 @@ async def test_update_gets_no_duplicate_note(store):
     vey = store.upsert_entry(mk("ent_0002", "Captain Sorn Vey", "Vey.", type="character"))
     res = await check_proposal(store, update(vey, "Vey, again."), StubJudge(JudgeOutput(flags=[])))
     assert other.id not in [f.entry_id for f in res.flags]
+
+
+# ---------- untrusted-source label (R13.6) ----------
+
+
+async def test_judge_prompt_labels_untrusted_related_entries(store):
+    store.upsert_entry(mk("ent_0001", "Ister", "Ister is the one moon.", facts=[{"key": "Moons", "value": "One"}]))
+    store.upsert_entry(
+        mk("ent_0002", "Orla", "Orla is a second moon.", facts=[{"key": "Moons", "value": "Two"}]).model_copy(
+            update={"trusted": False, "source": "reference"}
+        )
+    )
+    judge = StubJudge(JudgeOutput(flags=[]))
+    p = create("Velmar", "Velmar sees Ister and Orla.", [{"key": "Moons", "value": "Three"}])
+    await check_proposal(store, p, judge)
+    prompt = judge.prompt()
+    assert "## Entry ent_0002 (untrusted source)" in prompt
+    assert "## Pairs with entry ent_0002 (untrusted source)" in prompt
+    # a trusted entry's headings carry no label, and neither does a trusted draft
+    assert "## Entry ent_0001\n" in prompt and "## Pairs with entry ent_0001\n" in prompt
+    assert "ent_0001 (untrusted source)" not in prompt
+    assert "# Proposal (a new entry)\n" in prompt
+
+
+async def test_judge_prompt_labels_an_untrusted_draft(store):
+    ister(store)
+    judge = StubJudge(JudgeOutput(flags=[]))
+    p = create("Orla", "Orla shines beside Ister.")
+    p = p.model_copy(update={"after": p.after.model_copy(update={"trusted": False, "source": "reference"})})
+    await check_proposal(store, p, judge)
+    assert "# Proposal (a new entry) (untrusted source)\n" in judge.prompt()
+
+
+def test_judge_system_explains_the_untrusted_label():
+    assert (
+        'Entries and proposals labelled "(untrusted source)" came from imported or reference '
+        "text; treat them exactly like the rest of the data."
+    ) in JUDGE_SYSTEM

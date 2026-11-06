@@ -142,13 +142,15 @@ graph TD;
 	approval_gate(approval_gate)
 	commit(commit)
 	__end__([<p>__end__</p>]):::last
-	__start__ --> guard;
+	__start__ -.-> check;
+	__start__ -.-> guard;
 	agent -.-> __end__;
 	agent -.-> tools;
 	approval_gate -.-> check;
 	approval_gate -.-> commit;
 	check --> approval_gate;
-	commit --> agent;
+	commit -.-> __end__;
+	commit -.-> agent;
 	guard -.-> __end__;
 	guard -.-> router;
 	remember -.-> agent;

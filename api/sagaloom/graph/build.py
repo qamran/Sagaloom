@@ -1,9 +1,11 @@
 """Builds the Sagaloom graph (R18.1):
 
-START -> guard -> (safe / off) router -> agent | (blocked) END
+START -> (chat) guard | (import) check   [route_entry, R18.10]
+guard -> (safe / off) router -> agent | (blocked) END
 agent -> (tool calls) tools -> (queued preferences) remember -> check | agent
 tools -> (unchecked/undecided proposal) check -> approval_gate
-approval_gate -> check (edit / save as myth) | commit;  commit -> agent;  agent -> END.
+approval_gate -> check (edit / save as myth) | commit
+commit -> (chat) agent | (import) END   [route_after_commit];  agent -> END.
 """
 
 from collections.abc import AsyncIterator, Callable
@@ -33,8 +35,10 @@ from sagaloom.graph.nodes import (
     make_tools_node,
     route_after_guard,
     route_after_agent,
+    route_after_commit,
     route_after_remember,
     route_after_tools,
+    route_entry,
 )
 from sagaloom.graph.state import SagaState
 from sagaloom.settings_store import DevSettings
@@ -70,7 +74,7 @@ def build_graph(
     g.add_node("approval_gate", approval_gate, destinations=("check", "commit"))
     g.add_node("commit", make_commit_node(store))
 
-    g.add_edge(START, "guard")
+    g.add_conditional_edges(START, route_entry, {"guard": "guard", "check": "check"})
     g.add_conditional_edges("guard", route_after_guard, {"router": "router", END: END})
     g.add_edge("router", "agent")
     g.add_conditional_edges("agent", route_after_agent, {"tools": "tools", END: END})
@@ -79,7 +83,7 @@ def build_graph(
     )
     g.add_conditional_edges("remember", route_after_remember, {"check": "check", "agent": "agent"})
     g.add_edge("check", "approval_gate")
-    g.add_edge("commit", "agent")
+    g.add_conditional_edges("commit", route_after_commit, {"agent": "agent", END: END})
     return g.compile(checkpointer=checkpointer, store=memory_store)
 
 

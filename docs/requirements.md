@@ -434,7 +434,7 @@ This section defines how the graph enforces R4.2 (a check on every write) and R5
 
 ### Graph
 
-The diagram is the compiled graph's own `draw_mermaid()` output (R18.9); dashed edges are conditional. The `route_entry` and `route_after_commit` routers (R18.10) arrive with Import in Wave 5, so this diagram has no import branch yet: until then a chat turn starts at `guard` and `commit` always returns to `agent`.
+The diagram is the compiled graph's own `draw_mermaid()` output (R18.9); dashed edges are conditional. `route_entry` (R18.10) starts a chat turn at `guard` and an import at `check`; `route_after_commit` returns a chat turn to `agent` after `commit` and ends an import thread there, with no LLM call.
 
 ```mermaid
 ---
@@ -453,13 +453,15 @@ graph TD;
 	approval_gate(approval_gate)
 	commit(commit)
 	__end__([<p>__end__</p>]):::last
-	__start__ --> guard;
+	__start__ -.-> check;
+	__start__ -.-> guard;
 	agent -.-> __end__;
 	agent -.-> tools;
 	approval_gate -.-> check;
 	approval_gate -.-> commit;
 	check --> approval_gate;
-	commit --> agent;
+	commit -.-> __end__;
+	commit -.-> agent;
 	guard -.-> __end__;
 	guard -.-> router;
 	remember -.-> agent;

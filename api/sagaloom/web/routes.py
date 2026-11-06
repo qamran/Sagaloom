@@ -22,6 +22,7 @@ from sagaloom.models import Decision, Entry, PreferenceKey, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
+from sagaloom.store.threads import ThreadKind
 from sagaloom.text import message_text
 from sagaloom.tools.canon_tools import TOOL_SPECS
 from sagaloom.web.sse import run_turn_events, sse_response
@@ -57,17 +58,20 @@ def _thread(request: Request, thread_id: str):
 
 
 def message_dict(m: BaseMessage) -> dict:
-    """{role, content, name?, tool_calls?, memory?, mode?}; `review` is the author's decision note
-    (R18.6), `memory` the `remember` node's note with one result per preference (R10.2), and
-    `guard` the input guard's notice in place of a blocked message (R13.1)."""
+    """{role, content, name?, tool_calls?, memory?, mode?, import?}; `review` is the author's
+    decision note (R18.6), `memory` the `remember` node's note with one result per preference
+    (R10.2), `guard` the input guard's notice in place of a blocked message (R13.1), and `import`
+    the import endpoint's summary note that opens an import thread (R18.10)."""
     out: dict[str, Any] = {"content": message_text(m.content)}
     if isinstance(m, HumanMessage):
-        role = {"review": "review", "memory": "memory"}.get(m.name or "", "user")
+        role = {"review": "review", "memory": "memory", "import": "import"}.get(m.name or "", "user")
         out = {"role": role, **out}
         if m.name:
             out["name"] = m.name
         if role == "memory":
             out["memory"] = list(m.additional_kwargs.get("memory") or [])
+        if role == "import":
+            out["import"] = m.additional_kwargs.get("import")
         if role == "user" and m.additional_kwargs.get("mode"):
             out["mode"] = m.additional_kwargs["mode"]  # the router's pick for this turn (R6.5)
     elif isinstance(m, AIMessage):
@@ -95,6 +99,17 @@ def _pending(state) -> dict | None:
 
 
 TITLE_CHARS = 80
+
+
+def _outcomes(messages: list) -> tuple[int, int]:
+    """(approved, rejected), counted from the review notes' `outcome`; a note without one (written
+    before outcomes existed), a failed write and a refused commit count as neither."""
+    outcomes = [
+        m.additional_kwargs.get("outcome")
+        for m in messages
+        if isinstance(m, HumanMessage) and m.name == "review"
+    ]
+    return outcomes.count("approved"), outcomes.count("rejected")
 
 
 def _thread_title(title: str | None, messages: list) -> str | None:
@@ -259,27 +274,37 @@ def create_thread(body: NewThread, request: Request) -> dict:
 
 @router.get("/threads")
 async def list_threads(
-    request: Request, pending: bool = False, world_id: str | None = None
+    request: Request,
+    pending: bool = False,
+    world_id: str | None = None,
+    kind: ThreadKind | None = None,
 ) -> list[dict]:
-    """Newest first; `badge` is the worst badge among the pending checks."""
+    """Newest first; `badge` is the worst badge among the pending checks, `running` whether the
+    thread's turn lock is held."""
     d = _deps(request)
     out = []
-    for t in reversed(d.threads.list(world_id)):
+    for t in reversed(d.threads.list(world_id, kind)):
         state = await d.graph.aget_state({"configurable": {"thread_id": t.thread_id}})
         interrupt = _pending(state)
         count = len(interrupt["proposals"]) if interrupt else 0
         if pending and not count:
             continue
         checks = interrupt["checks"].values() if interrupt else []
+        messages = (state.values or {}).get("messages") or []
+        approved, rejected = _outcomes(messages)
+        lock = d.locks.get(t.thread_id)
         out.append(
             {
                 "thread_id": t.thread_id,
                 "world_id": t.world_id,
                 "pending": count,
                 "created_at": t.created_at,
-                "kind": "chat",
-                "title": _thread_title(t.title, (state.values or {}).get("messages") or []),
+                "kind": t.kind,
+                "title": _thread_title(t.title, messages),
                 "badge": worst_badge(c["badge"] for c in checks),
+                "approved": approved,
+                "rejected": rejected,
+                "running": lock is not None and lock.locked(),
             }
         )
     return out
@@ -290,11 +315,14 @@ async def get_thread(thread_id: str, request: Request) -> dict:
     t = _thread(request, thread_id)
     state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
     values = state.values or {}
+    messages = values.get("messages") or []
     interrupt = _pending(state)
     return {
         "thread_id": thread_id,
         "world_id": t.world_id,
-        "messages": [message_dict(m) for m in values.get("messages") or []],
+        "kind": t.kind,
+        "title": _thread_title(t.title, messages),
+        "messages": [message_dict(m) for m in messages],
         "pending_interrupt": (
             {"proposals": interrupt["proposals"], "checks": interrupt["checks"],
              **({"error": interrupt["error"]} if interrupt.get("error") else {})}
@@ -316,7 +344,12 @@ async def post_message(thread_id: str, body: NewMessage, request: Request):
         return _stream_run(
             request,
             t,
-            {"messages": [HumanMessage(content=body.content)], "world_id": t.world_id},
+            # `entry` persists in the checkpoint, so every run input sets it (R18.10).
+            {
+                "messages": [HumanMessage(content=body.content)],
+                "world_id": t.world_id,
+                "entry": "chat",
+            },
             release,
         )
     except BaseException:

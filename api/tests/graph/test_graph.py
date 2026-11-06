@@ -19,7 +19,13 @@ from pydantic import Field
 from sagaloom.check.contradiction import JudgeFlag, JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph, run_config
-from sagaloom.graph.nodes import make_commit_node, make_router_node, route_after_guard
+from sagaloom.graph.nodes import (
+    make_commit_node,
+    make_router_node,
+    route_after_commit,
+    route_after_guard,
+    route_entry,
+)
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import merge_dict, merge_memory, merge_proposals
 from sagaloom.guard import BLOCK_COPY, GUARD_POLICY, GuardVerdict
@@ -296,15 +302,15 @@ def test_graph_structure_only_gate_reaches_commit(store):
     into = lambda n: {e.source for e in edges if e.target == n}  # noqa: E731
     assert into("commit") == {"approval_gate"}
     assert into("approval_gate") == {"check"}
-    assert into("check") == {"tools", "approval_gate", "remember"}
+    assert into("check") == {"tools", "approval_gate", "remember", "__start__"}
     assert into("tools") == {"agent"}
     assert into("remember") == {"tools"}
     assert into("agent") == {"router", "tools", "commit", "remember"}
     assert into("router") == {"guard"}
     assert {e.target for e in edges if e.source == "router"} == {"agent"}
     assert {e.target for e in edges if e.source == "remember"} == {"check", "agent"}
-    assert {e.target for e in edges if e.source == "commit"} == {"agent"}
-    assert {e.target for e in edges if e.source == "__start__"} == {"guard"}
+    assert {e.target for e in edges if e.source == "commit"} == {"agent", "__end__"}
+    assert {e.target for e in edges if e.source == "__start__"} == {"guard", "check"}
     assert {e.target for e in edges if e.source == "guard"} == {"router", "__end__"}
 
 
@@ -317,6 +323,112 @@ async def test_every_path_to_commit_passes_check_and_gate(store):
     second = await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
     seq = [n for n in first + second if n != "__interrupt__"]
     assert seq == ["guard", "router", "agent", "tools", "check", "approval_gate", "commit", "agent"]
+
+
+def test_every_static_path_to_commit_passes_check_then_gate(store):
+    """Both entries (chat at `guard`, import at `check`): every simple path from START to
+    `commit` in the compiled graph visits `check` and then `approval_gate`."""
+    graph, *_ = make(store, [])
+    edges = graph.get_graph().edges
+    out: dict[str, set[str]] = {}
+    for e in edges:
+        out.setdefault(e.source, set()).add(e.target)
+    paths: list[list[str]] = []
+
+    def walk(node: str, path: list[str]) -> None:
+        if node == "commit":
+            paths.append(path)
+            return
+        for nxt in out.get(node, ()):
+            if nxt not in path:
+                walk(nxt, [*path, nxt])
+
+    walk("__start__", ["__start__"])
+    assert {p[1] for p in paths} == {"guard", "check"}  # both entries reach commit
+    for p in paths:
+        assert p[-2] == "approval_gate", p
+        assert "check" in p and p.index("check") < p.index("approval_gate"), p
+
+
+def import_input(*proposals: Proposal) -> dict:
+    return {
+        "entry": "import",
+        "world_id": W,
+        "pending_proposals": list(proposals),
+        "messages": [
+            HumanMessage(
+                name="import",
+                content=f"Imported text: {len(proposals)} proposals for review, 0 not imported.",
+            )
+        ],
+    }
+
+
+async def test_import_entry_starts_at_check_and_ends_after_commit(store):
+    graph, agent, _ = make(store, [])
+    cfg = run_config("t1", W)
+    first = await run(graph, import_input(P("p_1", "Ostra")), cfg)
+    # The gate pauses inside `interrupt()`, so it emits no update of its own until it resumes.
+    assert first == ["check", "__interrupt__"]
+    assert (await graph.aget_state(cfg)).next == ("approval_gate",)
+    second = await run(graph, resume({"proposal_id": "p_1", "action": "approve"}), cfg)
+    assert second == ["approval_gate", "commit"]
+    assert [e.title for e in store.list_entries(W)] == ["Ostra"]
+    assert agent.seen == []  # no LLM call on an import thread
+    state = await graph.aget_state(cfg)
+    assert state.next == () and not state.interrupts
+
+
+async def test_chat_message_on_import_thread_reaches_agent(store):
+    graph, agent, _ = make(store, [AIMessage(content="Ostra is a port.")])
+    cfg = run_config("t1", W)
+    await run(graph, import_input(P("p_1", "Ostra")), cfg)
+    await run(graph, resume({"proposal_id": "p_1", "action": "approve"}), cfg)
+    nodes = await run(graph, start("What is Ostra?") | {"entry": "chat"}, cfg)
+    assert nodes == ["guard", "router", "agent"]
+    assert len(agent.seen) == 1
+
+
+def test_route_entry_defaults_to_chat():
+    assert route_entry({}) == "guard"
+    assert route_entry({"entry": "chat"}) == "guard"
+    assert route_entry({"entry": "import"}) == "check"
+    assert route_after_commit({}) == "agent"
+    assert route_after_commit({"entry": "chat"}) == "agent"
+    assert route_after_commit({"entry": "import"}) == "__end__"
+
+
+def review_notes(state_values) -> list[HumanMessage]:
+    return [m for m in state_values["messages"] if isinstance(m, HumanMessage) and m.name == "review"]
+
+
+@pytest.mark.parametrize("action, outcome", [("approve", "approved"), ("reject", "rejected")])
+async def test_review_notes_carry_outcome(store, action, outcome):
+    graph, *_ = make(store, [create_call(), AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    await run(graph, resume({"proposal_id": pid, "action": action}), cfg)
+    [note] = review_notes((await graph.aget_state(cfg)).values)
+    assert note.additional_kwargs == {"proposal_id": pid, "outcome": outcome}
+
+
+async def test_review_note_outcome_is_failed_when_the_write_fails(store):
+    graph, *_ = make(store, [create_call(), AIMessage(content="ok")])
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    seed(store, id="ent_0001", title="Ostra", body="Someone else's Ostra.", facts=[])
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    [note] = review_notes((await graph.aget_state(cfg)).values)
+    assert note.additional_kwargs == {"proposal_id": pid, "outcome": "failed"}
+
+
+def test_refused_commit_note_has_outcome_refused(store):
+    commit = make_commit_node(store)
+    out = commit({"world_id": W, "pending_proposals": [P("p1")], "check_results": {}, "decisions": {}})
+    [note] = out["messages"]
+    assert note.additional_kwargs == {"proposal_id": "p1", "outcome": "refused"}
 
 
 # ---------- interrupt and commit ----------

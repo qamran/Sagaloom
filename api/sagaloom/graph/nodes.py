@@ -77,11 +77,29 @@ class RoleModel:
         return getattr(self._model_for(self._role), name)
 
 
-def _review(text: str) -> HumanMessage:
-    return HumanMessage(name="review", content=text)
+ReviewOutcome = Literal["approved", "rejected", "failed", "refused"]
+
+
+def _review(text: str, pid: str, outcome: ReviewOutcome) -> HumanMessage:
+    """The author's decision note (R18.6). `outcome` is what `GET /threads` counts: `failed` is
+    approved but the write failed, `refused` is not checked and approved (nothing written)."""
+    return HumanMessage(
+        name="review", content=text, additional_kwargs={"proposal_id": pid, "outcome": outcome}
+    )
 
 
 # ---------- routing ----------
+
+
+def route_entry(state: SagaState) -> Literal["guard", "check"]:
+    """START: an import run goes straight to `check` (its proposals come from the import
+    endpoint, not a tool call); anything else, including a missing `entry`, is a chat turn."""
+    return "check" if state.get("entry") == "import" else "guard"
+
+
+def route_after_commit(state: SagaState) -> Literal["agent", "__end__"]:
+    """An import thread ends after `commit` (no LLM call); a chat turn tells the agent."""
+    return END if state.get("entry") == "import" else "agent"
 
 
 def route_after_agent(state: SagaState) -> Literal["tools", "__end__"]:
@@ -526,27 +544,43 @@ def make_commit_node(store):
             d = decisions.get(pid)
             if d is not None and d.action == "reject":
                 handled.append(pid)
-                messages.append(_review(f"Review: {pid} rejected by the author. Do not propose it again."))
+                messages.append(
+                    _review(
+                        f"Review: {pid} rejected by the author. Do not propose it again.", pid, "rejected"
+                    )
+                )
                 continue
             if d is None or d.action != "approve" or pid not in checks or p.world_id != world_id:
                 # R18.3: nothing is written. The proposal stays pending and must be decided again.
                 log.error("commit refused %s: not checked and approved", pid)
                 refused.append(pid)
                 messages.append(
-                    _review(f"Review: {pid} was not committed: it has not been checked and approved.")
+                    _review(
+                        f"Review: {pid} was not committed: it has not been checked and approved.",
+                        pid,
+                        "refused",
+                    )
                 )
                 continue
             handled.append(pid)
             try:
-                messages.append(_review(_apply(store, p)))
+                messages.append(_review(_apply(store, p), pid, "approved"))
             except (DuplicateTitleError, _CommitFailed) as e:
                 messages.append(
-                    _review(f"Review: {pid} approved, but the commit failed: {e}. Nothing was written.")
+                    _review(
+                        f"Review: {pid} approved, but the commit failed: {e}. Nothing was written.",
+                        pid,
+                        "failed",
+                    )
                 )
             except Exception as e:
                 log.exception("commit of %s failed", pid)
                 messages.append(
-                    _review(f"Review: {pid} approved, but the commit failed: {e}. Nothing was written.")
+                    _review(
+                        f"Review: {pid} approved, but the commit failed: {e}. Nothing was written.",
+                        pid,
+                        "failed",
+                    )
                 )
         cleared = {pid: None for pid in handled}
         return {

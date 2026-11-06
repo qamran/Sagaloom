@@ -1,14 +1,18 @@
 """HTTP API tests (R19.1, R5.5, R14, R15 rulings, R16.1, R20.2)."""
 
+import asyncio
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.types import Command
 
 from sagaloom.guard import BLOCK_COPY, GuardVerdict
-from sagaloom.models import Entry
+from sagaloom.graph.build import run_config
+from sagaloom.models import Entry, EntryDraft, Proposal
 from sagaloom.seed import VELMAR_ID
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.app import AppDeps, SEED_DIR
+from sagaloom.web.routes import message_dict
 
 from fakes import KEY, W, StubLLM, create_call, endless, names, parse_sse, tc
 
@@ -40,6 +44,8 @@ async def test_create_thread_and_get_empty_state(make_env):
     assert r.json() == {
         "thread_id": tid,
         "world_id": W,
+        "kind": "chat",
+        "title": None,
         "messages": [],
         "pending_interrupt": None,
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
@@ -162,6 +168,7 @@ async def test_pending_threads_listing(make_env):
     assert row == {
         "thread_id": waiting, "world_id": W, "pending": 1, "created_at": row["created_at"],
         "kind": "chat", "title": "Add Ostra", "badge": "clear",
+        "approved": 0, "rejected": 0, "running": False,
     }
     listed = (await env.client.get("/api/threads")).json()
     assert [t["thread_id"] for t in listed] == [idle, waiting]  # newest first
@@ -194,6 +201,105 @@ async def test_thread_title_prefers_the_registry_title(make_env):
         conn.execute("UPDATE threads SET title = ? WHERE thread_id = ?", ("Harbour work", tid))
     [row] = (await env.client.get("/api/threads")).json()
     assert row["title"] == "Harbour work"
+
+
+def _import_proposal(pid: str, title: str) -> Proposal:
+    return Proposal(
+        proposal_id=pid, action="create", world_id=W, entry_id=None, before=None,
+        after=EntryDraft(title=title, type="place", body="b", trusted=False),
+    )
+
+
+async def _run_import(env, tid: str, *decisions: dict) -> None:
+    """Runs an import on `tid` straight through the graph (the import endpoint is Task 2)."""
+    cfg = run_config(tid, W)
+    inp = {
+        "entry": "import",
+        "world_id": W,
+        "pending_proposals": [_import_proposal("p_1", "Ostra"), _import_proposal("p_2", "Peak")],
+        "messages": [HumanMessage(name="import", content="Imported text: 2 proposals for review.")],
+    }
+    async for _ in env.deps.graph.astream(inp, cfg):
+        pass
+    if decisions:
+        async for _ in env.deps.graph.astream(Command(resume={"decisions": list(decisions)}), cfg):
+            pass
+
+
+async def test_list_threads_reports_registry_kind_and_counts(make_env, store):
+    env = make_env()
+    chat = await env.new_thread()
+    done = env.deps.threads.create(W, kind="import", title="session-12-notes.md")
+    waiting = env.deps.threads.create(W, kind="import", title="session-13-notes.md")
+    await _run_import(env, done, approve("p_1"), {"proposal_id": "p_2", "action": "reject"})
+    await _run_import(env, waiting)
+    assert [e.title for e in store.list_entries(W)] == ["Ostra"]
+    assert env.agent.seen == []  # an import never calls the agent
+
+    rows = {r["thread_id"]: r for r in (await env.client.get("/api/threads")).json()}
+    assert set(rows) == {chat, done, waiting}
+    row = rows[done]
+    assert (row["kind"], row["title"]) == ("import", "session-12-notes.md")
+    assert (row["approved"], row["rejected"], row["pending"]) == (1, 1, 0)
+    assert row["running"] is False and row["badge"] is None
+    assert (rows[waiting]["pending"], rows[waiting]["approved"]) == (2, 0)
+    assert (rows[chat]["kind"], rows[chat]["approved"], rows[chat]["rejected"]) == ("chat", 0, 0)
+
+    imports = (await env.client.get("/api/threads", params={"kind": "import"})).json()
+    assert [r["thread_id"] for r in imports] == [waiting, done]  # newest first
+    chats = (await env.client.get("/api/threads", params={"kind": "chat"})).json()
+    assert [r["thread_id"] for r in chats] == [chat]
+    pending = (await env.client.get("/api/threads", params={"pending": "true", "kind": "import"})).json()
+    assert [r["thread_id"] for r in pending] == [waiting]
+
+
+async def test_list_threads_running_follows_the_turn_lock(make_env):
+    env = make_env()
+    tid = await env.new_thread()
+    [row] = (await env.client.get("/api/threads")).json()
+    assert row["running"] is False
+    lock = env.deps.locks.setdefault(tid, asyncio.Lock())
+    [row] = (await env.client.get("/api/threads")).json()
+    assert row["running"] is False  # a lock that exists but is free is not a running turn
+    await lock.acquire()
+    try:
+        [row] = (await env.client.get("/api/threads")).json()
+        assert row["running"] is True
+    finally:
+        lock.release()
+
+
+async def test_get_thread_returns_kind_and_title(make_env):
+    env = make_env([AIMessage(content="Hello.")])
+    imp = env.deps.threads.create(W, kind="import", title="session-12-notes.md")
+    body = (await env.client.get(f"/api/threads/{imp}")).json()
+    assert (body["kind"], body["title"]) == ("import", "session-12-notes.md")
+    chat = await env.new_thread()
+    await env.send(chat, "Tell me about Velmar")
+    body = (await env.client.get(f"/api/threads/{chat}")).json()
+    assert (body["kind"], body["title"]) == ("chat", "Tell me about Velmar")
+
+
+async def test_post_message_sets_entry_chat(make_env):
+    env = make_env([AIMessage(content="Ostra is a port.")])
+    tid = env.deps.threads.create(W, kind="import", title="notes.md")
+    await _run_import(env, tid, approve("p_1"), approve("p_2"))
+    cfg = {"configurable": {"thread_id": tid}}
+    assert (await env.deps.graph.aget_state(cfg)).values["entry"] == "import"
+    r, events = await env.send(tid, "What is Ostra?")
+    assert r.status_code == 200 and "done" in names(events)
+    assert (await env.deps.graph.aget_state(cfg)).values["entry"] == "chat"
+    assert len(env.agent.seen) == 1  # the chat turn reached the agent
+
+
+def test_message_dict_maps_import_note():
+    summary = {"source": "notes.md", "proposals": 2, "skipped": 0}
+    note = HumanMessage(name="import", content="Imported text.", additional_kwargs={"import": summary})
+    assert message_dict(note) == {
+        "role": "import", "name": "import", "content": "Imported text.", "import": summary,
+    }
+    bare = HumanMessage(name="import", content="Imported text.")
+    assert message_dict(bare)["import"] is None
 
 
 async def test_pending_payload_gets_badges_for_old_checkpoints(make_env):

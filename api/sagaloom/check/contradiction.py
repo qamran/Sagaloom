@@ -121,10 +121,18 @@ def _render(title: str, type_: str, status: str, aliases: list[str], facts: list
     return "\n".join(lines)
 
 
+UNTRUSTED_LABEL = " (untrusted source)"
+
+
+def _label(trusted: bool) -> str:
+    """Marks text that came from imported or reference sources (R13.6); trusted text has none."""
+    return "" if trusted else UNTRUSTED_LABEL
+
+
 def _build_prompt(proposal: Proposal, draft: EntryDraft, related: list[Entry]) -> str:
     what = "a change to entry " + proposal.entry_id if proposal.action == "update" else "a new entry"
     parts = [
-        f"# Proposal ({what})",
+        f"# Proposal ({what}){_label(draft.trusted)}",
         "Facts marked [myth] or [rumour] are in-world beliefs, not facts about the world.",
         wrap_untrusted(
             _render(draft.title, draft.type, draft.status, draft.aliases, draft.facts, draft.body),
@@ -148,13 +156,13 @@ def _build_prompt(proposal: Proposal, draft: EntryDraft, related: list[Entry]) -
             f"Proposed: {_fact_line(pf)}\nExisting: {_fact_line(ef)} (entry status: {e.status})"
             for pf, ef in pairs
         )
-        parts += [f"## Pairs with entry {e.id}", wrap_untrusted(text, source=e.id)]
+        parts += [f"## Pairs with entry {e.id}{_label(e.trusted)}", wrap_untrusted(text, source=e.id)]
     if not any_pairs:
         parts.append("(No existing fact shares a key with the proposal; check similar keys in pass 2.)")
     parts += ["", "# Pass 2: related entries (all facts, then prose)"]
     for e in related:
         parts += [
-            f"## Entry {e.id}",
+            f"## Entry {e.id}{_label(e.trusted)}",
             wrap_untrusted(_render(e.title, e.type, e.status, e.aliases, e.facts, e.body), source=e.id),
         ]
     parts += [
