@@ -1,6 +1,7 @@
 """Studio data: the feature map (R20.5), providers (R20.7, R11.G9) and model settings (R11.G10)."""
 
 import json
+from urllib.parse import parse_qs, quote, urlsplit
 
 import pytest
 
@@ -61,7 +62,7 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     }
     router = card(cards, "router")
     assert (router.brief_ref, router.req_ids, router.status) == ("Sprint topic", ["R6.5"], "live")
-    assert router.try_href == "/chat?prompt=Give me three ideas for a festival in Velmar."
+    assert router.try_href == "/chat?prompt=Give%20me%20three%20ideas%20for%20a%20festival%20in%20Velmar."
     assert card(cards, "tools").brief_ref == "Medium 6"
     assert card(cards, "tools").req_ids == ["R11.G1", "R11.G3"]
     assert card(cards, "external_tools").status == "live"
@@ -70,6 +71,20 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     )
     assert card(cards, "external_tools").try_href.startswith("/chat?prompt=")
     assert card(cards, "agentic_rag").try_href.startswith("/chat?prompt=")
+
+
+def test_try_it_links_are_url_encoded(tmp_path):
+    cards = build_feature_map(make_settings(tmp_path), AppDeps())
+    prompts = [c for c in cards if c.try_href and c.try_href.startswith("/chat?prompt=")]
+    assert len(prompts) >= 4
+    for c in prompts:
+        assert " " not in c.try_href and "," not in c.try_href
+        decoded = parse_qs(urlsplit(c.try_href).query)["prompt"][0]
+        assert c.try_href == "/chat?prompt=" + quote(decoded)
+    hitl = card(cards, "human_in_the_loop")
+    assert parse_qs(urlsplit(hitl.try_href).query)["prompt"][0] == (
+        "Add a place called Ostra, a port town with a deep harbour."
+    )
 
 
 def test_studio_lists_injection_safe_extraction_card(tmp_path):

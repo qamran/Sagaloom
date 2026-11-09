@@ -3,6 +3,7 @@ Nothing here ever returns a key value, only whether one is set."""
 
 import os
 from typing import Any, Literal
+from urllib.parse import quote
 
 from pydantic import BaseModel
 
@@ -53,6 +54,11 @@ def langsmith_live() -> bool:
     return os.environ.get("LANGSMITH_TRACING") == "true" and bool(os.environ.get("LANGSMITH_API_KEY"))
 
 
+def prompt_href(text: str) -> str:
+    """A Chat link that pre-fills the composer; the prompt is URL-encoded."""
+    return "/chat?prompt=" + quote(text)
+
+
 def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
     threads = None
     if getattr(deps, "threads", None) is not None:
@@ -75,7 +81,6 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
     project = os.environ.get("LANGSMITH_PROJECT")
     ls_live = langsmith_live()
     gemini_set = gemini_key_set(settings)
-    prompt = "/chat?prompt="
     return [
         FeatureCard(
             id="agent_purpose",
@@ -84,7 +89,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             req_ids=["R1.1", "R11.1"],
             status="live",
             detail="A continuity editor for story worlds: it answers from canon and drafts changes that wait for your approval.",
-            try_href=prompt + "What do we know about Velmar?",
+            try_href=prompt_href("What do we know about Velmar?"),
         ),
         FeatureCard(
             id="agentic_rag",
@@ -93,7 +98,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             req_ids=["R7", "R11.1", "R11.3"],
             status="live",
             detail="The agent decides when to search canon, and answers cite entry IDs.",
-            try_href=prompt + "How many moons does Velmar have?",
+            try_href=prompt_href("How many moons does Velmar have?"),
         ),
         FeatureCard(
             id="human_in_the_loop",
@@ -102,7 +107,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             req_ids=["R5", "R18.2", "R18.3", "R18.4"],
             status="live",
             detail="Every write pauses at interrupt() until you approve, edit, reject or save it as myth.",
-            try_href=prompt + "Add a place called Ostra, a port town with a deep harbour.",
+            try_href=prompt_href("Add a place called Ostra, a port town with a deep harbour."),
         ),
         FeatureCard(
             id="router",
@@ -112,7 +117,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             status="live",
             detail="A router node after the guard picks brainstorm, query or edit for each message, "
             "and the agent gets a short section for that mode. The mode shows on your message.",
-            try_href=prompt + "Give me three ideas for a festival in Velmar.",
+            try_href=prompt_href("Give me three ideas for a festival in Velmar."),
         ),
         FeatureCard(
             id="memory",
@@ -175,7 +180,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
                 else "The input guard is off (turned off in Studio), so messages go straight to the agent. "
                 "Retrieved and imported text is still wrapped as untrusted data."
             ),
-            try_href="#guardrails" if not guard_on else prompt + "Which entries mention Ister?",
+            try_href="#guardrails" if not guard_on else prompt_href("Which entries mention Ister?"),
         ),
         FeatureCard(
             id="tools",
@@ -195,8 +200,9 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             req_ids=["R11.4", "R11.6"],
             status="live",
             detail="Wikipedia reference tool; fan-wiki import arrives in Wave 6.",
-            try_href=prompt
-            + "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that.",
+            try_href=prompt_href(
+                "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that."
+            ),
         ),
         FeatureCard(
             id="injection_safe_extraction",
