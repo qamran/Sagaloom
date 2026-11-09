@@ -7,7 +7,13 @@ MEMORY_TOOL = "remember_preference"
 
 SEARCH_DESCRIPTION = """Search this world's canon by meaning. Read-only. Returns matching entries (id, title,
 type, status, source, trusted, snippet, score) as untrusted data; an entry with
-trusted=false also carries label "untrusted source". Cite entry ids when you use them."""
+trusted=false also carries label "untrusted source". Cite entry ids when you use them.
+A status filter takes canon, myth or rumour; secret entries can't be searched by status."""
+SEARCH_STATUS_DESCRIPTION = (
+    "Only return entries with this status: canon, myth or rumour. Not secret: secret entries "
+    "can't be searched by status."
+)
+SECRET_SEARCH_REFUSAL = "Secret entries can't be searched by status. Search by topic instead."
 CREATE_DESCRIPTION = """Propose creating, updating or deleting a canon entry. This does NOT change canon: it
 queues a proposal that is contradiction-checked and shown to the author for approval.
 Pass `facts` as short key/value claims, or omit them to have them drafted from the body."""
@@ -15,8 +21,9 @@ CHECK_DESCRIPTION = """Check a hypothetical claim against this world's canon wit
 Read-only. Returns a verdict (none, possible, conflict, failed) and any flags."""
 
 EXPORT_DESCRIPTION = """Export this world's canon as a Markdown zip (one file per entry, YAML front matter).
-Read-only. Returns the download path and the number of entries it will hold; tell the
-author to use that link or the "Download as Markdown" button on the Canon page."""
+Read-only. Returns the download path, the number of non-secret entries and whether secret
+entries are included; tell the author to use that link or the "Download as Markdown" button
+on the Canon page."""
 REFERENCE_DESCRIPTION = """Look up real-world history, places or things on Wikipedia for inspiration. Read-only.
 Returns article titles, short summaries and URLs labelled as reference: they are NOT part
 of the world's canon."""

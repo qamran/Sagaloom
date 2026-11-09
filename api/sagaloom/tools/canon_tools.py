@@ -28,6 +28,8 @@ from sagaloom.tools.specs import (  # noqa: F401  (TOOL_SPECS and CORE_TOOLS are
     CORE_TOOLS,
     CREATE_DESCRIPTION,
     SEARCH_DESCRIPTION,
+    SEARCH_STATUS_DESCRIPTION,
+    SECRET_SEARCH_REFUSAL,
     TOOL_SPECS,
 )
 from sagaloom.wiki.client import WikiClient
@@ -55,9 +57,10 @@ class SearchCanonArgs(BaseModel):
     entry_types: list[EntryType] | None = Field(
         default=None, description="Only return these entry types."
     )
-    status: Status | None = Field(default=None, description="Only return entries with this status.")
+    status: Status | None = Field(default=None, description=SEARCH_STATUS_DESCRIPTION)
     k: int = Field(default=5, description="Number of results (max 10).")
     world_id: _WorldId
+    tool_call_id: _CallId
 
 
 class CreateOrUpdateArgs(BaseModel):
@@ -192,10 +195,13 @@ def make_tools(
     async def search_canon(
         query: str,
         world_id: _WorldId,
+        tool_call_id: _CallId,
         entry_types: list[str] | None = None,
         status: str | None = None,
         k: int = 5,
-    ) -> str:
+    ) -> str | Command:
+        if status == "secret":  # refused before the store is touched
+            return _err(tool_call_id, SECRET_SEARCH_REFUSAL)
         try:
             hits = store.search(
                 world_id, query, k=k, entry_types=entry_types, statuses=[status] if status else None

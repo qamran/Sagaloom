@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from sagaloom.models import Entry, EntryDraft
-from sagaloom.seed import ensure_first_run, load_seed
+from sagaloom.seed import ensure_first_run, load_seed, seed_missing
 from sagaloom.store.worlds import WorldRegistry
 
 SEED = Path(__file__).resolve().parents[2] / "seed" / "velmar"
@@ -139,4 +139,44 @@ def test_failed_load_leaves_no_world_and_retry_succeeds(store, worlds):
     store.upsert_entry = real
     world = ensure_first_run(store, worlds, SEED)
     assert world.id == "velmar"
-    assert len(store.list_entries("velmar")) == 18
+    assert len(store.list_entries("velmar")) == 19
+
+
+def test_seed(store, worlds):
+    assert load_seed(store, worlds, SEED) == 19
+    ledger = store.get_entry("velmar", "ent_0019")
+    assert ledger.title == "The Choir Ledger" and ledger.type == "item"
+    assert ledger.status == "secret"
+    assert ledger.links == []
+    assert {f.key: f.value for f in ledger.facts} == {
+        "Kept in": "Ilsa Corran's crypt below the Tidehall",
+        "Lists": "Every member of the Ashen Choir",
+        "Written in": "A cipher of moon phases",
+    }
+    # The Mayor's page shows a (masked) "Mentioned in" chip for the ledger.
+    mayor = store.get_entry("velmar", "ent_0003")
+    assert "Mayor Elsbeth Varr" in ledger.body
+    assert "ent_0019" in {e.id for e in store.find_mentions("velmar", mayor, links=False)}
+    assert [e.id for e in store.list_entries("velmar") if e.status == "secret"] == ["ent_0019"]
+
+
+def test_seed_missing_adds_only_absent_entries(store, worlds):
+    load_seed(store, worlds, SEED)
+    city = store.get_entry("velmar", "ent_0001")
+    store.upsert_entry(city.model_copy(update={"body": "Edited by the author."}))
+    store.delete_entry("velmar", "ent_0019")
+    added = seed_missing(store, SEED)
+    assert added == ["ent_0019"]
+    assert store.get_entry("velmar", "ent_0001").body == "Edited by the author."
+    assert store.get_entry("velmar", "ent_0019").title == "The Choir Ledger"
+    assert len(store.list_entries("velmar")) == 19
+    assert seed_missing(store, SEED) == []
+
+
+def test_seed_missing_skips_an_id_another_world_owns(store, worlds):
+    load_seed(store, worlds, SEED)
+    store.delete_entry("velmar", "ent_0019")
+    store.upsert_entry(Entry(id="ent_0019", world_id="mine", title="Mine", type="item", body="b"))
+    assert seed_missing(store, SEED) == []
+    assert store.get_entry("velmar", "ent_0019") is None
+    assert store.get_entry("mine", "ent_0019").title == "Mine"

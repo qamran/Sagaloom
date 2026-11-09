@@ -335,6 +335,52 @@ async def test_entries_scoped_by_world(make_env, store):
     assert (await env.client.get("/api/worlds/w1/entries/ent_9999")).status_code == 404
 
 
+def _seeded(make_env):
+    from sagaloom.seed import load_seed
+
+    env = make_env()
+    load_seed(env.deps.store, env.deps.worlds, SEED_DIR)
+    return env
+
+
+async def test_mentions_route_lists_text_mentions(make_env):
+    env = _seeded(make_env)
+    r = await env.client.get(f"/api/worlds/{VELMAR_ID}/entries/ent_0002/mentions")
+    assert r.status_code == 200
+    got = r.json()
+    ids = [m["id"] for m in got]
+    assert ids == sorted(ids)
+    assert {"ent_0003", "ent_0009"} <= set(ids)  # both bodies name the Harbour Council
+    assert "ent_0002" not in ids
+    for m in got:
+        assert set(m) == {"id", "title", "type", "status"}
+    mayor = next(m for m in got if m["id"] == "ent_0003")
+    assert mayor == {"id": "ent_0003", "title": "Mayor Elsbeth Varr", "type": "character", "status": "canon"}
+
+
+async def test_mentions_ignore_links(make_env):
+    env = _seeded(make_env)
+    mayor = env.deps.store.get_entry(VELMAR_ID, "ent_0003")
+    # The Mayor reaches the Choir only through her link and a secret fact, never in text.
+    assert any(link.target_id == "ent_0004" for link in mayor.links)
+    for text in [mayor.body, *mayor.aliases]:
+        assert "choir" not in text.casefold()
+    got = (await env.client.get(f"/api/worlds/{VELMAR_ID}/entries/ent_0004/mentions")).json()
+    by_id = {m["id"]: m for m in got}
+    assert "ent_0003" not in by_id
+    assert "ent_0018" in by_id  # Tomas Reeve's body names the Ashen Choir
+    assert by_id["ent_0019"]["status"] == "secret"
+    # The delete check still counts links.
+    choir = env.deps.store.get_entry(VELMAR_ID, "ent_0004")
+    assert "ent_0003" in {e.id for e in env.deps.store.find_mentions(VELMAR_ID, choir)}
+
+
+async def test_mentions_unknown_entry_404(make_env):
+    env = _seeded(make_env)
+    assert (await env.client.get(f"/api/worlds/{VELMAR_ID}/entries/ent_9999/mentions")).status_code == 404
+    assert (await env.client.get("/api/worlds/nowhere/entries/ent_0002/mentions")).status_code == 404
+
+
 async def test_worlds_create_and_list(make_env):
     env = make_env()
     assert [w["id"] for w in (await env.client.get("/api/worlds")).json()] == [W]

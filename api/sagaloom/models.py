@@ -111,6 +111,12 @@ class EntryRef(BaseModel):
     type: EntryType
 
 
+class MentionRef(EntryRef):
+    """An entry that names another in its text ("Mentioned in"); the web masks a secret one."""
+
+    status: Status
+
+
 class CheckResult(BaseModel):
     proposal_id: str
     verdict: Literal["none", "possible", "conflict", "failed"]

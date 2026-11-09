@@ -588,5 +588,34 @@
         "relation": "leads"
       }
     ]
+  },
+  {
+    "id": "ent_0019",
+    "title": "The Choir Ledger",
+    "type": "item",
+    "body": "The Choir Ledger is a book kept in Ilsa Corran's crypt below the Tidehall. It lists every singer of the Ashen Choir, and Mayor Elsbeth Varr is among them. It is written in a cipher of moon phases.",
+    "status": "secret",
+    "aliases": [],
+    "facts": [
+      {
+        "key": "Kept in",
+        "value": "Ilsa Corran's crypt below the Tidehall",
+        "refs": [
+          "ent_0009"
+        ]
+      },
+      {
+        "key": "Lists",
+        "value": "Every member of the Ashen Choir",
+        "refs": [
+          "ent_0004"
+        ]
+      },
+      {
+        "key": "Written in",
+        "value": "A cipher of moon phases"
+      }
+    ],
+    "links": []
   }
 ]

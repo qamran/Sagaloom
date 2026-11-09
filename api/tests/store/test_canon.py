@@ -94,6 +94,28 @@ def test_find_mentions_finds_links_and_title_mentions(store):
     assert {e.id for e in store.mentioned_in("w1", "We saw ister rise")} == {"ent_0001"}
 
 
+def test_find_mentions_without_links_counts_body_text_only(store):
+    target = store.upsert_entry(mk(id="ent_0001", title="Ister", aliases=["The Pale"]))
+    store.upsert_entry(mk(id="ent_0002", title="Linker", body="nothing here", links=[Link(target_id="ent_0001", relation="sees")]))
+    store.upsert_entry(mk(id="ent_0003", title="Titler", body="Under ISTER's light"))
+    store.upsert_entry(mk(id="ent_0004", title="Aliaser", body="the pale glows"))
+    got = {e.id for e in store.find_mentions("w1", target, links=False)}
+    assert got == {"ent_0003", "ent_0004"}
+
+
+def test_search_hit_of_secret_entry_has_empty_snippet(store):
+    store.upsert_entry(
+        mk(id="ent_0001", title="The Vault", body="Hidden gold below the keep.", status="secret",
+           facts=[Fact(key="Holds", value="Gold")])
+    )
+    store.upsert_entry(mk(id="ent_0002", title="The Keep", body="A tower above the vault."))
+    hits = {h.id: h for h in store.search("w1", "vault")}
+    vault = hits["ent_0001"]
+    assert vault.title == "The Vault" and vault.status == "secret"
+    assert vault.snippet == "" and vault.facts == []
+    assert hits["ent_0002"].snippet == "A tower above the vault."
+
+
 def test_duplicate_title_in_same_world_rejected_case_insensitively(store):
     store.upsert_entry(mk(id="ent_0001", title="Ister"))
     with pytest.raises(DuplicateTitleError):

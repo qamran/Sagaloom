@@ -90,10 +90,22 @@ async def test_export_world_tool_is_read_only(store):
     assert tool.name == "export_world"
     assert "world_id" not in tool.tool_call_schema.model_json_schema()["properties"]
     out = json.loads(await tool.ainvoke({"world_id": "w"}))
-    assert out == {"download": "/api/proxy/worlds/w/export?format=md", "entries": 2}
+    assert out["download"] == "/api/proxy/worlds/w/export?format=md"
     out = json.loads(await tool.ainvoke({"world_id": "w", "exclude_secrets": True}))
-    assert out == {"download": "/api/proxy/worlds/w/export?format=md&exclude_secrets=true", "entries": 1}
+    assert out["download"] == "/api/proxy/worlds/w/export?format=md&exclude_secrets=true"
     assert store.list_entries("w") == before
+
+
+async def test_export_world_count_excludes_secret_entries(store):
+    """The count never reveals how many secret entries exist (Wave 2 Fable M1)."""
+    store.upsert_entry(entry(1, "Ostra"))
+    store.upsert_entry(entry(2, "Vault", status="secret"))
+    store.upsert_entry(entry(3, "Keep"))
+    tool = make_export_tool(store)
+    for exclude in (False, True):
+        out = json.loads(await tool.ainvoke({"world_id": "w", "exclude_secrets": exclude}))
+        assert out["entries"] == 2
+        assert out["secrets_included"] is (not exclude)
 
 
 def test_exclude_secrets_scrubs_references_to_secret_entries():

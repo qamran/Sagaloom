@@ -122,8 +122,9 @@ class CanonStore:
                     type=e.type,
                     status=e.status,
                     source=e.source,
-                    snippet=e.body[:200],
-                    # Secret facts (or every fact of a secret entry) never reach the agent.
+                    # A secret entry keeps its id and title (so the agent does not create a
+                    # duplicate), but no body text, and no secret fact of any entry, reaches it.
+                    snippet="" if e.status == "secret" else e.body[:200],
                     facts=[]
                     if e.status == "secret"
                     else [
@@ -152,14 +153,17 @@ class CanonStore:
             if any(_mentions(t, n) for n in [e.title, *e.aliases])
         ]
 
-    def find_mentions(self, world_id: str, entry: Entry) -> list[Entry]:
+    def find_mentions(self, world_id: str, entry: Entry, *, links: bool = True) -> list[Entry]:
+        """Entries whose body names `entry` (title or alias). With `links` (the delete check),
+        an entry that only links to it counts too; the "Mentioned in" route passes
+        links=False, so a secret link such as the Mayor's to the Choir is not revealed."""
         names = [entry.title, *entry.aliases]
         out = []
         for e in self.list_entries(world_id):
             if e.id == entry.id:
                 continue
             body = norm(e.body)
-            if any(link.target_id == entry.id for link in e.links) or any(
+            if (links and any(link.target_id == entry.id for link in e.links)) or any(
                 _mentions(body, n) for n in names
             ):
                 out.append(e)

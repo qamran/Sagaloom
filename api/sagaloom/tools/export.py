@@ -25,12 +25,13 @@ class ExportArgs(BaseModel):
 def make_export_tool(store: CanonStore) -> BaseTool:
     @tool(NAME, args_schema=ExportArgs, description=DESCRIPTION)
     async def export_world(world_id: Annotated[str, InjectedState("world_id")], exclude_secrets: bool = False) -> str:
-        entries = store.list_entries(world_id)
-        if exclude_secrets:
-            entries = [e for e in entries if e.status != "secret"]
+        # Counts non-secret entries either way, so the count never reveals how many secrets exist.
+        count = sum(1 for e in store.list_entries(world_id) if e.status != "secret")
         url = f"{PROXY_PREFIX}/worlds/{world_id}/export?format=md"
         if exclude_secrets:
             url += "&exclude_secrets=true"
-        return json.dumps({"download": url, "entries": len(entries)})
+        return json.dumps(
+            {"download": url, "entries": count, "secrets_included": not exclude_secrets}
+        )
 
     return export_world

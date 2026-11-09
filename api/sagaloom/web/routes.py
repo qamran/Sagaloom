@@ -20,7 +20,7 @@ from sagaloom.graph.runs import last_run_nodes
 from sagaloom.guard import GUARD_POLICY, parse_verdict
 from sagaloom.importing.extract import MAX_CHARS
 from sagaloom.memory import CAP, count_items, forget, read_preferences
-from sagaloom.models import Decision, Entry, PreferenceKey, Usage, World
+from sagaloom.models import Decision, Entry, MentionRef, PreferenceKey, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
@@ -223,6 +223,23 @@ def get_entry(world_id: str, entry_id: str, request: Request) -> Entry:
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
     return entry
+
+
+@router.get("/worlds/{world_id}/entries/{entry_id}/mentions")
+def entry_mentions(world_id: str, entry_id: str, request: Request) -> list[MentionRef]:
+    """Entries whose body names this one ("Mentioned in", R12.11). Text only: a link alone
+    (such as the Mayor's secret membership of the Choir) is not a mention here."""
+    d = _deps(request)
+    if d.worlds.get(world_id) is None:
+        raise HTTPException(status_code=404, detail="world not found")
+    entry = d.store.get_entry(world_id, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="entry not found")
+    mentions = d.store.find_mentions(world_id, entry, links=False)
+    return [
+        MentionRef(id=e.id, title=e.title, type=e.type, status=e.status)
+        for e in sorted(mentions, key=lambda e: e.id)
+    ]
 
 
 @router.get("/worlds/{world_id}/export")

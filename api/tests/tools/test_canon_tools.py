@@ -60,7 +60,7 @@ async def test_search_canon_wraps_results_and_includes_ids(store):
 
 async def test_search_canon_empty_returns_reason(store):
     ts, *_ = tools_for(store)
-    out = await ts["search_canon"].ainvoke({"query": "x", "world_id": W})
+    out = (await call(ts["search_canon"], {"query": "x", "world_id": W})).content
     assert "no matching canon in this world" in out
     assert '"results": []' in out
 
@@ -69,8 +69,28 @@ async def test_search_canon_is_read_only(store):
     store.upsert_entry(entry())
     ts, *_ = tools_for(store)
     for _ in range(20):
-        await ts["search_canon"].ainvoke({"query": "city", "world_id": W})
+        await call(ts["search_canon"], {"query": "city", "world_id": W})
     assert len(store.list_entries(W)) == 1
+
+
+async def test_search_canon_rejects_secret_status(store):
+    store.upsert_entry(entry(status="secret"))
+    ts, *_ = tools_for(store)
+    calls = []
+    store.search = lambda *a, **k: calls.append((a, k)) or []
+    cmd = await call(ts["search_canon"], {"query": "city", "status": "secret", "world_id": W})
+    assert isinstance(cmd, Command)
+    m = msg(cmd)
+    assert m.status == "error" and m.tool_call_id == "call_1"
+    assert m.content == "Secret entries can't be searched by status. Search by topic instead."
+    assert calls == []
+
+
+async def test_search_canon_status_description_names_the_searchable_statuses(store):
+    ts, *_ = tools_for(store)
+    props = ts["search_canon"].tool_call_schema.model_json_schema()["properties"]
+    desc = props["status"]["description"]
+    assert "canon, myth or rumour" in desc and "secret" in desc
 
 
 async def test_create_returns_proposal_and_writes_nothing(store):
@@ -213,7 +233,7 @@ async def test_tool_failure_returns_error_not_exception(store):
 
     store.search = boom
     store.find_by_name = boom
-    out = await ts["search_canon"].ainvoke({"query": "x", "world_id": W})
+    out = (await call(ts["search_canon"], {"query": "x", "world_id": W})).content
     assert "error" in json.loads(out)
     cmd = await call(
         ts["create_or_update_entry"],
@@ -248,7 +268,7 @@ async def test_untrusted_hit_is_labelled(store):
     store.upsert_entry(entry())
     store.upsert_entry(entry(id="ent_0002", title="Ostra", source="reference", trusted=False))
     ts, *_ = tools_for(store)
-    out = await ts["search_canon"].ainvoke({"query": "city", "world_id": W})
+    out = (await call(ts["search_canon"], {"query": "city", "world_id": W})).content
     hits = {h["id"]: h for h in json.loads(out.split("\n", 1)[1].rsplit("\n", 1)[0])["results"]}
     assert hits["ent_0002"]["trusted"] is False
     assert hits["ent_0002"]["label"] == "untrusted source"
