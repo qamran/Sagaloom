@@ -8,6 +8,7 @@ import { BodyDiff, LineDiff } from "@/components/DiffView";
 import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from "@/components/FactTable";
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
+import { useWorldShowSecrets } from "@/lib/secrets";
 import { BADGE_CLASS, BADGE_LABEL, badgeOf, draftHoldsSecret, existingSecretOf, isSecretFact, proseSecretOf, textSecretOf } from "@/lib/review";
 import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Proposal, Status } from "@/lib/types";
 
@@ -147,7 +148,10 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
 
         {before && after && (
           <>
-            <LineDiff changes={lineDiff(before, after)} />
+            <LineDiff
+              changes={lineDiff(before, after)}
+              secret={before.status === "secret" || after.status === "secret"}
+            />
             <BodyDiff
               before={before.body}
               after={after.body}
@@ -200,7 +204,7 @@ export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo,
             </div>
             <section aria-label="Drafted facts" className="flex flex-col gap-2">
               <h4 className="m-0 text-xs font-semibold uppercase tracking-[1px]">Facts to commit</h4>
-              <FactList facts={proposal.after.facts} />
+              <FactList facts={proposal.after.facts} hideAll={proposal.after.status === "secret"} />
             </section>
           </div>
         ) : (
@@ -317,6 +321,7 @@ function EditForm({
   const [body, setBody] = useState(draft.body);
   const [facts, setFacts] = useState<Fact[]>(draft.facts);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  const worldShown = useWorldShowSecrets();
 
   const setFact = (i: number, patch: Partial<Fact>) =>
     setFacts((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
@@ -351,7 +356,7 @@ function EditForm({
         <legend className="mb-1 text-xs font-semibold uppercase tracking-[1px]">Facts</legend>
         {facts.map((f, i) => {
           const n = i + 1;
-          const hide = f.status === "secret" && !revealed.has(i);
+          const hide = f.status === "secret" && !worldShown && !revealed.has(i);
           return (
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />

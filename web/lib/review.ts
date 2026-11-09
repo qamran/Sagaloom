@@ -74,6 +74,7 @@ export function isSecretFact(
 
 const DUPLICATE = "Possible duplicate of ";
 const SECRET = "a secret fact";
+const SECRET_CHANGES = "A secret fact changes";
 
 /**
  * A flag's fact value without the judge's key. The judge's flags (conflict, note) carry
@@ -127,6 +128,8 @@ export function proposalSummary(
     const proposed = flag.new_fact === null ? "removed" : draftSecret ? SECRET : flagValue(flag, flag.new_fact);
     // Like FactTable: a key whose facts are all secret names the secret, so it is masked too.
     const name = keySecret(p.after, key) || keySecret(p.before, key) ? SECRET : flag.fact_key;
+    // Nothing readable is left to say: name no key and no sides.
+    if (name === SECRET && existing === SECRET && proposed === SECRET) return SECRET_CHANGES;
     return `${name}: ${existing} → ${proposed}`;
   }
   const dup = c.flags.find((f) => f.kind === "note" && !f.fact_key && f.explanation.startsWith(DUPLICATE));

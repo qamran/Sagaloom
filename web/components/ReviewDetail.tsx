@@ -17,6 +17,7 @@ const BTN_OUTLINE = `${BTN} border border-border-strong bg-transparent text-fore
 const LINK_BTN = `flex ${BTN} items-center no-underline hover:no-underline`;
 
 const NOTHING_WAITING = "This conversation has nothing waiting for review.";
+const OTHER_WORLD = "This conversation belongs to another world. Switch worlds to review it.";
 const NOTHING_IMPORTED = "Nothing from this import needs review.";
 
 /** The candidates an import left out, each with why. Titles are the model's, shown as plain text. */
@@ -92,14 +93,15 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
 
   if (!s.loaded) return page(<p className="m-0 text-muted-foreground">Loading…</p>);
 
-  const otherWorld = !!s.worldId && !!world && s.worldId !== world.id;
+  const otherWorld =
+    !!world && ((!!s.worldId && s.worldId !== world.id) || (!!shown && shown.proposals.some((p) => p.world_id !== world.id)));
   // A decided import has only this page for its outcome (no Open in Chat), so its notes show even
   // when nothing was submitted in this session (F7).
   const decided = isImport && s.messages.some((m) => m.role === "review");
   if (otherWorld || (!shown && notesBefore === null && !decided)) {
     return page(
       <>
-        <p className="m-0 text-[17px] text-[#c9c6bd]">{isImport && !otherWorld ? NOTHING_IMPORTED : NOTHING_WAITING}</p>
+        <p className="m-0 text-[17px] text-[#c9c6bd]">{otherWorld ? OTHER_WORLD : isImport ? NOTHING_IMPORTED : NOTHING_WAITING}</p>
         {isImport && !otherWorld && <NotImported note={s.importNote} />}
         <div className="flex flex-wrap gap-2.5">
           {back}

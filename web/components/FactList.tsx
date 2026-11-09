@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Fact, Status } from "@/lib/types";
 
 const BADGE: Partial<Record<Status, string>> = {
@@ -46,9 +47,13 @@ function FactRow({ fact, hidden, onShow }: { fact: Fact; hidden: boolean; onShow
 
 const factId = (f: Fact) => JSON.stringify([f.key, f.value]);
 
-/** key: value rows with a status badge. Secret facts stay hidden until Show is clicked (R12.12). */
-export function FactList({ facts }: { facts: Fact[] }) {
+/**
+ * key: value rows with a status badge. Secret facts stay hidden until Show is clicked or the
+ * world toggle is on (R12.12); `hideAll` hides every fact, for a secret entry's draft.
+ */
+export function FactList({ facts, hideAll = false }: { facts: Fact[]; hideAll?: boolean }) {
   const [shown, setShown] = useState<Set<string>>(new Set());
+  const worldShown = useWorldShowSecrets();
   if (facts.length === 0) {
     return <p className="m-0 text-sm text-muted-foreground">No facts recorded for this entry yet.</p>;
   }
@@ -58,7 +63,7 @@ export function FactList({ facts }: { facts: Fact[] }) {
         <FactRow
           key={`${f.key}-${i}`}
           fact={f}
-          hidden={f.status === "secret" && !shown.has(factId(f))}
+          hidden={(hideAll || f.status === "secret") && !worldShown && !shown.has(factId(f))}
           onShow={() => setShown((s) => new Set(s).add(factId(f)))}
         />
       ))}

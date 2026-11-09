@@ -6,6 +6,7 @@ afterEach(() => {
   cleanup();
   try {
     localStorage.clear();
+    sessionStorage.clear();
   } catch {
     /* storage unavailable */
   }

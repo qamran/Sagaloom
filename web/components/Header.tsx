@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { getReviewThreads, getThread } from "@/lib/api";
 import { useCourseNotes } from "@/lib/courseNotes";
+import { SecretsToggle } from "@/components/SecretsToggle";
 import { REVIEW_KEY } from "@/lib/review";
 import { useWorld } from "@/lib/world";
 
@@ -220,6 +221,7 @@ export function Header() {
       </nav>
       <div className="hidden flex-1 sm:block" />
       <CostPill />
+      <SecretsToggle />
       <CourseNotesToggle />
       <div className="flex items-center gap-2 sm:border-l sm:border-border sm:pl-4">
         <span className="text-[10px] uppercase tracking-[1.2px] text-muted-foreground">

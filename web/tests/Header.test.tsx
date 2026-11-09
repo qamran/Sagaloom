@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/components/Header";
 import { getReviewThreads } from "@/lib/api";
 import { REVIEW_KEY } from "@/lib/review";
+import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { ThreadSummary } from "@/lib/types";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/canon", useRouter: () => ({ push: vi.fn() }) }));
@@ -59,5 +60,20 @@ describe("Header Import tab", () => {
     const tabs = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
     expect(tabs.map((t) => t.textContent)).toEqual(["Canon", "Chat", "Review", "Import"]);
     expect(screen.getByRole("link", { name: "Import" })).toHaveAttribute("href", "/import");
+  });
+});
+
+describe("Header Show secrets toggle", () => {
+  it("renders the toggle before Course notes, driving the world's state", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([]);
+    renderHeader();
+    const btn = screen.getByRole("button", { name: "Show secrets" });
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    expect(btn.compareDocumentPosition(screen.getByRole("button", { name: "Course notes" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    btn.click();
+    await waitFor(() => expect(sessionStorage.getItem(SHOW_SECRETS_KEY("w1"))).toBe("true"));
+    sessionStorage.clear();
   });
 });

@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CanonList } from "@/components/CanonList";
+import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { Entry } from "@/lib/types";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/canon" }));
@@ -19,7 +20,12 @@ const entries = [
   { ...base, id: "ent_0002", title: "The Mayor's Oath", type: "event", status: "secret" },
 ] as unknown as Entry[];
 
-vi.mock("@/lib/api", () => ({ getEntries: vi.fn(async () => entries) }));
+let list: Entry[] = entries;
+vi.mock("@/lib/api", () => ({ getEntries: vi.fn(async () => list) }));
+afterEach(() => {
+  list = entries;
+  sessionStorage.clear();
+});
 
 function renderList() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -44,5 +50,32 @@ describe("CanonList secrets", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Show 1 secret entry" }));
     expect(screen.getByText(/Mayor/)).toBeInTheDocument();
+  });
+});
+
+describe("CanonList world toggle", () => {
+  const velmar = [
+    ...Array.from({ length: 18 }, (_, i) => ({ ...base, id: `ent_${i + 1}`, title: `Entry ${i + 1}`, type: "place", status: "canon" })),
+    { ...base, id: "ent_0019", title: "The Choir Ledger", type: "item", status: "secret" },
+  ] as unknown as Entry[];
+
+  it("lists 18 links, and 19 with the world toggle on", async () => {
+    list = velmar;
+    renderList();
+    await screen.findByText("Entry 1");
+    expect(screen.getAllByRole("link")).toHaveLength(18);
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    cleanup();
+    renderList();
+    await screen.findByText("The Choir Ledger");
+    expect(screen.getAllByRole("link")).toHaveLength(19);
+  });
+
+  it("the sidebar button flips the same state", async () => {
+    list = velmar;
+    renderList();
+    await userEvent.click(await screen.findByRole("button", { name: "Show 1 secret entry" }));
+    expect(sessionStorage.getItem(SHOW_SECRETS_KEY("w1"))).toBe("true");
+    expect(screen.getByRole("button", { name: "Hide secret entries" })).toBeInTheDocument();
   });
 });

@@ -2,7 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApprovalCard, CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
+import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { CheckResult, Entry, Fact, Flag, Proposal } from "@/lib/types";
+
+vi.mock("@/lib/world", () => ({ useWorld: () => ({ world: { id: "w1", name: "Velmar" } }) }));
 
 const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fact => ({
   key,
@@ -559,5 +562,43 @@ describe("ApprovalCard complete table", () => {
     expect(screen.getByLabelText("Body")).toHaveAttribute("maxLength", "4000");
     expect(screen.getByLabelText("Fact 1 key")).toHaveAttribute("maxLength", "40");
     expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("maxLength", "200");
+  });
+});
+
+describe("ApprovalCard secret entries (Wave 7)", () => {
+  const secretCreate: Proposal = {
+    ...update, action: "create", entry_id: null, before: null,
+    after: {
+      title: "The Choir Ledger", type: "item", body: "", status: "secret", aliases: ["the Book"],
+      facts: [fact("Holder", "The Mayor"), fact("Contents", "Names", "secret")],
+    },
+  };
+
+  it("hides every drafted fact of a secret create, canon-status ones too", async () => {
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    const drafted = screen.getByRole("region", { name: /drafted facts/i });
+    expect(within(drafted).queryByText("The Mayor")).toBeNull();
+    expect(within(drafted).queryByText("Holder")).toBeNull();
+    expect(within(drafted).getAllByText("Secret fact")).toHaveLength(2);
+    await userEvent.click(within(drafted).getAllByRole("button", { name: /show secret fact/i })[0]);
+    expect(within(drafted).getByText("The Mayor")).toBeInTheDocument();
+  });
+
+  it("the world toggle reveals a secret create's facts", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(within(screen.getByRole("region", { name: /drafted facts/i })).getByText("The Mayor")).toBeInTheDocument();
+  });
+
+  it("masks the line diff of a secret entry's update", () => {
+    const secretBefore = { ...before, title: "Old Ledger", status: "secret" } as Entry;
+    const proposal: Proposal = {
+      ...update, before: secretBefore, after: { ...update.after!, title: "New Ledger", status: "secret" },
+    };
+    render(<ApprovalCard proposal={proposal} check={check("none", [])} onDecide={vi.fn()} />);
+    const row = screen.getByText("Title", { selector: "dt" }).closest("div") as HTMLElement;
+    expect(within(row).queryByText("Old Ledger")).toBeNull();
+    expect(within(row).queryByText("New Ledger")).toBeNull();
+    expect(screen.getByRole("button", { name: /show secret changes/i })).toBeInTheDocument();
   });
 });

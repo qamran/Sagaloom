@@ -188,10 +188,20 @@ describe("ReviewDetail", () => {
     expect(screen.getByRole("link", { name: "Back to Review" })).toHaveAttribute("href", "/review");
   });
 
-  it("says nothing is waiting for a thread of another world", () => {
+  const OTHER = "This conversation belongs to another world. Switch worlds to review it.";
+
+  it("says the conversation belongs to another world for a thread of another world", () => {
     stream = base({ pending: two, worldId: "w2" });
     render(ui());
-    expect(screen.getByText("This conversation has nothing waiting for review.")).toBeInTheDocument();
+    expect(screen.getByText(OTHER)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject all" })).toBeNull();
+  });
+
+  it("shows the other-world copy when the shown proposals carry another world_id", () => {
+    const foreign = pendingOf([{ ...proposal("p_a", "Tide Council"), world_id: "w2" }, clean("p_a")]);
+    stream = base({ pending: foreign, worldId: "w1" });
+    render(ui());
+    expect(screen.getByText(OTHER)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reject all" })).toBeNull();
   });
 

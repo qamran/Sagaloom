@@ -4,15 +4,17 @@ import Link from "next/link";
 import { Fragment, useState, type ReactNode } from "react";
 import { EntityChip } from "@/components/EntityChip";
 import type { FactResult, FactRow } from "@/lib/factRows";
+import { useWorldShowSecrets } from "@/lib/secrets";
 import type { EntryType, Fact, Flag } from "@/lib/types";
 
 /** An entry cited by a flag: a chip when its type is known, then its ID (R4.3). */
 export function Cite({ id, title, type, secret }: { id: string; title: string; type?: EntryType; secret?: boolean }) {
   const [shown, setShown] = useState(false);
+  const worldShown = useWorldShowSecrets();
   if (!id) return null;
   const href = `/canon/${encodeURIComponent(id)}`;
   let chip: ReactNode;
-  if (secret && !shown)
+  if (secret && !worldShown && !shown)
     chip = (
       <span className="inline-flex items-center gap-2">
         <span className="text-muted-foreground">
@@ -63,7 +65,8 @@ export function SecretValue({
   children?: ReactNode;
 }) {
   const [shown, setShown] = useState(false);
-  if (!secret || shown) {
+  const worldShown = useWorldShowSecrets();
+  if (!secret || worldShown || shown) {
     if (!children) return <span className={className}>{value}</span>;
     return (
       <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">

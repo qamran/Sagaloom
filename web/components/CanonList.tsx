@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { getEntries } from "@/lib/api";
 import { TYPE_DOT, TYPE_ORDER, TYPE_PLURAL } from "@/lib/entity";
+import { useShowSecrets } from "@/lib/secrets";
 import { useWorld } from "@/lib/world";
 
 /** Left column of the Canon tab: entries grouped by type, with search (R12.2). */
@@ -13,7 +14,7 @@ export function CanonList() {
   const { world } = useWorld();
   const pathname = usePathname();
   const [search, setSearch] = useState("");
-  const [showSecrets, setShowSecrets] = useState(false);
+  const [showSecrets, setShowSecrets] = useShowSecrets(world?.id);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["entries", world?.id],
@@ -102,7 +103,7 @@ export function CanonList() {
       {hiddenCount > 0 && (
         <button
           type="button"
-          onClick={() => setShowSecrets((s) => !s)}
+          onClick={() => setShowSecrets(!showSecrets)}
           className="min-h-11 rounded-lg border border-border-strong px-3 text-left text-xs text-muted-foreground hover:bg-panel-3 sm:min-h-9"
         >
           {showSecrets

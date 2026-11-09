@@ -7,6 +7,7 @@ import { FactList } from "@/components/FactList";
 import { ApiError, getEntry } from "@/lib/api";
 import { TYPE_LABEL, TYPE_PLURAL, TYPE_TEXT } from "@/lib/entity";
 import { importedSections } from "@/lib/imported";
+import { useShowSecrets } from "@/lib/secrets";
 import { markTour } from "@/lib/tour";
 import { useWorld } from "@/lib/world";
 
@@ -16,6 +17,7 @@ const CARD = "rounded-xl border border-border bg-panel-2 px-5 py-[18px]";
 export function EntryView({ entryId }: { entryId: string }) {
   const { world } = useWorld();
   const [revealed, setRevealed] = useState(false);
+  const [worldShown] = useShowSecrets(world?.id);
 
   const { data: entry, isLoading, error } = useQuery({
     queryKey: ["entry", world?.id, entryId],
@@ -48,7 +50,7 @@ export function EntryView({ entryId }: { entryId: string }) {
     );
   }
 
-  const hidden = entry.status === "secret" && !revealed;
+  const hidden = entry.status === "secret" && !worldShown && !revealed;
   const typeText = TYPE_TEXT[entry.type];
   const status = entry.status.charAt(0).toUpperCase() + entry.status.slice(1);
   const imported = entry.trusted ? [] : importedSections(entry.body);

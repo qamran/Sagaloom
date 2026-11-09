@@ -216,3 +216,19 @@ describe("proseSecretOf", () => {
     expect(proseSecretOf(create, [])(dup)).toBe(false);
   });
 });
+
+describe("proposalSummary secret fact", () => {
+  it("says a secret fact changes when key, existing and proposed are all masked", () => {
+    const secretCreate: Proposal = {
+      ...create,
+      after: { ...create.after!, status: "secret" },
+    };
+    const f = flag({ kind: "retcon", fact_key: "Seats", existing_fact: "Seven", new_fact: "Five" });
+    expect(proposalSummary(secretCreate, check([f]), () => true)).toBe("A secret fact changes");
+  });
+
+  it("keeps the arrow form when only part is masked", () => {
+    const f = flag({ kind: "retcon", fact_key: "Seats", existing_fact: "Seven", new_fact: "Five" });
+    expect(proposalSummary(create, check([f]), () => true)).toBe("Seats: a secret fact → Five");
+  });
+});
