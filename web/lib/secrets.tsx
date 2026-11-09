@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useSyncExternalStore, type ReactNode } from "react";
 import { useWorld } from "@/lib/world";
 
 export const SHOW_SECRETS_KEY = (worldId: string) => `sagaloom.showSecrets.${worldId}`;
@@ -10,19 +10,20 @@ const memory = new Map<string, boolean>();
 function read(worldId: string): boolean {
   const key = SHOW_SECRETS_KEY(worldId);
   try {
-    return sessionStorage.getItem(key) === "true";
+    const v = sessionStorage.getItem(key);
+    if (v === "true" || v === "false") return v === "true";
   } catch {
-    return memory.get(key) ?? false;
+    /* storage unavailable */
   }
+  return memory.get(key) ?? false;
 }
 
 function write(worldId: string, on: boolean) {
   const key = SHOW_SECRETS_KEY(worldId);
-  memory.set(key, on);
   try {
     sessionStorage.setItem(key, String(on));
   } catch {
-    /* storage unavailable */
+    memory.set(key, on);
   }
   listeners.get(key)?.forEach((l) => l());
 }
@@ -54,8 +55,16 @@ export function useShowSecrets(worldId: string | undefined): [boolean, (on: bool
   return [on, set];
 }
 
-/** The active world's toggle: what a masked view ORs into its hidden test. */
+const SecretsWorldContext = createContext<string | undefined>(undefined);
+
+/** Scopes masked views inside to the world their content belongs to, not the active one. */
+export function SecretsWorldProvider({ worldId, children }: { worldId: string; children: ReactNode }) {
+  return <SecretsWorldContext.Provider value={worldId}>{children}</SecretsWorldContext.Provider>;
+}
+
+/** The content world's toggle (the active world's without a provider): what a masked view ORs into its hidden test. */
 export function useWorldShowSecrets(): boolean {
+  const scoped = useContext(SecretsWorldContext);
   const { world } = useWorld();
-  return useShowSecrets(world?.id)[0];
+  return useShowSecrets(scoped ?? world?.id)[0];
 }

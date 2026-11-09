@@ -50,3 +50,14 @@ describe("useShowSecrets", () => {
     expect(result.current[0]).toBe(true);
   });
 });
+
+describe("useShowSecrets with only setItem failing", () => {
+  it("still works for the page", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const { result } = renderHook(() => useShowSecrets("w8"));
+    act(() => result.current[1](true));
+    expect(result.current[0]).toBe(true);
+  });
+});

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApprovalCard, CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
@@ -600,5 +600,34 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     expect(within(row).queryByText("Old Ledger")).toBeNull();
     expect(within(row).queryByText("New Ledger")).toBeNull();
     expect(screen.getByRole("button", { name: /show secret changes/i })).toBeInTheDocument();
+  });
+});
+
+describe("ApprovalCard toggle follows the proposal's world", () => {
+  const w2 = (p: Proposal): Proposal => ({ ...p, world_id: "w2", before: p.before && { ...p.before, world_id: "w2" } });
+  const secretCreate: Proposal = w2({
+    ...update, action: "create", entry_id: null, before: null,
+    after: {
+      title: "The Choir Ledger", type: "item", body: "Names of the Choir.", status: "secret", aliases: [],
+      facts: [fact("Holder", "The Mayor")],
+    },
+  });
+
+  it("keeps another world's secrets masked when only the active world's toggle is on", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.queryByText("The Mayor")).toBeNull();
+    expect(screen.queryByText("Names of the Choir.")).toBeNull();
+    const updateCard = w2(update);
+    cleanup();
+    render(<ApprovalCard proposal={updateCard} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.queryByText("The moons are lanterns")).toBeNull();
+  });
+
+  it("reveals them when that world's own toggle is on", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w2"), "true");
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.getByText("The Mayor")).toBeInTheDocument();
+    expect(screen.getByText("Names of the Choir.")).toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ import { BodyDiff, LineDiff } from "@/components/DiffView";
 import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from "@/components/FactTable";
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
-import { useWorldShowSecrets } from "@/lib/secrets";
+import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
 import { BADGE_CLASS, BADGE_LABEL, badgeOf, draftHoldsSecret, existingSecretOf, isSecretFact, proseSecretOf, textSecretOf } from "@/lib/review";
 import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Proposal, Status } from "@/lib/types";
 
@@ -45,7 +45,16 @@ interface Props {
 }
 
 /** "Commit to canon?" (R5.2, R5.3, R5.6, R12.3). */
-export function ApprovalCard({ proposal, check, onDecide, canon, chosen, onUndo, disabled }: Props) {
+/** One proposal as a card. Its secrets follow the toggle of the proposal's own world, not the active one. */
+export function ApprovalCard(props: Props) {
+  return (
+    <SecretsWorldProvider worldId={props.proposal.world_id}>
+      <ApprovalCardBody {...props} />
+    </SecretsWorldProvider>
+  );
+}
+
+function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, disabled }: Props) {
   const [editing, setEditing] = useState(false);
   const [toldBy, setToldBy] = useState("");
   const pid = proposal.proposal_id;
