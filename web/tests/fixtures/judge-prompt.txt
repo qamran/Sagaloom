@@ -8,7 +8,8 @@ Aliases: Elsbeth Varr, the Mayor
 Facts:
 - Role: Mayor of Velmar and chair of the Harbour Council [canon]
 - Age: 60 [canon]
-- Sings with the Ashen Choir: Yes, at every full Ister [secret]
+- Sings with the Ashen Choir: Yes, at every full Ister [secret] (told by Ilsa Corran)
+- Kept in: A drawer in the Tidehall [canon]
 Body:
 Elsbeth Varr, aged fifty-four, has been mayor of Velmar for eleven years and chairs the Harbour Council. She is calm, careful and rarely seen on the quay after dark.
 </untrusted_data>
@@ -20,8 +21,13 @@ Proposed: Role: Mayor of Velmar and chair of the Harbour Council [canon]
 Existing: Role: Mayor of Velmar and chair of the Harbour Council [canon] (entry status: canon)
 Proposed: Age: 60 [canon]
 Existing: Age: 54 [canon] (entry status: canon)
-Proposed: Sings with the Ashen Choir: Yes, at every full Ister [secret]
+Proposed: Sings with the Ashen Choir: Yes, at every full Ister [secret] (told by Ilsa Corran)
 Existing: Sings with the Ashen Choir: Yes, at every full Ister [secret] (entry status: canon)
+</untrusted_data>
+## Pairs with entry ent_0019
+<untrusted_data source="ent_0019">
+Proposed: Kept in: A drawer in the Tidehall [canon]
+Existing: Kept in: Ilsa Corran's crypt below the Tidehall [canon] (entry status: secret)
 </untrusted_data>
 
 # Pass 2: related entries (all facts, then prose)

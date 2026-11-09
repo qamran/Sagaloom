@@ -1,15 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { maskPrompt } from "@/lib/maskSecrets";
+import { MASKED_LINE, UNTRUSTED, argsHoldSecret, maskPrompt, responseHoldsSecret } from "@/lib/maskSecrets";
 import { useShowSecrets } from "@/lib/secrets";
 import type { LlmCall, NodeStep, TurnView } from "@/lib/turns";
 import type { PromptMessage } from "@/lib/types";
 
 const LABEL = "text-[11px] uppercase tracking-[0.9px] text-muted-foreground";
-const UNTRUSTED = /(<untrusted_data[^>]*>[\s\S]*?<\/untrusted_data>)/g;
 
 const MASKED_RESPONSE = "Hidden: this call saw secret facts. Choose Show secrets to read it.";
+
+/** A tool call as shown: its args become the mask line while hidden if they propose a secret. */
+const callText = (name: string, args: unknown, hidden: boolean) =>
+  `${name}(${hidden && argsHoldSecret(args) ? MASKED_LINE : JSON.stringify(args)})`;
 
 const n = (v: number) => v.toLocaleString("en-US");
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -54,17 +57,18 @@ const ROLE_LABEL: Record<string, string> = {
 };
 const ROLE_COLOR: Record<string, string> = { system: "text-myth", user: "text-[#9FE0BF]", assistant: "text-[#a9d3ff]" };
 
-/** One call's message texts as shown: masked while secrets are hidden, and how many lines were. */
+/** One call's message texts as shown, and how many lines and tool calls were masked while hidden. */
 function useShownTexts(call: LlmCall, hidden: boolean): { texts: string[]; masked: number } {
   return useMemo(() => {
     const raw = call.messages.map((m) => textOf(m.content));
     if (!hidden) return { texts: raw, masked: 0 };
     const out = raw.map(maskPrompt);
-    return { texts: out.map((o) => o.text), masked: out.reduce((a, o) => a + o.masked, 0) };
+    const calls = call.messages.flatMap((m) => m.tool_calls ?? []).filter((c) => argsHoldSecret(c.args)).length;
+    return { texts: out.map((o) => o.text), masked: out.reduce((a, o) => a + o.masked, calls) };
   }, [call.messages, hidden]);
 }
 
-function Messages({ call, texts }: { call: LlmCall; texts: string[] }) {
+function Messages({ call, texts, hidden }: { call: LlmCall; texts: string[]; hidden: boolean }) {
   // System first; the rest keep the order they were sent in.
   const indexed = call.messages.map((m, i): [PromptMessage, string] => [m, texts[i]]);
   const ordered = [
@@ -82,7 +86,7 @@ function Messages({ call, texts }: { call: LlmCall; texts: string[] }) {
           <Content text={text} />
           {m.tool_calls?.map((c, j) => (
             <div key={j} className="text-[#9FE0BF]">
-              {c.name}({JSON.stringify(c.args)})
+              {callText(c.name, c.args, hidden)}
             </div>
           ))}
         </div>
@@ -113,7 +117,7 @@ function Response({ call }: { call: LlmCall }) {
       )}
       {r.tool_calls.map((c, i) => (
         <div key={i} className="text-[#9FE0BF]">
-          {c.name}({JSON.stringify(c.args)})
+          {callText(c.name, c.args, false)}
         </div>
       ))}
     </section>
@@ -149,8 +153,9 @@ function CallCard({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { texts, masked } = useShownTexts(call, hidden);
-  // The judge's reply has no markers, so a call that saw a secret hides its whole response.
-  const veiled = masked > 0;
+  // The judge's reply has no markers, so a call that saw a secret hides its whole response; so does
+  // a reply that itself carries a secret status (a proposal's args, structured output).
+  const veiled = hidden && (masked > 0 || responseHoldsSecret(call.response));
   const [tab, setTab] = useState<"Request" | "Response" | "Raw JSON">("Request");
   const [copyError, setCopyError] = useState(false);
   const r = call.response;
@@ -222,7 +227,7 @@ function CallCard({
               </button>
             ))}
           </div>
-          {tab === "Request" && <Messages call={call} texts={texts} />}
+          {tab === "Request" && <Messages call={call} texts={texts} hidden={hidden} />}
           {tab === "Response" && (veiled ? <MaskedResponse /> : <Response call={call} />)}
           {tab === "Raw JSON" && veiled && (
             <pre data-testid="raw-json" className="m-0 bg-[#101314] px-3 py-2.5 text-xs text-muted-foreground">
@@ -371,12 +376,20 @@ export function UnderTheHood({
               <p className="m-0 text-xs text-muted-foreground">No tools were called.</p>
             ) : (
               <div className="flex flex-col gap-1 rounded-lg border border-border bg-[#101314] px-2.5 py-2 font-mono text-xs">
-                {turn.tools.map((t, i) => (
-                  <div key={i}>
-                    <span className="text-[#9FE0BF]">{t.name}</span>({JSON.stringify(t.args)}){" "}
-                    {t.summary !== null && <span className="text-muted-foreground">→ {t.summary}</span>}
-                  </div>
-                ))}
+                {turn.tools.map((t, i) => {
+                  const masked = !showSecrets && argsHoldSecret(t.args);
+                  return masked ? (
+                    <div key={i}>
+                      <span className="text-[#9FE0BF]">{callText(t.name, t.args, true)}</span>{" "}
+                      {t.summary !== null && <span className="text-muted-foreground">→ {MASKED_LINE}</span>}
+                    </div>
+                  ) : (
+                    <div key={i}>
+                      <span className="text-[#9FE0BF]">{t.name}</span>({JSON.stringify(t.args)}){" "}
+                      {t.summary !== null && <span className="text-muted-foreground">→ {t.summary}</span>}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

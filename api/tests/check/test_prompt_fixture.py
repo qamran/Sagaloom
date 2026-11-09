@@ -1,8 +1,10 @@
 """Pins the judge prompt format the web drawer masks (web/lib/maskSecrets.ts).
 
 `web/tests/fixtures/judge-prompt.txt` is real `_build_prompt` output for an update of the Mayor
-(`ent_0003`, Age 54 -> 60) with related entries ent_0002, ent_0003 and the secret ent_0019. The web
-tests mask it, so a change to `_build_prompt`, `_render` or `_fact_line` that would let a secret
+(`ent_0003`, Age 54 -> 60, its secret fact told by Ilsa Corran, plus a `Kept in` fact that pairs
+with the secret ent_0019 in Pass 1) with related entries ent_0002, ent_0003 and ent_0019. It so
+pins every secret format the mask relies on: `[secret]`, `[secret] (told by …)`,
+`(entry status: secret)` and `Entry status: secret`. The web tests mask it, so a change to `_build_prompt`, `_render` or `_fact_line` that would let a secret
 slip past the mask fails here first.
 
 To regenerate after an intended prompt change (then rerun the web tests and commit the file):
@@ -16,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from sagaloom.check.contradiction import _build_prompt
-from sagaloom.models import EntryDraft, Proposal
+from sagaloom.models import EntryDraft, Fact, Proposal
 from sagaloom.seed import _seed_entries
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -28,7 +30,15 @@ REGEN = "SAGALOOM_REGEN_FIXTURES"
 def _judge_prompt() -> str:
     by_id = {e.id: e for e in _seed_entries(SEED, "velmar")}
     mayor = by_id["ent_0003"]
-    facts = [f.model_copy(update={"value": "60"}) if f.key == "Age" else f for f in mayor.facts]
+    facts = [
+        f.model_copy(update={"value": "60"})
+        if f.key == "Age"
+        else f.model_copy(update={"told_by": "Ilsa Corran"})
+        if f.status == "secret"
+        else f
+        for f in mayor.facts
+    ]
+    facts.append(Fact(key="Kept in", value="A drawer in the Tidehall"))
     draft = EntryDraft(
         title=mayor.title,
         type=mayor.type,

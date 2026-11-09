@@ -214,5 +214,85 @@ describe("UnderTheHood", () => {
       expect(screen.getByText("No conflict.")).toBeInTheDocument();
       expect(screen.queryByText(HIDDEN)).toBeNull();
     });
+
+    const SECRET_ARGS = {
+      action: "update",
+      entry_id: "ent_0003",
+      facts: [{ key: "Sings with the Ashen Choir", value: "Yes, at every full Ister", status: "secret" }],
+    };
+    const proposing = (args: Record<string, unknown>): TurnView => ({
+      ...turn,
+      tools: [{ name: "create_or_update_entry", args, summary: "Proposal p_1 for Ashen Choir singer" }],
+      calls: [
+        {
+          ...turn.calls[0],
+          id: "a1",
+          messages: [
+            { role: "user", content: "She sings with the choir." },
+            { role: "assistant", content: "", tool_calls: [{ id: "x", name: "create_or_update_entry", args }] },
+          ],
+          response: { ...turn.calls[0].response!, content: "", tool_calls: [{ id: "x", name: "create_or_update_entry", args }] },
+        },
+      ],
+    });
+    const MASKED_CALL = "create_or_update_entry([secret fact hidden])";
+
+    it("masks a tool call proposing a secret in the Request, the Response and the Tool calls summary", async () => {
+      const user = userEvent.setup();
+      render(<UnderTheHood turn={proposing(SECRET_ARGS)} worldId="w1" onClose={() => {}} />);
+      const drawer = screen.getByRole("complementary", { name: "Under the hood" });
+      expect(drawer).not.toHaveTextContent("Ashen Choir");
+      expect(drawer).not.toHaveTextContent("full Ister");
+      expect(within(screen.getByRole("region", { name: "Request" })).getByText(MASKED_CALL)).toBeInTheDocument();
+      expect(screen.getAllByText(MASKED_CALL)).toHaveLength(2); // Request and the Tool calls summary
+      await user.click(screen.getByRole("button", { name: "Response" }));
+      expect(screen.getByRole("region", { name: "Response" })).toHaveTextContent(HIDDEN);
+      await user.click(screen.getByRole("button", { name: "Raw JSON" }));
+      expect(screen.getByTestId("raw-json")).toHaveTextContent(HIDDEN);
+
+      await user.click(screen.getByRole("button", { name: "Show secrets" }));
+      expect(screen.queryByText(MASKED_CALL)).toBeNull();
+      expect(screen.getByTestId("raw-json")).toHaveTextContent("Yes, at every full Ister");
+      await user.click(screen.getByRole("button", { name: "Response" }));
+      expect(screen.getByRole("region", { name: "Response" })).toHaveTextContent("full Ister");
+      await user.click(screen.getByRole("button", { name: "Request" }));
+      expect(screen.getByRole("region", { name: "Request" })).toHaveTextContent("full Ister");
+      expect(drawer).toHaveTextContent("Proposal p_1 for Ashen Choir singer");
+    });
+
+    it("leaves a non-secret proposal as it is", async () => {
+      const args = { action: "create", title: "Lantern Quay", type: "place", facts: [{ key: "Lamps", value: "Iron" }] };
+      render(<UnderTheHood turn={proposing(args)} worldId="w1" onClose={() => {}} />);
+      expect(screen.queryByText(/secret fact hidden/)).toBeNull();
+      expect(screen.getAllByText(/Lantern Quay/).length).toBeGreaterThanOrEqual(2);
+      await userEvent.click(screen.getByRole("button", { name: "Response" }));
+      expect(screen.getByRole("region", { name: "Response" })).toHaveTextContent("Lantern Quay");
+    });
+
+    it("veils an extractor response that holds a secret candidate", async () => {
+      const content = JSON.stringify({
+        candidates: [
+          { title: "Ledger", type: "item", aliases: [], facts: [{ key: "Kept in", value: "The crypt", status: "secret" }], excerpt: "x" },
+        ],
+      });
+      const extract: TurnView = {
+        ...turn,
+        calls: [
+          {
+            ...turn.calls[0],
+            role: "extractor",
+            tools: [],
+            messages: [{ role: "user", content: '<untrusted_data source="import">The ledger lies in the crypt.</untrusted_data>' }],
+            response: { ...turn.calls[0].response!, content },
+          },
+        ],
+      };
+      const user = userEvent.setup();
+      render(<UnderTheHood turn={extract} worldId="w1" onClose={() => {}} />);
+      await user.click(screen.getByRole("button", { name: "Response" }));
+      expect(screen.getByRole("region", { name: "Response" })).toHaveTextContent(HIDDEN);
+      await user.click(screen.getByRole("button", { name: "Raw JSON" }));
+      expect(screen.getByTestId("raw-json")).toHaveTextContent(HIDDEN);
+    });
   });
 });

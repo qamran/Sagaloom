@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MASKED_LINE, maskPrompt } from "@/lib/maskSecrets";
+import { MASKED_LINE, argsHoldSecret, maskPrompt, responseHoldsSecret } from "@/lib/maskSecrets";
 
 // Real `_build_prompt` output, pinned by api/tests/check/test_prompt_fixture.py.
 const fixture = readFileSync(join(__dirname, "fixtures", "judge-prompt.txt"), "utf-8").replace(/\r\n/g, "\n");
@@ -16,6 +16,16 @@ describe("maskPrompt on the real judge prompt", () => {
     expect(text).not.toContain("Sings with the Ashen Choir");
     expect(text).toContain(MASKED_LINE);
     expect(masked).toBeGreaterThan(0);
+  });
+
+  it("hides the told-by secret fact and the Pass 1 pair line from the secret entry", () => {
+    expect(fixture).toContain("[secret] (told by Ilsa Corran)");
+    expect(text).not.toContain("(told by Ilsa Corran)");
+    expect(fixture).toContain("(entry status: secret)");
+    expect(text).not.toContain("(entry status: secret)");
+    // The author's own side of that pair stays.
+    expect(text).toContain("Proposed: Kept in: A drawer in the Tidehall [canon]");
+    expect(text).toContain("## Pairs with entry ent_0019");
   });
 
   it("hides the body and facts of the secret entry, keeping its title, type and status", () => {
@@ -73,5 +83,47 @@ describe("maskPrompt", () => {
     const { text } = maskPrompt(`${secret}\n${open}`);
     expect(text).not.toContain("Hidden lore");
     expect(text).toContain("Open lore");
+  });
+});
+
+describe("argsHoldSecret", () => {
+  it("is true for a secret entry or any secret fact in tool args", () => {
+    expect(argsHoldSecret({ action: "create", title: "Ledger", status: "secret" })).toBe(true);
+    expect(
+      argsHoldSecret({ action: "update", facts: [{ key: "Age", value: "60" }, { key: "Sings", value: "Yes", status: "secret" }] }),
+    ).toBe(true);
+  });
+
+  it("is false for canon args and for anything that is not an object", () => {
+    expect(argsHoldSecret({ action: "create", title: "Quay", status: "canon", facts: [{ key: "A", value: "b" }] })).toBe(false);
+    expect(argsHoldSecret({ query: "secret" })).toBe(false);
+    expect(argsHoldSecret(null)).toBe(false);
+    expect(argsHoldSecret("status: secret")).toBe(false);
+    expect(argsHoldSecret({ facts: "x" })).toBe(false);
+  });
+});
+
+describe("responseHoldsSecret", () => {
+  const base = { tool_calls: [], prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, latency_ms: 0 };
+
+  it("is true for structured content (the extractor's JSON) that holds a secret status", () => {
+    const content = JSON.stringify({
+      candidates: [{ title: "Ledger", type: "item", facts: [{ key: "Kept in", value: "Crypt", status: "secret" }], excerpt: "x" }],
+    });
+    expect(responseHoldsSecret({ ...base, content })).toBe(true);
+  });
+
+  it("is true for a response tool call with secret args", () => {
+    const call = { id: null, name: "create_or_update_entry", args: { action: "create", status: "secret" } };
+    expect(responseHoldsSecret({ ...base, content: "", tool_calls: [call] })).toBe(true);
+  });
+
+  it("is false for the extractor's real output, which has no status, and for plain text", () => {
+    const content = JSON.stringify({
+      candidates: [{ title: "Quay", type: "place", aliases: [], facts: [{ key: "Lamps", value: "Iron" }], excerpt: "x" }],
+    });
+    expect(responseHoldsSecret({ ...base, content })).toBe(false);
+    expect(responseHoldsSecret({ ...base, content: "The status is secret." })).toBe(false);
+    expect(responseHoldsSecret(null)).toBe(false);
   });
 });
