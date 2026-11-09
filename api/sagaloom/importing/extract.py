@@ -229,8 +229,8 @@ async def _extract(
 ) -> tuple[list[Candidate], list[Skipped]] | None:
     """(candidates, invalid ones skipped), or None after MAX_ATTEMPTS failed attempts. A valid
     parse gives every candidate; a failed parse whose raw reply still holds a `candidates` list is
-    validated item by item; anything else (an exception included) is a failed attempt. No tools
-    (R13.6)."""
+    validated item by item; anything else, including an exception from the call, is a failed
+    attempt. No tools (R13.6)."""
     messages = [
         SystemMessage(content=EXTRACT_SYSTEM),
         HumanMessage(content=wrap_untrusted(chunk, f"import:{label}")),
