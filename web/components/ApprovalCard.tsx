@@ -59,6 +59,9 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   const [entryRevealed, setEntryRevealed] = useState(false);
   const worldShown = useWorldShowSecrets();
   const pid = proposal.proposal_id;
+  // A secret entry's title is hidden on the card like its body and facts (R12.12, ruling R8). Either
+  // side counts, as in the line diff, so an update that un-secrets an entry stays masked until approved.
+  const entrySecret = proposal.before?.status === "secret" || proposal.after?.status === "secret";
 
   const byId = new Map<string, Pick<Entry, "status" | "facts" | "type" | "title">>();
   for (const e of canon ?? []) byId.set(e.id, e);
@@ -70,8 +73,11 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   // secret, so its title, value and quotes stay hidden behind Show (R12.12).
   const canonLoaded = canon !== undefined;
   const unknown = (id: string) => !!id && id !== proposal.entry_id && !canonLoaded;
+  // A flag citing this entry itself (a retcon) follows the card-level reveal of its title.
   const citeSecret = (id: string) =>
-    unknown(id) || (id !== proposal.entry_id && byId.get(id)?.status === "secret");
+    id && id === proposal.entry_id
+      ? entrySecret && !entryRevealed
+      : unknown(id) || byId.get(id)?.status === "secret";
   const existingSecret = existingSecretOf(proposal, canon);
   // The existing side of a flag, and the judge's free text about it (explanation, suggested
   // fix), may restate a secret: the server marks such flags (existing_secret), and the client
@@ -120,9 +126,6 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         : { box: "border-border", head: "bg-panel-3 border-border" };
 
   const title = proposal.after?.title ?? proposal.before?.title ?? "Untitled";
-  // A secret entry's title is hidden on the card like its body and facts (R12.12, ruling R8). Either
-  // side counts, as in the line diff, so an update that un-secrets an entry stays masked until approved.
-  const entrySecret = proposal.before?.status === "secret" || proposal.after?.status === "secret";
   const titleHidden = entrySecret && !worldShown && !entryRevealed;
   const shownTitle = titleHidden ? "Secret entry" : title;
   const dependentSecret = (id: string) => !worldShown && (unknown(id) || byId.get(id)?.status === "secret");

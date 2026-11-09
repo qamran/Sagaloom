@@ -630,6 +630,26 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     expect(screen.getByRole("region", { name: "Review proposal: secret entry" })).toBeInTheDocument();
   });
 
+  it("hides a secret entry's own title in a retcon citation until the card's Show or the world toggle", async () => {
+    const secretBefore = { ...before, title: "Old Ledger", status: "secret", facts: [fact("Moons", "Just one")] } as Entry;
+    const proposal: Proposal = { ...update, before: secretBefore, after: { ...update.after!, title: "Old Ledger", status: "secret" } };
+    // Server shape (retcon.py): the flag cites the proposal's own entry by its stored title.
+    const ownRetcon = flag({
+      kind: "retcon", entry_id: "ent_0007", title: "Old Ledger", fact_key: "Moons",
+      existing_fact: "Just one", new_fact: "Three", explanation: "Changes this entry's own fact.",
+    });
+    const ui = <ApprovalCard proposal={proposal} check={check("none", [ownRetcon])} canon={[]} onDecide={vi.fn()} />;
+    render(ui);
+    expect(screen.queryByText("Old Ledger")).toBeNull();
+    // The header's Show comes first; the Cite has its own. The card-level one reveals both.
+    await userEvent.click(screen.getAllByRole("button", { name: "Show secret entry" })[0]);
+    expect(screen.getAllByText("Old Ledger").length).toBeGreaterThanOrEqual(2);
+    cleanup();
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(ui);
+    expect(screen.getAllByText("Old Ledger").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("names a secret dependent of a delete as Secret entry, with no link", () => {
     const ledger = { ...before, id: "ent_0019", title: "The Choir Ledger", type: "item", status: "secret" } as Entry;
     const del: Proposal = { ...update, proposal_id: "p_2", action: "delete", entry_id: "ent_0004", before: null, after: null };
