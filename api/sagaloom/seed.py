@@ -39,25 +39,41 @@ def ensure_first_run(store: CanonStore, worlds: WorldRegistry, seed_dir: Path) -
     return worlds.get(VELMAR_ID)
 
 
+def _names(e: Entry) -> set[str]:
+    return {norm(n) for n in [e.title, *e.aliases]} - {""}
+
+
 def seed_missing(
     store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID
 ) -> list[tuple[str, Entry]]:
     """Add the seed entries missing from the world, for data created before a seed entry was
-    added. A seed entry is present when the world holds an entry with its title (at its seed
-    id, or at the id an earlier run gave it); an existing entry is never overwritten. If the
-    seed id is taken by another entry in any world (ids are global, so Captain Sorn may hold
-    ent_0019), the seed entry is added under a fresh id; this is safe only for a seed entry
-    nothing links to, such as the Choir Ledger. Returns (seed id, stored entry) pairs."""
-    titles = {norm(e.title) for e in store.list_entries(world_id)}
+    added. An existing entry is never overwritten.
+
+    A seed entry is present when either
+    (a) an entry in the world has a title or alias matching the seed entry's title or any
+        alias (normalised with `norm`, as `find_by_name` does); this also finds an entry an
+        earlier run added under a fresh id; or
+    (b) the entry at the seed id in this world has the seed entry's type (a renamed seed
+        entry).
+    Otherwise it is missing. It is added at its seed id if no world holds that id, or under
+    `next_entry_id()` if the id is taken (ids are global; Captain Sorn, a character, may hold
+    ent_0019 while the ledger is an item). A fresh id is safe only for a seed entry nothing
+    links to, such as the Choir Ledger. Returns (seed id, stored entry) pairs."""
+    names: set[str] = set()
+    for existing in store.list_entries(world_id):
+        names |= _names(existing)
     added = []
     for e in _seed_entries(seed_dir, world_id):
-        if norm(e.title) in titles:
+        if _names(e) & names:
+            continue
+        at_id = store.get_entry(world_id, e.id)
+        if at_id is not None and at_id.type == e.type:
             continue
         seed_id = e.id
         if store.has_id(seed_id):
             e = e.model_copy(update={"id": store.next_entry_id()})
         stored = store.upsert_entry(e)
-        titles.add(norm(stored.title))
+        names |= _names(stored)
         log.info("added %s as %s (%s)", seed_id, stored.id, stored.title)
         added.append((seed_id, stored))
     return added

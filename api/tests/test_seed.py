@@ -200,3 +200,21 @@ def test_seed_missing_re_ids_a_seed_entry_whose_id_another_world_owns(store, wor
     assert store.get_entry("velmar", "ent_0019") is None
     assert store.get_entry("mine", "ent_0019") == mine
     assert seed_missing(store, SEED) == []
+
+
+def test_seed_missing_does_not_re_add_a_renamed_seed_entry(store, worlds):
+    load_seed(store, worlds, SEED)
+    city = store.get_entry("velmar", "ent_0001")
+    store.upsert_entry(city.model_copy(update={"title": "Velmar City"}))  # same id and type
+    assert seed_missing(store, SEED) == []
+    assert len(store.list_entries("velmar")) == 19
+    assert store.get_entry("velmar", "ent_0001").title == "Velmar City"
+
+
+def test_seed_missing_counts_an_entry_matching_a_seed_alias_as_present(store, worlds):
+    load_seed(store, worlds, SEED)
+    store.delete_entry("velmar", "ent_0002")  # The Harbour Council, alias "the Council"
+    store.upsert_entry(Entry(id="ent_0030", world_id="velmar", title="The Council", type="faction",
+                             body="The author's own council."))
+    assert seed_missing(store, SEED) == []
+    assert store.get_entry("velmar", "ent_0002") is None
