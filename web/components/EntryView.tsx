@@ -113,7 +113,7 @@ export function EntryView({ entryId }: { entryId: string }) {
                 {entry.aliases.map((a) => (
                   <span
                     key={a}
-                    className="rounded-full border border-border-strong px-2.5 py-0.5 text-[#c9c6bd]"
+                    className="rounded-full border border-border-strong px-2.5 py-0.5 text-prose-muted"
                   >
                     {a}
                   </span>
@@ -159,7 +159,7 @@ export function EntryView({ entryId }: { entryId: string }) {
                 >
                   {sec.heading}
                 </h2>
-                <p className="m-0 whitespace-pre-line font-heading text-[17px] leading-[1.65] text-[#e3dfd5]">
+                <p className="m-0 whitespace-pre-line font-heading text-[17px] leading-[1.65] text-prose">
                   {sec.text || (i === 0 ? "No description yet." : "")}
                 </p>
               </section>

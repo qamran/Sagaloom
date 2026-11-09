@@ -27,7 +27,7 @@ const DECISION_LABEL: Record<Decision["action"], string> = {
 const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
 const BTN_SECONDARY = `${BTN} border border-border-strong bg-transparent text-foreground hover:bg-panel-3`;
-const BTN_REJECT = `${BTN} border border-[#5a4228] bg-transparent text-[#f0b98a] hover:bg-[#221c15]`;
+const BTN_REJECT = `${BTN} border border-conflict-line bg-transparent text-conflict-text hover:bg-conflict-bg`;
 const BADGE = "rounded-full px-2.5 py-0.5 text-xs font-semibold";
 const INPUT =
   "min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground sm:min-h-9";
@@ -113,7 +113,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
 
   const tone =
     conflict || failed
-      ? { box: "border-[#5a4228]", head: "bg-[#221c15] border-[#5a4228]" }
+      ? { box: "border-conflict-line", head: "bg-conflict-bg border-conflict-line" }
       : retcon
         ? { box: "border-event-line", head: "bg-event-bg border-event-line" }
         : { box: "border-border", head: "bg-panel-3 border-border" };
@@ -150,7 +150,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
 
       <div className="flex flex-col gap-3.5 px-[18px] py-4">
         {failed && (
-          <p role="alert" className="m-0 rounded-[10px] border border-[#5a4228] bg-[#221c15] px-3.5 py-3 text-sm text-[#f0b98a]">
+          <p role="alert" className="m-0 rounded-[10px] border border-conflict-line bg-conflict-bg px-3.5 py-3 text-sm text-conflict-text">
             {CHECK_FAILED_TEXT}
           </p>
         )}
@@ -172,7 +172,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         <FactTable rows={rows} secretOf={secretOf} typeOf={typeOf} />
 
         {prose.map((f, i) => (
-          <div key={`${f.kind}-${f.entry_id}-${i}`} className="flex flex-col gap-1 text-[13px] text-[#c9c6bd]">
+          <div key={`${f.kind}-${f.entry_id}-${i}`} className="flex flex-col gap-1 text-[13px] text-prose-muted">
             <div className="flex flex-wrap items-center gap-1.5">
               <strong className="text-foreground">{KIND_LABEL[f.kind]}</strong>
               <span aria-hidden="true">·</span>
@@ -206,7 +206,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
               <div className="font-heading text-lg font-semibold">{proposal.after.title}</div>
               {proposal.after.source === "reference" && <SourceLine url={proposal.after.source_url} />}
               {proposal.after.body && (
-                <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-[#e3dfd5]">
+                <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-prose">
                   <SecretValue value={proposal.after.body} secret={proposal.after.status === "secret"} />
                 </p>
               )}

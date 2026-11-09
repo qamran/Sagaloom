@@ -66,13 +66,13 @@ export function AgentGraph({ mermaid }: { mermaid: string }) {
         </select>
       </label>
       {failed || !mermaid ? (
-        <pre className="m-0 max-h-[360px] overflow-auto rounded-lg border border-border bg-[#101314] p-3 font-mono text-xs leading-[1.55] text-[#c9c6bd]">
+        <pre className="m-0 max-h-[360px] overflow-auto rounded-lg border border-border bg-well p-3 font-mono text-xs leading-[1.55] text-prose-muted">
           {mermaid || "The graph is not available."}
         </pre>
       ) : (
         <div
           aria-label="Agent graph diagram"
-          className="overflow-auto rounded-lg border border-border bg-[#101314] p-3"
+          className="overflow-auto rounded-lg border border-border bg-well p-3"
           dangerouslySetInnerHTML={{ __html: svg ?? "" }}
         />
       )}

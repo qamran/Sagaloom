@@ -170,7 +170,7 @@ export function Composer({
             height="18"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#121514"
+            className="stroke-background"
             strokeWidth="2.2"
             strokeLinecap="round"
             strokeLinejoin="round"

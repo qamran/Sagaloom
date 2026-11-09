@@ -29,7 +29,7 @@ const toolLabel = (name: string) => TOOL_LABEL[name] ?? `Used ${name.replaceAll(
 
 function ActivityLine({ label, done, warn, chip }: { label: string; done: boolean; warn?: boolean; chip?: ReactNode }) {
   return (
-    <div className={warn ? "text-[#f0b98a]" : undefined}>
+    <div className={warn ? "text-conflict-text" : undefined}>
       <span aria-hidden="true">{warn ? "!" : done ? "✓" : "…"}</span> {label}
       {chip && <> {chip}</>}
     </div>
@@ -99,7 +99,7 @@ function Message({
   return (
     <>
       {m.content && (
-        <div className="max-w-[90%] whitespace-pre-wrap font-heading text-[16px] leading-[1.6] text-[#e3dfd5]">
+        <div className="max-w-[90%] whitespace-pre-wrap font-heading text-[16px] leading-[1.6] text-prose">
           <span className="sr-only">Sagaloom: </span>
           <EntityText text={m.content} entries={entries} showSecrets={showSecrets} />
         </div>
@@ -218,7 +218,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           aria-pressed={hood}
           onClick={() => setHood(!hood)}
           className={`flex min-h-9 items-center gap-2 rounded-lg border px-3 text-[13px] ${
-            hood ? "border-[#5B4785] bg-[#2A2340] text-myth" : "border-border-strong text-foreground"
+            hood ? "border-violet-line-strong bg-[#2A2340] text-myth" : "border-border-strong text-foreground"
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -240,7 +240,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
             <h1 className="m-0 font-heading text-[clamp(26px,4vw,34px)] font-medium leading-[1.15]">
               Talk to {world?.name ?? "your world"}
             </h1>
-            <p className="m-0 font-heading text-[17px] text-[#c9c6bd]">
+            <p className="m-0 font-heading text-[17px] text-prose-muted">
               Ask a question, or propose a new fact. Every change is checked against canon and waits for your
               approval.
             </p>
@@ -333,7 +333,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
       (shown ? (
         <UnderTheHood turn={shown} threadId={threadId} worldId={hoodWorld} onClose={() => setHood(false)} />
       ) : (
-        <aside aria-label="Under the hood" className="w-full border-t border-[#3A3355] bg-[#14181A] p-[18px] md:max-w-[600px] md:flex-[1_1_560px] md:border-t-0 md:border-l">
+        <aside aria-label="Under the hood" className="w-full border-t border-violet-line bg-well-2 p-[18px] md:max-w-[600px] md:flex-[1_1_560px] md:border-t-0 md:border-l">
           <h2 className="m-0 font-heading text-xl font-semibold">Under the hood</h2>
           <p className="text-[13px] text-muted-foreground">
             {s.loaded ? "Send a message to see the prompts behind each turn." : "Loading…"}

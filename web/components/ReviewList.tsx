@@ -38,7 +38,7 @@ export function ReviewList() {
           <p className="m-0 text-muted-foreground">Loading…</p>
         )}
         {data?.length === 0 && (
-          <p className="m-0 font-heading text-[17px] text-[#c9c6bd]">
+          <p className="m-0 font-heading text-[17px] text-prose-muted">
             {EMPTY_REVIEW}
           </p>
         )}

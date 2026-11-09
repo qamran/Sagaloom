@@ -8,9 +8,9 @@ import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Fact, Status } from "@/lib/types";
 
 const BADGE: Partial<Record<Status, string>> = {
-  myth: "text-myth border-[#5b4785] bg-[#211c33]",
-  rumour: "text-myth border-[#5b4785] bg-[#211c33]",
-  secret: "text-conflict border-[#5a4228] bg-[#221c15]",
+  myth: "text-myth border-violet-line-strong bg-character-bg",
+  rumour: "text-myth border-violet-line-strong bg-character-bg",
+  secret: "text-conflict border-conflict-line bg-conflict-bg",
 };
 
 function FactRow({

@@ -15,14 +15,14 @@ const GEMINI_OPTION_LABEL = "gemini-3.5-flash-lite (Gemini, demo only)";
 
 const fmt = (n: number | null | undefined) => (n == null ? "n/a" : n.toFixed(2));
 
-const HEAD = "bg-[#1A1F1D] px-2.5 py-[7px] text-[11px] uppercase tracking-[0.8px] text-muted-foreground";
+const HEAD = "bg-raised px-2.5 py-[7px] text-[11px] uppercase tracking-[0.8px] text-muted-foreground";
 const CELL = "border-t border-border px-2.5 py-[7px]";
 
 function KeyBadge({ set, on, off }: { set: boolean; on: string; off: string }) {
   return (
     <span
       className={`rounded-full px-2 py-px text-[11px] ${
-        set ? "bg-[#9FE0BF] text-[#121514]" : "bg-[#3A4440] text-foreground"
+        set ? "bg-place text-background" : "bg-border-strong text-foreground"
       }`}
     >
       {set ? on : off}
@@ -123,7 +123,7 @@ export function ProvidersPanel({ providers, models }: { providers: ProviderStatu
         <div className="mt-1 flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="font-semibold">Google Gemini (direct)</span>
-            <span className="rounded-full bg-[#F2C26B] px-2 py-px text-[11px] text-[#121514]">Demo only</span>
+            <span className="rounded-full bg-event px-2 py-px text-[11px] text-background">Demo only</span>
             <span className="text-xs text-muted-foreground">
               {gemini.key_set ? "key set" : "not configured"} · {gemini.role}
             </span>

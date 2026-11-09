@@ -30,13 +30,13 @@ function textOf(content: unknown): string {
 function Content({ text }: { text: string }) {
   const parts = text.split(UNTRUSTED);
   return (
-    <div className="whitespace-pre-wrap text-[#c9c6bd]">
+    <div className="whitespace-pre-wrap text-prose-muted">
       {parts.map((p, i) =>
         i % 2 === 1 ? (
           <div
             key={i}
             data-testid="untrusted"
-            className="mt-1 rounded-md border border-[#5A4228] bg-[#2A2418] px-2 py-1.5 text-[#F7C48A]"
+            className="mt-1 rounded-md border border-conflict-line bg-[#2A2418] px-2 py-1.5 text-conflict-text-2"
           >
             {p}
           </div>
@@ -55,7 +55,7 @@ const ROLE_LABEL: Record<string, string> = {
   guard: "Input guard",
   router: "Router",
 };
-const ROLE_COLOR: Record<string, string> = { system: "text-myth", user: "text-[#9FE0BF]", assistant: "text-[#a9d3ff]" };
+const ROLE_COLOR: Record<string, string> = { system: "text-myth", user: "text-place", assistant: "text-rule" };
 
 /** One call's message texts as shown, and how many lines and tool calls were masked while hidden. */
 function useShownTexts(call: LlmCall, hidden: boolean): { texts: string[]; masked: number } {
@@ -76,7 +76,7 @@ function Messages({ call, texts, hidden }: { call: LlmCall; texts: string[]; hid
     ...indexed.filter(([m]) => m.role !== "system"),
   ];
   return (
-    <section aria-label="Request" className="flex flex-col gap-2 bg-[#101314] px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]">
+    <section aria-label="Request" className="flex flex-col gap-2 bg-well px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]">
       {ordered.map(([m, text], i) => (
         <div key={i}>
           <span data-testid="message-role" className={ROLE_COLOR[m.role] ?? "text-foreground"}>
@@ -85,7 +85,7 @@ function Messages({ call, texts, hidden }: { call: LlmCall; texts: string[]; hid
           {m.name && <span className="text-muted-foreground"> · {m.name}</span>}
           <Content text={text} />
           {m.tool_calls?.map((c, j) => (
-            <div key={j} className="text-[#9FE0BF]">
+            <div key={j} className="text-place">
               {callText(c.name, c.args, hidden)}
             </div>
           ))}
@@ -96,7 +96,7 @@ function Messages({ call, texts, hidden }: { call: LlmCall; texts: string[]; hid
           <summary className="cursor-pointer text-muted-foreground">
             {call.tools.length} tool schemas bound
           </summary>
-          <pre className="m-0 mt-1 overflow-auto whitespace-pre-wrap text-[#c9c6bd]">
+          <pre className="m-0 mt-1 overflow-auto whitespace-pre-wrap text-prose-muted">
             {JSON.stringify(call.tools, null, 2)}
           </pre>
         </details>
@@ -107,16 +107,16 @@ function Messages({ call, texts, hidden }: { call: LlmCall; texts: string[]; hid
 
 function Response({ call }: { call: LlmCall }) {
   const r = call.response;
-  if (!r) return <p className="m-0 bg-[#101314] px-3 py-2.5 text-xs text-muted-foreground">No response recorded yet.</p>;
+  if (!r) return <p className="m-0 bg-well px-3 py-2.5 text-xs text-muted-foreground">No response recorded yet.</p>;
   return (
-    <section aria-label="Response" className="flex flex-col gap-2 bg-[#101314] px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]">
+    <section aria-label="Response" className="flex flex-col gap-2 bg-well px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]">
       {r.content ? (
-        <div className="whitespace-pre-wrap text-[#c9c6bd]">{r.content}</div>
+        <div className="whitespace-pre-wrap text-prose-muted">{r.content}</div>
       ) : (
         <div className="text-muted-foreground">(no text)</div>
       )}
       {r.tool_calls.map((c, i) => (
-        <div key={i} className="text-[#9FE0BF]">
+        <div key={i} className="text-place">
           {callText(c.name, c.args, false)}
         </div>
       ))}
@@ -133,7 +133,7 @@ const requestJson = (call: LlmCall) => ({
 
 function MaskedResponse() {
   return (
-    <section aria-label="Response" className="bg-[#101314] px-3 py-2.5 text-xs text-muted-foreground">
+    <section aria-label="Response" className="bg-well px-3 py-2.5 text-xs text-muted-foreground">
       {MASKED_RESPONSE}
     </section>
   );
@@ -174,7 +174,7 @@ function CallCard({
   }
 
   return (
-    <div className={`overflow-hidden rounded-[10px] border ${open ? "border-[#5B4785]" : "border-border"}`}>
+    <div className={`overflow-hidden rounded-[10px] border ${open ? "border-violet-line-strong" : "border-border"}`}>
       <button
         type="button"
         aria-expanded={open}
@@ -230,14 +230,14 @@ function CallCard({
           {tab === "Request" && <Messages call={call} texts={texts} hidden={hidden} />}
           {tab === "Response" && (veiled ? <MaskedResponse /> : <Response call={call} />)}
           {tab === "Raw JSON" && veiled && (
-            <pre data-testid="raw-json" className="m-0 bg-[#101314] px-3 py-2.5 text-xs text-muted-foreground">
+            <pre data-testid="raw-json" className="m-0 bg-well px-3 py-2.5 text-xs text-muted-foreground">
               {MASKED_RESPONSE}
             </pre>
           )}
           {tab === "Raw JSON" && !veiled && (
             <pre
               data-testid="raw-json"
-              className="m-0 max-h-[360px] overflow-auto whitespace-pre-wrap bg-[#101314] px-3 py-2.5 font-mono text-[11px] text-[#c9c6bd]"
+              className="m-0 max-h-[360px] overflow-auto whitespace-pre-wrap bg-well px-3 py-2.5 font-mono text-[11px] text-prose-muted"
             >
               {JSON.stringify({ ...requestJson(call), response: call.response }, null, 2)}
             </pre>
@@ -257,7 +257,7 @@ function PathStep({ node }: { node: NodeStep }) {
       }`}
     >
       {node.name}{" "}
-      <span className={paused ? "text-[#F7C48A]" : "text-muted-foreground"}>
+      <span className={paused ? "text-conflict-text-2" : "text-muted-foreground"}>
         {paused ? "paused" : node.ms != null ? secs(node.ms) : "…"}
       </span>
     </span>
@@ -300,7 +300,7 @@ export function UnderTheHood({
   return (
     <aside
       aria-label="Under the hood"
-      className="flex w-full flex-col border-t border-[#3A3355] bg-[#14181A] md:max-w-[600px] md:flex-[1_1_560px] md:border-t-0 md:border-l"
+      className="flex w-full flex-col border-t border-violet-line bg-well-2 md:max-w-[600px] md:flex-[1_1_560px] md:border-t-0 md:border-l"
     >
       <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-[18px] py-3.5">
         <h2 className="m-0 font-heading text-xl font-semibold">Under the hood</h2>
@@ -375,17 +375,17 @@ export function UnderTheHood({
             {turn.tools.length === 0 ? (
               <p className="m-0 text-xs text-muted-foreground">No tools were called.</p>
             ) : (
-              <div className="flex flex-col gap-1 rounded-lg border border-border bg-[#101314] px-2.5 py-2 font-mono text-xs">
+              <div className="flex flex-col gap-1 rounded-lg border border-border bg-well px-2.5 py-2 font-mono text-xs">
                 {turn.tools.map((t, i) => {
                   const masked = !showSecrets && argsHoldSecret(t.args);
                   return masked ? (
                     <div key={i}>
-                      <span className="text-[#9FE0BF]">{callText(t.name, t.args, true)}</span>{" "}
+                      <span className="text-place">{callText(t.name, t.args, true)}</span>{" "}
                       {t.summary !== null && <span className="text-muted-foreground">→ {MASKED_LINE}</span>}
                     </div>
                   ) : (
                     <div key={i}>
-                      <span className="text-[#9FE0BF]">{t.name}</span>({JSON.stringify(t.args)}){" "}
+                      <span className="text-place">{t.name}</span>({JSON.stringify(t.args)}){" "}
                       {t.summary !== null && <span className="text-muted-foreground">→ {t.summary}</span>}
                     </div>
                   );

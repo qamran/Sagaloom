@@ -1,8 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-
-@custom-variant dark (&:is(.dark *));
 
 /* Sagaloom design tokens: one dark, literary theme (design doc 4.7). */
 :root {
@@ -18,6 +14,22 @@
   --conflict: #e8a15a;
   --myth: #d7c3ff;
 
+  /* text and surfaces shared by several components */
+  --prose: #e3dfd5;
+  --prose-muted: #c9c6bd;
+  --well: #101314;
+  --well-2: #14181a;
+  --raised: #1a1f1d;
+
+  /* amber "conflict" family and the violet "under the hood" outlines */
+  --conflict-bg: #221c15;
+  --conflict-bg-2: #261e14;
+  --conflict-line: #5a4228;
+  --conflict-text: #f0b98a;
+  --conflict-text-2: #f7c48a;
+  --violet-line: #3a3355;
+  --violet-line-strong: #5b4785;
+
   --character: #cbbbff;
   --place: #9fe0bf;
   --faction: #f7b3d2;
@@ -25,18 +37,7 @@
   --event: #f2c26b;
   --item: #e8c3a0;
 
-  --card: var(--panel-2);
-  --card-foreground: var(--foreground);
-  --popover: var(--panel-3);
-  --popover-foreground: var(--foreground);
-  --primary: var(--accent);
-  --primary-foreground: #121514;
-  --secondary: var(--panel-3);
-  --secondary-foreground: var(--foreground);
-  --muted: var(--panel-3);
   --accent-foreground: #121514;
-  --destructive: #e8785a;
-  --input: var(--border);
   --ring: var(--accent);
   --radius: 0.625rem;
 }
@@ -54,6 +55,18 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-conflict: var(--conflict);
   --color-myth: var(--myth);
+  --color-prose: var(--prose);
+  --color-prose-muted: var(--prose-muted);
+  --color-well: var(--well);
+  --color-well-2: var(--well-2);
+  --color-raised: var(--raised);
+  --color-conflict-bg: var(--conflict-bg);
+  --color-conflict-bg-2: var(--conflict-bg-2);
+  --color-conflict-line: var(--conflict-line);
+  --color-conflict-text: var(--conflict-text);
+  --color-conflict-text-2: var(--conflict-text-2);
+  --color-violet-line: var(--violet-line);
+  --color-violet-line-strong: var(--violet-line-strong);
 
   --color-character: var(--character);
   --color-place: var(--place);
@@ -75,17 +88,6 @@
   --color-item-bg: #2a2018;
   --color-item-line: #66503a;
 
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-destructive: var(--destructive);
-  --color-input: var(--input);
   --color-ring: var(--ring);
 
   --font-sans: var(--font-inter), system-ui, sans-serif;

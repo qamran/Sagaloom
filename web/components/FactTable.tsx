@@ -131,14 +131,14 @@ const RESULT_TEXT: Record<FactResult, string> = {
   Removed: "text-muted-foreground",
 };
 const PROPOSED_CELL: Partial<Record<FactResult, string>> = {
-  Conflict: "bg-[#261e14] text-[#f7c48a]",
-  "Possible conflict": "bg-[#261e14] text-[#f7c48a]",
+  Conflict: "bg-conflict-bg-2 text-conflict-text-2",
+  "Possible conflict": "bg-conflict-bg-2 text-conflict-text-2",
   "Changed (retcon)": "bg-event-bg text-event",
 };
 const STATUS_TAG: Record<Exclude<Fact["status"], "canon">, string> = {
-  myth: "text-myth border-[#5b4785] bg-[#211c33]",
-  rumour: "text-myth border-[#5b4785] bg-[#211c33]",
-  secret: "text-conflict border-[#5a4228] bg-[#221c15]",
+  myth: "text-myth border-violet-line-strong bg-character-bg",
+  rumour: "text-myth border-violet-line-strong bg-character-bg",
+  secret: "text-conflict border-conflict-line bg-conflict-bg",
 };
 
 const CELL = "px-3 py-2.5 align-top";
@@ -231,7 +231,7 @@ export function FactTable({
   return (
     <div className="overflow-x-auto rounded-[10px] border border-border">
       <table className="w-full table-fixed border-collapse text-sm">
-        <thead className="bg-[#1a1f1d]">
+        <thead className="bg-raised">
           <tr>
             {["Fact", "In canon", "Proposed", "Result"].map((h) => (
               <th key={h} scope="col" className={HEAD}>
@@ -287,7 +287,7 @@ export function FactTable({
                 {row.flags.length > 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 pb-3 pt-0">
-                      <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px] text-[#c9c6bd]">
+                      <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px] text-prose-muted">
                         {row.flags.map((f, j) => (
                           <li key={j} className="flex flex-col gap-1">
                             <div className="flex flex-wrap items-center gap-1.5">

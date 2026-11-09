@@ -32,7 +32,7 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
               aria-current={selected ? "true" : undefined}
               onClick={() => onSelect(p.proposal_id)}
               className={`flex min-h-11 w-full flex-col gap-1.5 rounded-[10px] border px-3 py-2.5 text-left text-foreground ${
-                selected ? "border-[#5a4228] bg-[#221c15]" : "border-border bg-panel-2 hover:bg-panel-3"
+                selected ? "border-conflict-line bg-conflict-bg" : "border-border bg-panel-2 hover:bg-panel-3"
               }`}
             >
               <span className="flex items-center gap-2 text-xs text-muted-foreground">

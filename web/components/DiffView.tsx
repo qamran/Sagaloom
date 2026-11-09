@@ -91,7 +91,7 @@ export function BodyDiff({ before, after, secret }: { before: string; after: str
           </button>
         </div>
       ) : (
-        <p className="m-0 mt-2 whitespace-pre-line font-heading text-[15px] text-[#e3dfd5]">
+        <p className="m-0 mt-2 whitespace-pre-line font-heading text-[15px] text-prose">
           {diffWords(before, after).map((part, i) =>
             part.added ? (
               <ins key={i} className="rounded bg-accent/15 text-foreground no-underline">

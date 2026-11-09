@@ -27,7 +27,7 @@ function Logo() {
         height="24"
         viewBox="0 0 24 24"
         fill="none"
-        stroke="#6FBFA8"
+        className="stroke-accent"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -199,7 +199,7 @@ export function Header() {
         <Logo />
       </Link>
       <WorldPicker />
-      <nav aria-label="Main" className="flex gap-1 rounded-[10px] border border-border bg-[#1a1f1d] p-1">
+      <nav aria-label="Main" className="flex gap-1 rounded-[10px] border border-border bg-raised p-1">
         {TABS.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           return (
@@ -230,10 +230,10 @@ export function Header() {
         <Link
           href="/studio"
           aria-current={pathname.startsWith("/studio") ? "page" : undefined}
-          className={`flex min-h-11 items-center rounded-[7px] border border-[#5b4785] px-[13px] text-[13px] no-underline hover:no-underline sm:min-h-9 ${
+          className={`flex min-h-11 items-center rounded-[7px] border border-violet-line-strong px-[13px] text-[13px] no-underline hover:no-underline sm:min-h-9 ${
             pathname.startsWith("/studio")
               ? "border-myth bg-myth font-semibold text-background hover:text-background"
-              : "text-myth hover:bg-[#211c33] hover:text-myth"
+              : "text-myth hover:bg-character-bg hover:text-myth"
           }`}
         >
           Studio

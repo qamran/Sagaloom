@@ -101,7 +101,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
   if (otherWorld || (!shown && notesBefore === null && !decided)) {
     return page(
       <>
-        <p className="m-0 text-[17px] text-[#c9c6bd]">{otherWorld ? OTHER_WORLD : isImport ? NOTHING_IMPORTED : NOTHING_WAITING}</p>
+        <p className="m-0 text-[17px] text-prose-muted">{otherWorld ? OTHER_WORLD : isImport ? NOTHING_IMPORTED : NOTHING_WAITING}</p>
         {isImport && !otherWorld && <NotImported note={s.importNote} />}
         <div className="flex flex-wrap gap-2.5">
           {back}

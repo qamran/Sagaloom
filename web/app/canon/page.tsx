@@ -23,7 +23,7 @@ export default function CanonHome() {
         <h1 className="m-0 font-heading text-[clamp(30px,5vw,42px)] font-medium leading-[1.1]">
           {world.name}
         </h1>
-        <p className="m-0 font-heading text-[19px] text-[#c9c6bd]">
+        <p className="m-0 font-heading text-[19px] text-prose-muted">
           Choose an entry from the list to read it and its facts.
         </p>
       </div>

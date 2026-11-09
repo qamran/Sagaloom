@@ -5,9 +5,9 @@ import { useEffect, useRef } from "react";
 import type { FeatureCardData } from "@/lib/types";
 
 const BADGE: Record<FeatureCardData["status"], { label: string; cls: string; summary: string }> = {
-  live: { label: "Live", cls: "bg-[#9FE0BF] text-[#121514]", summary: "bg-[#1D3A30] text-[#9FE0BF]" },
-  configured: { label: "Configured", cls: "bg-[#F2C26B] text-[#121514]", summary: "bg-[#2F2A1C] text-[#F2C26B]" },
-  off: { label: "Off", cls: "bg-[#3A4440] text-foreground", summary: "bg-[#23282A] text-muted-foreground" },
+  live: { label: "Live", cls: "bg-place text-background", summary: "bg-[#1D3A30] text-place" },
+  configured: { label: "Configured", cls: "bg-event text-background", summary: "bg-[#2F2A1C] text-event" },
+  off: { label: "Off", cls: "bg-border-strong text-foreground", summary: "bg-[#23282A] text-muted-foreground" },
 };
 
 const CARD: Record<FeatureCardData["status"], string> = {
@@ -64,10 +64,10 @@ export function FeatureMap({ features, highlight }: { features: FeatureCardData[
               </span>
               <span className="text-[11px] text-muted-foreground">{f.brief_ref}</span>
             </div>
-            <h2 className={`m-0 text-base font-semibold ${f.status === "off" ? "text-[#c9c6bd]" : ""}`}>
+            <h2 className={`m-0 text-base font-semibold ${f.status === "off" ? "text-prose-muted" : ""}`}>
               {f.title}
             </h2>
-            <p className={`m-0 text-[13px] ${f.status === "off" ? "text-muted-foreground" : "text-[#c9c6bd]"}`}>
+            <p className={`m-0 text-[13px] ${f.status === "off" ? "text-muted-foreground" : "text-prose-muted"}`}>
               {f.detail}
             </p>
             <div className="mt-1 flex items-center justify-between text-xs">
