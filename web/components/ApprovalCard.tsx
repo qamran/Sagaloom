@@ -44,8 +44,7 @@ interface Props {
   disabled?: boolean;
 }
 
-/** "Commit to canon?" (R5.2, R5.3, R5.6, R12.3). */
-/** One proposal as a card. Its secrets follow the toggle of the proposal's own world, not the active one. */
+/** "Commit to canon?" (R5.2, R5.3, R5.6, R12.3): one proposal as a card; its secrets follow the proposal's own world's toggle. */
 export function ApprovalCard(props: Props) {
   return (
     <SecretsWorldProvider worldId={props.proposal.world_id}>
@@ -57,6 +56,8 @@ export function ApprovalCard(props: Props) {
 function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, disabled }: Props) {
   const [editing, setEditing] = useState(false);
   const [toldBy, setToldBy] = useState("");
+  const [entryRevealed, setEntryRevealed] = useState(false);
+  const worldShown = useWorldShowSecrets();
   const pid = proposal.proposal_id;
 
   const byId = new Map<string, Pick<Entry, "status" | "facts" | "type" | "title">>();
@@ -119,6 +120,12 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         : { box: "border-border", head: "bg-panel-3 border-border" };
 
   const title = proposal.after?.title ?? proposal.before?.title ?? "Untitled";
+  // A secret entry's title is hidden on the card like its body and facts (R12.12, ruling R8). Either
+  // side counts, as in the line diff, so an update that un-secrets an entry stays masked until approved.
+  const entrySecret = proposal.before?.status === "secret" || proposal.after?.status === "secret";
+  const titleHidden = entrySecret && !worldShown && !entryRevealed;
+  const shownTitle = titleHidden ? "Secret entry" : title;
+  const dependentSecret = (id: string) => !worldShown && (unknown(id) || byId.get(id)?.status === "secret");
   const type = proposal.after?.type ?? proposal.before?.type;
   const version =
     proposal.action === "update" && proposal.before ? ` · v${proposal.before.version} → v${proposal.before.version + 1}` : "";
@@ -129,7 +136,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   };
 
   return (
-    <section aria-label={`Review proposal: ${title}`} className={`overflow-hidden rounded-[14px] border bg-panel-2 ${tone.box}`}>
+    <section aria-label={`Review proposal: ${titleHidden ? "secret entry" : title}`} className={`overflow-hidden rounded-[14px] border bg-panel-2 ${tone.box}`}>
       <div className={`flex flex-wrap items-center gap-2.5 border-b px-[18px] py-3 ${tone.head}`}>
         <ul aria-label="Check result" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
           {shownBadges.map((b) => (
@@ -142,7 +149,17 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         <CourseChip card="human_in_the_loop" label="Human-in-the-loop · interrupt()" />
         <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground sm:ml-auto">
           {ACTION_LABEL[proposal.action]} ·{" "}
-          {type ? <EntityChip type={type} name={title} /> : <span className="text-foreground">{title}</span>}
+          {type ? <EntityChip type={type} name={shownTitle} /> : <span className="text-foreground">{shownTitle}</span>}
+          {titleHidden && (
+            <button
+              type="button"
+              onClick={() => setEntryRevealed(true)}
+              aria-label="Show secret entry"
+              className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
+            >
+              Show
+            </button>
+          )}
           {proposal.entry_id && <> · {proposal.entry_id}</>}
           {version}
         </span>
@@ -203,7 +220,9 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
               <div className="text-[11px] uppercase tracking-[0.9px] text-muted-foreground">
                 {type ? TYPE_LABEL[type] : "Entry"} · {proposal.after.status}
               </div>
-              <div className="font-heading text-lg font-semibold">{proposal.after.title}</div>
+              <div className="font-heading text-lg font-semibold">
+                <SecretValue value={proposal.after.title} secret={entrySecret && !entryRevealed} />
+              </div>
               {proposal.after.source === "reference" && <SourceLine url={proposal.after.source_url} />}
               {proposal.after.body && (
                 <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-prose">
@@ -223,12 +242,16 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
               <>
                 <div className="text-muted-foreground">These entries mention it:</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {check.dependents.map((d) => (
-                    <span key={d.id} className="inline-flex items-center gap-1.5">
-                      <EntityChip type={d.type} name={d.title} href={`/canon/${encodeURIComponent(d.id)}`} />
-                      <span className="text-xs text-muted-foreground">{d.id}</span>
-                    </span>
-                  ))}
+                  {check.dependents.map((d) =>
+                    dependentSecret(d.id) ? (
+                      <EntityChip key={d.id} type={d.type} name="Secret entry" />
+                    ) : (
+                      <span key={d.id} className="inline-flex items-center gap-1.5">
+                        <EntityChip type={d.type} name={d.title} href={`/canon/${encodeURIComponent(d.id)}`} />
+                        <span className="text-xs text-muted-foreground">{d.id}</span>
+                      </span>
+                    ),
+                  )}
                 </div>
               </>
             ) : (
@@ -365,7 +388,7 @@ function EditForm({
         <legend className="mb-1 text-xs font-semibold uppercase tracking-[1px]">Facts</legend>
         {facts.map((f, i) => {
           const n = i + 1;
-          const hide = f.status === "secret" && !worldShown && !revealed.has(i);
+          const hide = (draft.status === "secret" || f.status === "secret") && !worldShown && !revealed.has(i);
           return (
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />

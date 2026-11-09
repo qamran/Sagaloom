@@ -22,6 +22,7 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
         const check = pending.checks[p.proposal_id];
         if (!check) return null;
         const draft = p.after ?? p.before;
+        const secretEntry = p.before?.status === "secret" || p.after?.status === "secret";
         const badge = badgeOf(check);
         const selected = p.proposal_id === selectedId;
         const decision = chosen[p.proposal_id];
@@ -48,8 +49,15 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
                 )}
               </span>
               <span className="flex items-center gap-2">
-                {draft && <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${TYPE_DOT[draft.type]}`} />}
-                <span className="text-sm font-semibold">{draft?.title ?? "Untitled"}</span>
+                {secretEntry ? (
+                  // Always masked, like proposalSummary: the queue has no Show (R12.12, ruling R8).
+                  <span className="text-sm font-semibold">Secret entry</span>
+                ) : (
+                  <>
+                    {draft && <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${TYPE_DOT[draft.type]}`} />}
+                    <span className="text-sm font-semibold">{draft?.title ?? "Untitled"}</span>
+                  </>
+                )}
               </span>
               <span className="text-xs text-muted-foreground">
                 {badge === "failed"

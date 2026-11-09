@@ -267,6 +267,22 @@ describe("ReviewDetail", () => {
     expect(screen.getByText("Possible duplicate of ent_0012")).toBeInTheDocument();
     expect(screen.queryByText(/'Ister'/)).toBeNull();
   });
+
+  it("names a secret draft Secret entry in the queue, with no type dot", () => {
+    const ledger: Proposal = {
+      ...proposal("p_s", "The Choir Ledger"),
+      after: { title: "The Choir Ledger", type: "item", body: "", status: "secret", aliases: [], facts: [] },
+    };
+    stream = base({ pending: pendingOf([ledger, clean("p_s")], [proposal("p_o", "Tide Council"), clean("p_o")]) });
+    render(ui());
+    const queue = screen.getByRole("complementary", { name: "Pending proposals" });
+    const rows = within(queue).getAllByRole("listitem");
+    expect(within(rows[0]).getByText("Secret entry")).toBeInTheDocument();
+    expect(within(rows[0]).queryByText("The Choir Ledger")).toBeNull();
+    expect(rows[0].querySelector('[aria-hidden="true"].rounded-full')).toBeNull();
+    expect(within(rows[1]).getByText("Tide Council")).toBeInTheDocument();
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+  });
 });
 
 describe("ReviewDetail for an import thread", () => {

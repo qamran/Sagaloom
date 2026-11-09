@@ -140,9 +140,13 @@ export function EntryView({ entryId }: { entryId: string }) {
                 {entry.source_url && (
                   <>
                     {" · "}
-                    <a href={entry.source_url} target="_blank" rel="noreferrer">
-                      {entry.source_url}
-                    </a>
+                    {/^https?:\/\//i.test(entry.source_url) ? (
+                      <a href={entry.source_url} target="_blank" rel="noreferrer">
+                        {entry.source_url}
+                      </a>
+                    ) : (
+                      <span>{entry.source_url}</span>
+                    )}
                   </>
                 )}
                 {entry.source === "official" && entry.licence && ` · Licence ${entry.licence}`}

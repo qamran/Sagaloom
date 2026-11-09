@@ -175,6 +175,13 @@ describe("EntryView full page", () => {
     expect(el.textContent).toBe("Source: official canon · https://x.example/c · Licence CC-BY");
   });
 
+  it("shows a non-http source_url as text, never as a link", async () => {
+    vi.mocked(getEntry).mockResolvedValue(entry({ source: "reference", source_url: "javascript:alert(1)" }));
+    renderIt();
+    expect(await screen.findByText("javascript:alert(1)")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "javascript:alert(1)" })).toBeNull();
+  });
+
   it("flags an untrusted source", async () => {
     vi.mocked(getEntry).mockResolvedValue(entry({ trusted: false }));
     renderIt();

@@ -218,6 +218,7 @@ describe("ApprovalCard", () => {
           proposal_id: "p_2", verdict: "none", flags: [],
           dependents: [{ id: "ent_0003", title: "Captain Sorn", type: "character" }],
         }}
+        canon={[]}
         onDecide={vi.fn()}
       />,
     );
@@ -600,6 +601,82 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     expect(within(row).queryByText("Old Ledger")).toBeNull();
     expect(within(row).queryByText("New Ledger")).toBeNull();
     expect(screen.getByRole("button", { name: /show secret changes/i })).toBeInTheDocument();
+  });
+
+  it("hides a secret create's title in the header, the region name and the create block until the card's Show", async () => {
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByRole("region", { name: "Review proposal: secret entry" })).toBeInTheDocument();
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+    // The status line stays: "secret" is the status, not the secret.
+    expect(screen.getByText(/Item · secret/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
+    expect(screen.getAllByText("The Choir Ledger")).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Review proposal: The Choir Ledger" })).toBeInTheDocument();
+  });
+
+  it("the world toggle reveals a secret create's title", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.getAllByText("The Choir Ledger")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Show secret entry" })).toBeNull();
+  });
+
+  it("hides a secret update's header title when only the stored entry is secret", () => {
+    const secretBefore = { ...before, title: "Old Ledger", status: "secret" } as Entry;
+    const proposal: Proposal = { ...update, before: secretBefore, after: { ...update.after!, title: "Old Ledger" } };
+    render(<ApprovalCard proposal={proposal} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.queryByText("Old Ledger")).toBeNull();
+    expect(screen.getByRole("region", { name: "Review proposal: secret entry" })).toBeInTheDocument();
+  });
+
+  it("names a secret dependent of a delete as Secret entry, with no link", () => {
+    const ledger = { ...before, id: "ent_0019", title: "The Choir Ledger", type: "item", status: "secret" } as Entry;
+    const del: Proposal = { ...update, proposal_id: "p_2", action: "delete", entry_id: "ent_0004", before: null, after: null };
+    render(
+      <ApprovalCard
+        proposal={del}
+        check={{
+          proposal_id: "p_2", verdict: "none", flags: [],
+          dependents: [
+            { id: "ent_0019", title: "The Choir Ledger", type: "item" },
+            { id: "ent_0003", title: "Captain Sorn", type: "character" },
+          ],
+        }}
+        canon={[ledger]}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Secret entry/ })).toBeNull();
+    expect(document.querySelector('a[href="/canon/ent_0019"]')).toBeNull();
+    expect(screen.getByRole("link", { name: /Captain Sorn/ })).toBeInTheDocument();
+  });
+
+  it("names every dependent Secret entry until canon has loaded (fail closed)", () => {
+    const del: Proposal = { ...update, proposal_id: "p_2", action: "delete", after: null };
+    render(
+      <ApprovalCard
+        proposal={del}
+        check={{
+          proposal_id: "p_2", verdict: "none", flags: [],
+          dependents: [{ id: "ent_0003", title: "Captain Sorn", type: "character" }],
+        }}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Captain Sorn")).toBeNull();
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+  });
+
+  it("the edit form hides every fact value of a secret entry draft, canon-status ones too", async () => {
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Fact 2 value")).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Show secret fact 1" }));
+    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "text");
   });
 });
 
