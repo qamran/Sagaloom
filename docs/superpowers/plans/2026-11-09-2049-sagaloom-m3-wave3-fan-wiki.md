@@ -458,6 +458,8 @@ Answer these before the task named. Each answer changes one function and its tes
 
 Do not start before Open questions 1 and 2 are answered.
 
+Added by the M3 Wave 1 Fable review (triaged here): fold the three extractor `StubLLM` copies (`api/tests/web/test_imports.py`, `api/tests/importing/test_extract.py`, `api/tests/web/fakes.py`) into one `fakes.StubLLM` that understands `include_raw`, once the wiki path's shape is known.
+
 **Files:**
 - Create: `api/sagaloom/importing/wiki.py`, `api/tests/importing/test_wiki.py`
 - Modify:

@@ -142,6 +142,8 @@ Builder: **Opus 5.5** (the proxy carries the shared secret).
 
 Items: W8 M5, W8 M4, W1–2 `PROXY_PREFIX` duplication (**API constant**), W8 M11, W8 M13.
 
+Added by the M3 Wave 1 Fable review (M15, triaged to this task): **the Next proxy still forwards a browser-supplied `X-Forwarded-For`** (`web/app/api/proxy/[...path]/route.ts`). This is the web half of Wave 1 Fable M5. Drop a client-sent `X-Forwarded-For` unless a platform header the deployment trusts is present, and add a proxy test for it. The README Limits paragraph must stay accurate.
+
 **Files:**
 - Modify: `web/app/api/proxy/[...path]/route.ts` (:23–53), `web/lib/api.ts` (:20), `web/lib/useAgentStream.ts` (:221), `web/lib/useImport.ts` (:62), `web/vitest.config.mts`, `package.json` (root `types:gen`), `scripts/types-check.mjs`
 - Create: `scripts/types-gen.mjs`; rename `web/tests/apiTypes.test.ts` → `web/tests/apiTypes.test-d.ts`
