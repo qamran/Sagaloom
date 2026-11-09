@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from sagaloom.models import Entry, World
@@ -43,9 +44,16 @@ def _names(e: Entry) -> set[str]:
     return {norm(n) for n in [e.title, *e.aliases]} - {""}
 
 
-def seed_missing(
-    store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID
-) -> list[tuple[str, Entry]]:
+@dataclass
+class SeedReport:
+    """What `seed_missing` did. `added`: (seed id, stored entry). `kept`: (seed id, the
+    same-type entry already at that id), a seed entry treated as present under rule (b)."""
+
+    added: list[tuple[str, Entry]] = field(default_factory=list)
+    kept: list[tuple[str, Entry]] = field(default_factory=list)
+
+
+def seed_missing(store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID) -> SeedReport:
     """Add the seed entries missing from the world, for data created before a seed entry was
     added. An existing entry is never overwritten.
 
@@ -58,16 +66,18 @@ def seed_missing(
     Otherwise it is missing. It is added at its seed id if no world holds that id, or under
     `next_entry_id()` if the id is taken (ids are global; Captain Sorn, a character, may hold
     ent_0019 while the ledger is an item). A fresh id is safe only for a seed entry nothing
-    links to, such as the Choir Ledger. Returns (seed id, stored entry) pairs."""
+    links to, such as the Choir Ledger. Returns a SeedReport: the additions and the rule (b)
+    entries kept."""
     names: set[str] = set()
     for existing in store.list_entries(world_id):
         names |= _names(existing)
-    added = []
+    report = SeedReport()
     for e in _seed_entries(seed_dir, world_id):
         if _names(e) & names:
             continue
         at_id = store.get_entry(world_id, e.id)
         if at_id is not None and at_id.type == e.type:
+            report.kept.append((e.id, at_id))
             continue
         seed_id = e.id
         if store.has_id(seed_id):
@@ -75,5 +85,5 @@ def seed_missing(
         stored = store.upsert_entry(e)
         names |= _names(stored)
         log.info("added %s as %s (%s)", seed_id, stored.id, stored.title)
-        added.append((seed_id, stored))
-    return added
+        report.added.append((seed_id, stored))
+    return report

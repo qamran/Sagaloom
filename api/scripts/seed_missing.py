@@ -32,10 +32,15 @@ def main() -> None:
         return
     client = chromadb.PersistentClient(path=str(settings.data_dir / "chroma"))
     store = CanonStore(client, make_embeddings(settings))
-    added = seed_missing(store, SEED_DIR)
-    for seed_id, entry in added:
+    report = seed_missing(store, SEED_DIR)
+    for seed_id, entry in report.added:
         print(f"added {seed_id} as {entry.id} ({entry.title})")
-    if not added:
+    for seed_id, entry in report.kept:
+        print(
+            f"kept {seed_id}: {entry.id} ({entry.title}) has the seed entry's type, "
+            "so it is treated as the renamed seed entry"
+        )
+    if not report.added:
         print("nothing missing")
 
 

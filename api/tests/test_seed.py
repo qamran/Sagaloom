@@ -165,12 +165,12 @@ def test_seed_missing_adds_only_absent_entries(store, worlds):
     city = store.get_entry("velmar", "ent_0001")
     store.upsert_entry(city.model_copy(update={"body": "Edited by the author."}))
     store.delete_entry("velmar", "ent_0019")
-    added = seed_missing(store, SEED)
+    added = seed_missing(store, SEED).added
     assert [(seed_id, e.id) for seed_id, e in added] == [("ent_0019", "ent_0019")]
     assert store.get_entry("velmar", "ent_0001").body == "Edited by the author."
     assert store.get_entry("velmar", "ent_0019").title == "The Choir Ledger"
     assert len(store.list_entries("velmar")) == 19
-    assert seed_missing(store, SEED) == []
+    assert seed_missing(store, SEED).added == []
 
 
 def _velmar_with_sorn_at_0019(store, worlds, world_id="velmar"):
@@ -184,31 +184,42 @@ def _velmar_with_sorn_at_0019(store, worlds, world_id="velmar"):
 
 def test_seed_missing_re_ids_a_seed_entry_whose_id_is_taken_in_the_world(store, worlds):
     sorn = _velmar_with_sorn_at_0019(store, worlds)
-    [(seed_id, ledger)] = seed_missing(store, SEED)
+    [(seed_id, ledger)] = seed_missing(store, SEED).added
     assert seed_id == "ent_0019" and ledger.id == "ent_0020"
     assert store.get_entry("velmar", "ent_0020").title == "The Choir Ledger"
     assert store.get_entry("velmar", "ent_0019") == sorn  # never overwritten
     assert len(store.list_entries("velmar")) == 20
-    assert seed_missing(store, SEED) == []  # the title match finds the re-id'd ledger
+    assert seed_missing(store, SEED).added == []  # the title match finds the re-id'd ledger
 
 
 def test_seed_missing_re_ids_a_seed_entry_whose_id_another_world_owns(store, worlds):
     mine = _velmar_with_sorn_at_0019(store, worlds, world_id="mine")
-    [(seed_id, ledger)] = seed_missing(store, SEED)
+    [(seed_id, ledger)] = seed_missing(store, SEED).added
     assert seed_id == "ent_0019" and ledger.id == "ent_0020"
     assert store.get_entry("velmar", "ent_0020").title == "The Choir Ledger"
     assert store.get_entry("velmar", "ent_0019") is None
     assert store.get_entry("mine", "ent_0019") == mine
-    assert seed_missing(store, SEED) == []
+    assert seed_missing(store, SEED).added == []
 
 
 def test_seed_missing_does_not_re_add_a_renamed_seed_entry(store, worlds):
     load_seed(store, worlds, SEED)
     city = store.get_entry("velmar", "ent_0001")
     store.upsert_entry(city.model_copy(update={"title": "Velmar City"}))  # same id and type
-    assert seed_missing(store, SEED) == []
+    assert seed_missing(store, SEED).added == []
     assert len(store.list_entries("velmar")) == 19
     assert store.get_entry("velmar", "ent_0001").title == "Velmar City"
+
+
+def test_seed_missing_reports_rule_b_kept(store, worlds):
+    load_seed(store, worlds, SEED)
+    ledger = store.get_entry("velmar", "ent_0019")
+    renamed = store.upsert_entry(
+        ledger.model_copy(update={"title": "The Choir Roll", "aliases": []})
+    )
+    report = seed_missing(store, SEED)
+    assert report.kept == [("ent_0019", renamed)]
+    assert report.added == []
 
 
 def test_seed_missing_counts_an_entry_matching_a_seed_alias_as_present(store, worlds):
@@ -216,5 +227,5 @@ def test_seed_missing_counts_an_entry_matching_a_seed_alias_as_present(store, wo
     store.delete_entry("velmar", "ent_0002")  # The Harbour Council, alias "the Council"
     store.upsert_entry(Entry(id="ent_0030", world_id="velmar", title="The Council", type="faction",
                              body="The author's own council."))
-    assert seed_missing(store, SEED) == []
+    assert seed_missing(store, SEED).added == []
     assert store.get_entry("velmar", "ent_0002") is None
