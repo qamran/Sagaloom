@@ -26,7 +26,7 @@ from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
 from sagaloom.text import first_line, message_text
-from sagaloom.tools.canon_tools import TOOL_SPECS
+from sagaloom.tools.specs import TOOL_SPECS
 from sagaloom.web.imports import import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
 from sagaloom.web.thread_list import (

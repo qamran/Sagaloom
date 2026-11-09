@@ -7,11 +7,10 @@ from urllib.parse import quote
 
 from pydantic import BaseModel
 
-from sagaloom.config import Settings
+from sagaloom.config import GEMINI_MODEL, Settings
 from sagaloom.tools.specs import TOOL_SPECS
 
 EMBED_PRICE_IN = 0.02  # USD per 1M tokens, openai/text-embedding-3-small
-GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_NOTICE = (
     "Free-tier Gemini prompts may be used by Google to improve its products (R11.G9). "
     "Sagaloom never sends a request to Gemini: this entry only shows that a key is configured."

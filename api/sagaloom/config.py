@@ -20,6 +20,8 @@ def load_env_files(paths: tuple[str, ...] = _ENV_FILES) -> None:
         load_dotenv(path, override=False)
 
 
+GEMINI_MODEL = "gemini-3.5-flash-lite"  # demo-only: Sagaloom never sends a request to Gemini
+
 ALLOWED_MODELS_FILE = Path(__file__).resolve().parent / "allowed_models.json"
 
 

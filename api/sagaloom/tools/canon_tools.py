@@ -35,7 +35,7 @@ from sagaloom.tools.specs import (  # noqa: F401  (TOOL_SPECS and CORE_TOOLS are
 from sagaloom.wiki.client import WikiClient
 
 if TYPE_CHECKING:
-    from sagaloom.graph.nodes import ChatModelLike
+    from sagaloom.structured import ChatModelLike
 
 log = logging.getLogger(__name__)
 

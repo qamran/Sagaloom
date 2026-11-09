@@ -1,8 +1,7 @@
 import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from sagaloom.config import Settings
-from sagaloom.studio import GEMINI_MODEL
+from sagaloom.config import GEMINI_MODEL, Settings
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 

@@ -87,8 +87,8 @@ class SequenceGuard(StubGuard):
         return reply
 
 
-def _api_error() -> openai.APIError:
-    return openai.APIError("boom", request=httpx.Request("POST", "http://x"), body=None)
+def _api_error() -> openai.APIConnectionError:
+    return openai.APIConnectionError(request=httpx.Request("POST", "http://x"))
 
 
 async def test_classify_retries_once_after_an_api_error():
@@ -105,10 +105,19 @@ async def test_classify_retries_once_after_an_invalid_reply():
 
 async def test_classify_raises_after_two_failures():
     stub = SequenceGuard([_api_error(), _api_error()])
-    with pytest.raises(openai.APIError):
+    with pytest.raises(openai.APIConnectionError):
         await classify(stub, "x")
     assert len(stub.prompts) == 2
     bad = SequenceGuard([None, {"verdict": "maybe", "reason": "x"}])
     with pytest.raises((ValueError, ValidationError)):
         await classify(bad, "x")
     assert len(bad.prompts) == 2
+
+
+async def test_classify_does_not_retry_a_400():
+    req = httpx.Request("POST", "http://x")
+    err = openai.BadRequestError("bad", response=httpx.Response(400, request=req), body=None)
+    stub = SequenceGuard([err, GuardVerdict(verdict="safe", reason="ok")])
+    with pytest.raises(openai.BadRequestError):
+        await classify(stub, "x")
+    assert len(stub.prompts) == 1

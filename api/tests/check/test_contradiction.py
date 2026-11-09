@@ -322,6 +322,14 @@ async def test_invalid_judge_output_retries_once_then_fails_closed(store):
     assert "bad json" not in notes[0].explanation
 
 
+async def test_judge_invalid_twice_fails_closed(store):
+    ister(store)
+    judge = StubJudge(ValueError("bad"), {"flags": "nope"})
+    res = await check_proposal(store, create("Orla", "Orla.", [{"key": "Moons", "value": "Two"}]), judge)
+    assert len(judge.calls) == 2 and res.verdict == "failed"
+    assert not any(f.kind == "conflict" for f in res.flags)
+
+
 async def test_none_from_judge_twice_fails_closed(store):
     ister(store)
     judge = StubJudge(None, None)

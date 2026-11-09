@@ -57,7 +57,7 @@ def gemini_error_event(exc: Exception) -> dict | None:
     anything else (including OpenRouter errors)."""
     if not isinstance(exc, openai.APIStatusError) or exc.status_code not in GEMINI_ERRORS:
         return None
-    if exc.response.request.url.host != GEMINI_HOST:
+    if exc.request.url.host != GEMINI_HOST:
         return None
     return {
         "message": GEMINI_ERRORS[exc.status_code],

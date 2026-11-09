@@ -63,6 +63,7 @@ class DevSettingsStore:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._lock = threading.Lock()
+        self._warned_tools: object = None  # the last raw enabled_tools value warned about
 
     def get(self) -> DevSettings:
         try:
@@ -78,7 +79,8 @@ class DevSettingsStore:
             try:  # strict, so "yes" is not read as a bool; a bad field keeps its default
                 DevSettings.model_validate({name: saved[name]}, strict=True)
             except ValidationError:
-                if name == "enabled_tools":
+                if name == "enabled_tools" and saved[name] != self._warned_tools:
+                    self._warned_tools = saved[name]
                     log.warning("settings.json lists unknown tools; every tool stays enabled")
                 continue
             good[name] = saved[name]

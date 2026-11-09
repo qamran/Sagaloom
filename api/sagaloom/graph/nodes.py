@@ -4,7 +4,7 @@ not been checked and approved (R18.3)."""
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
@@ -28,6 +28,7 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
+from sagaloom.structured import ChatModelLike  # noqa: F401  (re-exported; defined in structured)
 from sagaloom.memory import (
     agent_note,
     apply_updates,
@@ -52,14 +53,6 @@ from sagaloom.text import message_text
 log = logging.getLogger(__name__)
 
 ModelFor = Callable[[Role], BaseChatModel]
-
-
-class ChatModelLike(Protocol):
-    """The slice of a chat model that the tools and the contradiction check use."""
-
-    def bind_tools(self, tools: Any, **kwargs: Any) -> Any: ...
-    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any: ...
-    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any: ...
 
 
 class RoleModel:

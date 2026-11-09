@@ -151,3 +151,12 @@ async def test_gemini_other_status_is_not_special():
     with pytest.raises(openai.APIStatusError) as info:
         await model.ainvoke("hi")
     assert gemini_error_event(info.value) is None
+
+
+def test_llm_does_not_import_studio():
+    import inspect
+
+    import sagaloom.llm as llm
+
+    imports = [l for l in inspect.getsource(llm).splitlines() if l.startswith(("import ", "from "))]
+    assert not any("sagaloom.studio" in l for l in imports)

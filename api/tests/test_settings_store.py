@@ -93,3 +93,21 @@ def test_tool_specs_match_the_built_tools():
     built = {t.name: t.description for t in make_tools(None, None, None, wiki=MagicMock())}
     assert {s["name"]: s["description"] for s in TOOL_SPECS} == built
     assert {s["name"] for s in TOOL_SPECS if s["core"]} == CORE_TOOLS
+
+
+def test_unknown_tools_warning_logged_once(tmp_path, caplog):
+    import json
+    import logging
+
+    path = tmp_path / "settings.json"
+    store = DevSettingsStore(path)
+    path.write_text(json.dumps({"enabled_tools": ["nope"]}), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="sagaloom.settings_store"):
+        for _ in range(3):
+            store.get()
+    assert caplog.text.count("unknown tools") == 1
+    path.write_text(json.dumps({"enabled_tools": ["other_bad"]}), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="sagaloom.settings_store"):
+        store.get()
+        store.get()
+    assert caplog.text.count("unknown tools") == 2

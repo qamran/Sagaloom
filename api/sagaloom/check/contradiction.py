@@ -1,12 +1,10 @@
 """Contradiction check (R11.3): facts first, then prose; fails closed (R11.3.7)."""
 
 import logging
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-from langchain_core.exceptions import OutputParserException
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from sagaloom.check.dependency import dependency_check
 from sagaloom.check.duplicate import duplicate_flags
@@ -15,14 +13,11 @@ from sagaloom.check.retcon import detect_retcons
 from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Flag, Proposal
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
-
-if TYPE_CHECKING:
-    from sagaloom.graph.nodes import ChatModelLike
+from sagaloom.structured import ChatModelLike, InvalidReply, ask_structured
 
 log = logging.getLogger(__name__)
 
 SEARCH_K = 8
-MAX_ATTEMPTS = 2  # "retry once"
 _BELIEFS = ("myth", "rumour")
 CHECK_FAILED_EXPLANATION = (
     "The contradiction check could not run, so clashes with other entries are unknown. "
@@ -48,38 +43,6 @@ class JudgeFlag(BaseModel):
 
 class JudgeOutput(BaseModel):
     flags: list[JudgeFlag]
-
-
-class _JudgeInvalid(Exception):
-    pass
-
-
-def _invalid_reply_errors() -> tuple[type[BaseException], ...]:
-    """Exceptions meaning "the model replied, but not with a usable JudgeOutput".
-
-    ChatOpenAI's json_schema parser raises a bare ValueError (no `parsed` field) or
-    OpenAIRefusalError; the openai SDK raises the finish-reason errors. Imported
-    defensively so a different SDK version can't break this module.
-    """
-    errors: list[type[BaseException]] = [OutputParserException, ValidationError, ValueError]
-    try:
-        from langchain_openai.chat_models.base import OpenAIRefusalError
-
-        errors.append(OpenAIRefusalError)
-    except ImportError:  # pragma: no cover
-        pass
-    try:
-        import openai
-
-        for name in ("LengthFinishReasonError", "ContentFilterFinishReasonError"):
-            if isinstance(cls := getattr(openai, name, None), type):
-                errors.append(cls)
-    except ImportError:  # pragma: no cover
-        pass
-    return tuple(errors)
-
-
-_INVALID_REPLY = _invalid_reply_errors()
 
 
 # ---------- retrieval ----------
@@ -176,23 +139,6 @@ def _build_prompt(proposal: Proposal, draft: EntryDraft, related: list[Entry]) -
 # ---------- judge ----------
 
 
-async def _ask_judge(judge: BaseChatModel, messages: list) -> JudgeOutput:
-    """Two attempts at a valid JudgeOutput. Raises _JudgeInvalid after two bad replies;
-    any other error (network, API) propagates to the caller, which fails closed."""
-    structured = judge.with_structured_output(JudgeOutput)
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            out = await structured.ainvoke(messages)
-            if isinstance(out, dict):
-                out = JudgeOutput.model_validate(out)
-            if isinstance(out, JudgeOutput):
-                return out
-            log.warning("Judge returned no structured output (attempt %d)", attempt)
-        except _INVALID_REPLY as exc:
-            log.warning("Judge reply invalid (attempt %d): %s", attempt, type(exc).__name__)
-    raise _JudgeInvalid
-
-
 # ---------- post-processing ----------
 
 
@@ -274,7 +220,7 @@ def _duplicates(store, proposal: Proposal, draft: EntryDraft) -> list[Flag]:
 
 
 async def check_proposal(
-    store, proposal: Proposal, judge: "ChatModelLike", *, duplicates: bool = True
+    store, proposal: Proposal, judge: ChatModelLike, *, duplicates: bool = True
 ) -> CheckResult:
     if proposal.action == "delete":
         return dependency_check(store, proposal)
@@ -302,8 +248,10 @@ async def check_proposal(
         HumanMessage(content=_build_prompt(proposal, draft, related)),
     ]
     try:
-        out = await _ask_judge(judge, messages)
-    except _JudgeInvalid:
+        out = await ask_structured(
+            judge, JudgeOutput, messages, what="Judge", retry_transient=False
+        )
+    except InvalidReply:
         log.error("Judge gave invalid output twice for %s; failing closed", proposal.proposal_id)
         return _failed(proposal, draft, retcons, dups)
     except Exception:

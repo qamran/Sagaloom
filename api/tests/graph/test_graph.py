@@ -1130,6 +1130,18 @@ async def test_guard_fails_closed(store, reply):
     assert agent.seen == []
 
 
+async def test_guard_node_blocks_on_invalid_reply(store):
+    guard = StubLLM(lambda _: {"verdict": "maybe", "reason": "x"})
+    graph, agent, _ = make(store, [AIMessage(content="never")], guard=guard)
+    cfg = run_config("t-invalid", W)
+    assert await run(graph, start("How many moons?"), cfg) == ["guard"]
+    values = (await graph.aget_state(cfg)).values
+    assert guard.calls == 2
+    assert values["guard_verdict"] == "error"
+    assert values["messages"][-1].content == BLOCK_COPY["error"]
+    assert agent.seen == []
+
+
 async def test_guard_off_skips_classifier(store):
     guard = safe_guard()
     graph, agent, _ = make(

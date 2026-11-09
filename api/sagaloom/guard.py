@@ -10,13 +10,12 @@ import json
 import logging
 from typing import Annotated, Literal
 
-import openai
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import AfterValidator, BaseModel, Field, ValidationError
 
-from sagaloom.check.contradiction import _INVALID_REPLY, MAX_ATTEMPTS
 from sagaloom.security import wrap_untrusted
+from sagaloom.structured import ask_structured
 
 log = logging.getLogger(__name__)
 
@@ -82,26 +81,15 @@ class GuardVerdict(BaseModel):
 
 
 async def classify(model: BaseChatModel, text: str) -> GuardVerdict:
-    """One classification, with the judge's retry policy (MAX_ATTEMPTS): a second try after an
-    invalid reply or an API error. Raises after the last attempt, so the caller fails closed."""
-    structured = model.with_structured_output(GuardVerdict)
+    """One classification: a second try after an invalid reply or a transient API error (see
+    `ask_structured`). Raises after the last attempt, so the caller fails closed."""
     messages = [
         SystemMessage(content=GUARD_POLICY),
         HumanMessage(content=wrap_untrusted(text, "user_message")),
     ]
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            out = await structured.ainvoke(messages)
-            if isinstance(out, dict):
-                out = GuardVerdict.model_validate(out)
-            if not isinstance(out, GuardVerdict):
-                raise ValueError(f"guard returned no verdict ({type(out).__name__})")
-            return out
-        except (*_INVALID_REPLY, openai.APIError) as exc:
-            log.warning("Guard attempt %d failed: %s", attempt, type(exc).__name__)
-            if attempt == MAX_ATTEMPTS:
-                raise
-    raise AssertionError("unreachable")  # pragma: no cover
+    return await ask_structured(
+        model, GuardVerdict, messages, what="Guard", retry_transient=True
+    )
 
 
 def parse_verdict(response: dict | None) -> GuardVerdict | None:

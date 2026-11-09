@@ -25,7 +25,7 @@ from sagaloom.store.canon import norm
 from sagaloom.text import first_line, message_text
 
 if TYPE_CHECKING:
-    from sagaloom.graph.nodes import ChatModelLike
+    from sagaloom.structured import ChatModelLike
 
 log = logging.getLogger(__name__)
 
