@@ -43,7 +43,7 @@ class Entry(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     links: list[Link] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
-    version: int = 1
+    version: int = Field(default=1, ge=1)
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
 

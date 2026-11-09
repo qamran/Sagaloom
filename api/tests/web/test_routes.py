@@ -390,7 +390,7 @@ async def test_mentions_ignore_links(make_env):
     assert by_id["ent_0019"]["status"] == "secret"
     # The delete check still counts links.
     choir = env.deps.store.get_entry(VELMAR_ID, "ent_0004")
-    assert "ent_0003" in {e.id for e in env.deps.store.find_mentions(VELMAR_ID, choir)}
+    assert "ent_0003" in {e.id for e, _ in env.deps.store.find_dependents(VELMAR_ID, choir)}
 
 
 async def test_mentions_unknown_entry_404(make_env):

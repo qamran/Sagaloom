@@ -247,7 +247,7 @@ def entry_mentions(world_id: str, entry_id: str, request: Request) -> list[Menti
     entry = d.store.get_entry(world_id, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
-    mentions = d.store.find_mentions(world_id, entry, links=False)
+    mentions = d.store.find_mentions(world_id, entry)
     return [
         MentionRef(id=e.id, title=e.title, type=e.type, status=e.status)
         for e in sorted(mentions, key=lambda e: e.id)

@@ -96,24 +96,24 @@ def test_name_index_matches_find_by_name(store):
     assert store.find_by_name("w1", "nope") is None
 
 
-def test_find_mentions_finds_links_and_title_mentions(store):
+def test_find_dependents_finds_links_and_title_mentions(store):
     target = store.upsert_entry(mk(id="ent_0001", title="Ister", aliases=["The Pale"]))
     store.upsert_entry(mk(id="ent_0002", title="Linker", body="nothing here", links=[Link(target_id="ent_0001", relation="sees")]))
     store.upsert_entry(mk(id="ent_0003", title="Titler", body="Under ISTER's light"))
     store.upsert_entry(mk(id="ent_0004", title="Aliaser", body="the pale glows"))
     store.upsert_entry(mk(id="ent_0005", title="Unrelated", body="Dry land"))
     store.upsert_entry(mk(id="ent_0006", world="w2", title="Other", body="Ister"))
-    got = {e.id for e in store.find_mentions("w1", target)}
+    got = {e.id for e, _ in store.find_dependents("w1", target)}
     assert got == {"ent_0002", "ent_0003", "ent_0004"}
     assert {e.id for e in store.mentioned_in("w1", "We saw ister rise")} == {"ent_0001"}
 
 
-def test_find_mentions_without_links_counts_body_text_only(store):
+def test_find_mentions_is_text_only(store):
     target = store.upsert_entry(mk(id="ent_0001", title="Ister", aliases=["The Pale"]))
     store.upsert_entry(mk(id="ent_0002", title="Linker", body="nothing here", links=[Link(target_id="ent_0001", relation="sees")]))
     store.upsert_entry(mk(id="ent_0003", title="Titler", body="Under ISTER's light"))
     store.upsert_entry(mk(id="ent_0004", title="Aliaser", body="the pale glows"))
-    got = {e.id for e in store.find_mentions("w1", target, links=False)}
+    got = {e.id for e in store.find_mentions("w1", target)}
     assert got == {"ent_0003", "ent_0004"}
 
 

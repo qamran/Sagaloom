@@ -295,7 +295,9 @@ def make_tools(
                 after=after,
             )
             label = after.title if after else before.title
-            text = f"Proposal {proposal.proposal_id} ({action} {label}) is awaiting the author's review."
+            # No proposal id: for two parallel calls on one entry the reducer keeps the first id,
+            # which this call cannot know. The agent never needs it; the author decides.
+            text = f"Proposal to {action} {label} is awaiting the author's review."
             update: dict[str, Any] = {
                 "pending_proposals": [proposal],
                 "messages": [ToolMessage(content=text, tool_call_id=tool_call_id)],

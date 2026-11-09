@@ -247,6 +247,7 @@
           },
           "version": {
             "default": 1,
+            "minimum": 1.0,
             "title": "Version",
             "type": "integer"
           },

@@ -548,19 +548,14 @@ def test_commit_refuses_proposal_checked_against_a_stale_version(store, action):
     assert "Nothing was written" in m.content
 
 
-@pytest.mark.parametrize("action", ["create", "update"])
-def test_commit_maps_version_conflict(store, monkeypatch, action):
+def test_commit_maps_version_conflict(store, monkeypatch):
     """The store's own version guard (#63) catches a write that slipped past the node's check."""
     from sagaloom.store.canon import VersionConflictError
 
     v1 = seed(store, body="A city under one moon.")
-    p = (
-        P("p1", "Ostra")
-        if action == "create"
-        else Proposal(
-            proposal_id="p1", action="update", world_id=W, entry_id=v1.id, before=v1,
-            after=EntryDraft(title="Velmar", type="place", body="An edit."),
-        )
+    p = Proposal(
+        proposal_id="p1", action="update", world_id=W, entry_id=v1.id, before=v1,
+        after=EntryDraft(title="Velmar", type="place", body="An edit."),
     )
     seen: list = []
 
@@ -570,16 +565,86 @@ def test_commit_maps_version_conflict(store, monkeypatch, action):
 
     monkeypatch.setattr(store, "upsert_entry", racing_upsert)
     out = make_commit_node(store)(_approved(p))
-    expected = 0 if action == "create" else 1
-    assert seen == [expected]
+    assert seen == [1]
     [m] = out["messages"]
     assert m.content == (
         "Review: p1 approved, but the commit failed: entry changed since it was checked "
-        f"(v{expected} → v{expected + 1}); propose it again. Nothing was written."
+        "(v1 → v2); propose it again. Nothing was written."
     )
     assert m.additional_kwargs == {"proposal_id": "p1", "outcome": "failed"}
     assert out["pending_proposals"] == {"clear": ["p1"]}
     assert store.get_entry(W, v1.id) == v1
+
+
+def test_commit_maps_create_race_to_already_exists(store, monkeypatch):
+    from sagaloom.store.canon import VersionConflictError
+
+    def taken(entry, *, expected_version=None):
+        raise VersionConflictError("ent_0099", 0, 1)
+
+    monkeypatch.setattr(store, "upsert_entry", taken)
+    out = make_commit_node(store)(_approved(P("p_x", "Ostra")))
+    [m] = out["messages"]
+    assert m.content == (
+        "Review: p_x approved, but the commit failed: an entry with id ent_0099 already exists; "
+        "propose it again. Nothing was written."
+    )
+    assert m.additional_kwargs == {"proposal_id": "p_x", "outcome": "failed"}
+
+
+def test_conflict_copy_has_one_writer():
+    import inspect
+
+    import sagaloom.graph.nodes
+
+    assert inspect.getsource(sagaloom.graph.nodes).count("entry changed since it was checked") == 1
+
+
+def test_commit_refuses_other_world_with_its_own_copy(store):
+    p = P("p_x", "Ostra").model_copy(update={"world_id": "other"})
+    out = make_commit_node(store)(_approved(p))
+    [m] = out["messages"]
+    assert m.content == "Review: p_x was not committed: it was proposed in another world."
+    assert m.additional_kwargs == {"proposal_id": "p_x", "outcome": "refused"}
+    assert "p_x" not in out["pending_proposals"]["clear"]
+    assert store.list_entries(W) == [] and store.list_entries("other") == []
+
+
+def _stale_update(store):
+    v1 = seed(store, body="A city under one moon.")
+    p = Proposal(
+        proposal_id="p1", action="update", world_id=W, entry_id=v1.id, before=v1,
+        after=EntryDraft(title="Velmar", type="place", body="Stale edit."),
+    )
+    v2 = v1.model_copy(update={"body": "Changed elsewhere.", "version": 2})
+    return v1, v2, p
+
+
+def test_commit_conflict_against_real_store(store):
+    v1, v2, p = _stale_update(store)
+    store.upsert_entry(v2)
+    [m] = make_commit_node(store)(_approved(p))["messages"]
+    assert "entry changed since it was checked (v1 → v2); propose it again" in m.content
+    assert m.additional_kwargs["outcome"] == "failed"
+    e = store.get_entry(W, v1.id)
+    assert e.body == "Changed elsewhere." and e.version == 2
+
+
+def test_store_guard_catches_race_against_real_store(store, monkeypatch):
+    v1, v2, p = _stale_update(store)
+    real_get = store.get_entry
+
+    def get_then_race(world_id, entry_id):
+        seen = real_get(world_id, entry_id)  # the node sees v1, so its own check passes
+        store.upsert_entry(v2)  # another writer lands v2 before the node writes
+        return seen
+
+    monkeypatch.setattr(store, "get_entry", get_then_race)
+    [m] = make_commit_node(store)(_approved(p))["messages"]
+    assert "entry changed since it was checked (v1 → v2); propose it again" in m.content
+    assert m.additional_kwargs["outcome"] == "failed"
+    e = real_get(W, v1.id)
+    assert e.body == "Changed elsewhere." and e.version == 2
 
 
 def test_commit_maps_version_conflict_on_a_deleted_entry(store, monkeypatch):

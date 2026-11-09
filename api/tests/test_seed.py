@@ -48,7 +48,7 @@ def test_seed_has_required_entries_and_statuses(store, worlds):
     }
     assert {"myth", "rumour", "secret"} <= statuses
     # entries name each other so mention lookups have something to find
-    assert {e.title for e in store.find_mentions("velmar", ister)} >= {
+    assert {e.title for e, _ in store.find_dependents("velmar", ister)} >= {
         "Sky of Velmar",
         "The Ashen Choir",
     }
@@ -156,7 +156,7 @@ def test_seed(store, worlds):
     # The Mayor's page shows a (masked) "Mentioned in" chip for the ledger.
     mayor = store.get_entry("velmar", "ent_0003")
     assert "Mayor Elsbeth Varr" in ledger.body
-    assert "ent_0019" in {e.id for e in store.find_mentions("velmar", mayor, links=False)}
+    assert "ent_0019" in {e.id for e in store.find_mentions("velmar", mayor)}
     assert [e.id for e in store.list_entries("velmar") if e.status == "secret"] == ["ent_0019"]
 
 

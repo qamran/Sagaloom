@@ -107,7 +107,7 @@ async def test_create_returns_proposal_and_writes_nothing(store):
     assert p.after.facts[0].key == "k"
     m = msg(cmd)
     assert m.tool_call_id == "c9" and m.status != "error"
-    assert m.content == f"Proposal {p.proposal_id} (create Ostra) is awaiting the author's review."
+    assert m.content == "Proposal to create Ostra is awaiting the author's review."
     assert store.list_entries(W) == []
 
 
@@ -165,6 +165,19 @@ async def test_update_keeps_unspecified_fields_and_drafts_facts_on_body_change(s
     )
     [p] = cmd.update["pending_proposals"]
     assert ext.calls == 1 and p.after.facts[0].key == "a" and p.after.status == "myth"
+
+
+async def test_update_tool_message_names_action_and_title_without_id(store):
+    store.upsert_entry(entry())
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "update", "entry_id": "ent_0001", "status": "myth", "world_id": W, "messages": []},
+    )
+    [p] = cmd.update["pending_proposals"]
+    m = msg(cmd)
+    assert m.content == "Proposal to update Velmar is awaiting the author's review."
+    assert p.proposal_id not in m.content
 
 
 async def test_failed_redraft_keeps_existing_facts(store):

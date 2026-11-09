@@ -82,7 +82,8 @@ ReviewOutcome = Literal["approved", "rejected", "failed", "refused"]
 
 def _review(text: str, pid: str, outcome: ReviewOutcome) -> HumanMessage:
     """The author's decision note (R18.6). `outcome` is what `GET /threads` counts: `failed` is
-    approved but the write failed, `refused` is not checked and approved (nothing written)."""
+    approved but the write failed, `refused` is not checked and approved or proposed in another
+    world (nothing written)."""
     return HumanMessage(
         name="review", content=text, additional_kwargs={"proposal_id": pid, "outcome": outcome}
     )
@@ -501,17 +502,21 @@ class _CommitFailed(Exception):
 _COMMIT_LOCK = threading.Lock()
 
 
+def conflict_reason(e: VersionConflictError) -> str:
+    """The only writer of the commit conflict copy, for the node's own checks and the store's."""
+    if e.actual is None:
+        return f"entry {e.entry_id} no longer exists"
+    if e.expected == 0:
+        return f"an entry with id {e.entry_id} already exists; propose it again"
+    return f"entry changed since it was checked (v{e.expected} → v{e.actual}); propose it again"
+
+
 def _apply(store, p: Proposal) -> str:
     with _COMMIT_LOCK:
         try:
             return _apply_locked(store, p)
-        except VersionConflictError as e:  # the store's own guard caught a write that raced us
-            if e.actual is None:
-                raise _CommitFailed(f"entry {e.entry_id} no longer exists") from e
-            raise _CommitFailed(
-                f"entry changed since it was checked (v{e.expected} → v{e.actual}); "
-                "propose it again"
-            ) from e
+        except VersionConflictError as e:  # the node's own check, or the store's guard
+            raise _CommitFailed(conflict_reason(e)) from e
 
 
 def _apply_locked(store, p: Proposal) -> str:
@@ -526,13 +531,10 @@ def _apply_locked(store, p: Proposal) -> str:
 
     current = store.get_entry(p.world_id, p.entry_id) if p.entry_id else None
     if current is None:
-        raise _CommitFailed(f"entry {p.entry_id} no longer exists")
+        raise VersionConflictError(p.entry_id or "", p.before.version if p.before else 0, None)
     if p.before is not None and current.version != p.before.version:
         # Approved against a stale `before`: writing it would undo the other change unflagged.
-        raise _CommitFailed(
-            f"entry changed since it was checked (v{p.before.version} → v{current.version}); "
-            "propose it again"
-        )
+        raise VersionConflictError(current.id, p.before.version, current.version)
     if p.action == "delete":
         store.delete_entry(p.world_id, current.id)
         return f"Review: {pid} approved, deleted {current.id}."
@@ -569,7 +571,19 @@ def make_commit_node(store):
                     )
                 )
                 continue
-            if d is None or d.action != "approve" or pid not in checks or p.world_id != world_id:
+            if p.world_id != world_id:
+                # Nothing is written. The proposal stays pending and must be decided again.
+                log.error("commit refused %s: proposed in another world", pid)
+                refused.append(pid)
+                messages.append(
+                    _review(
+                        f"Review: {pid} was not committed: it was proposed in another world.",
+                        pid,
+                        "refused",
+                    )
+                )
+                continue
+            if d is None or d.action != "approve" or pid not in checks:
                 # R18.3: nothing is written. The proposal stays pending and must be decided again.
                 log.error("commit refused %s: not checked and approved", pid)
                 refused.append(pid)

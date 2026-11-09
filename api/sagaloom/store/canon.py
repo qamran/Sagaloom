@@ -98,7 +98,7 @@ class CanonStore:
             raise ValueError(f"Entry id {entry.id} belongs to another world")
         if expected_version is not None:
             actual = prev.version if prev is not None else None
-            if (actual or 0) != expected_version:
+            if (0 if actual is None else actual) != expected_version:
                 raise VersionConflictError(entry.id, expected_version, actual)
         entry = entry.model_copy(update={"updated_at": datetime.now(UTC).isoformat()})
         doc = f"{entry.title}\n\n{entry.body}"
@@ -207,8 +207,8 @@ class CanonStore:
                 linked.append((e, "link"))
         return text + linked
 
-    def find_mentions(self, world_id: str, entry: Entry, *, links: bool = True) -> list[Entry]:
-        """Entries whose body names `entry` (title or alias). With `links` (the delete check),
-        an entry that only links to it counts too; the "Mentioned in" route passes
-        links=False, so a secret link such as the Mayor's to the Choir is not revealed."""
-        return [e for e, via in self.find_dependents(world_id, entry) if links or via == "text"]
+    def find_mentions(self, world_id: str, entry: Entry) -> list[Entry]:
+        """Entries whose body names `entry` (title or alias). Text only: a link alone, such as
+        the Mayor's secret one to the Choir, is not a mention. Callers that need links too
+        (the delete check) use `find_dependents`."""
+        return [e for e, via in self.find_dependents(world_id, entry) if via == "text"]
