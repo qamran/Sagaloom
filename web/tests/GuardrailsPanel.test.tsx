@@ -56,4 +56,15 @@ describe("GuardrailsPanel", () => {
     expect(within(row).getByText("override")).toBeInTheDocument();
     expect(screen.getByText("t_def")).toBeInTheDocument();
   });
+
+  it("styles a failed guard call's error verdict", async () => {
+    vi.mocked(getGuardLog).mockResolvedValue([
+      { thread_id: "t_err", started_at: "2026-01-01T00:00:02", model: "m", verdict: "error", reason: "" },
+    ]);
+    setup();
+    const row = (await screen.findByText("t_err")).closest("li") as HTMLElement;
+    const badge = within(row).getByText("error");
+    expect(badge.className).not.toContain("undefined");
+    expect(badge.className).toContain("text-failed");
+  });
 });

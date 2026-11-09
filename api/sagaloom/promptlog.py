@@ -5,6 +5,7 @@ refresh, and are emitted live as `llm_request` / `llm_response` events."""
 import builtins
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable
@@ -26,6 +27,7 @@ from sagaloom.usage import extract_usage
 # R20.1: these keys are never recorded, wherever they appear.
 DROPPED_KEYS = frozenset({"api_key", "openai_api_key", "authorization", "headers"})
 REDACTED = "[redacted]"
+_ROLE_EXPR = "json_extract(record, '$.role')"
 
 
 class PromptRecord(BaseModel):
@@ -45,16 +47,35 @@ class PromptRecord(BaseModel):
 class PromptLog:
     def __init__(self, path: Path):
         self.path = Path(path)
+        self._ready = False
+        self._ready_lock = threading.Lock()  # sync routes run in a thread pool
 
-    def _connect(self) -> sqlite3.Connection:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.path)
+    def _create(self, conn: sqlite3.Connection) -> None:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS prompt_log ("
             "id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, run_id TEXT NOT NULL, "
             "started_at TEXT NOT NULL, record TEXT NOT NULL)"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS prompt_log_thread ON prompt_log(thread_id)")
+        # `list_by_role` filters in SQL on this exact expression, so the index serves it.
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS prompt_log_role ON prompt_log({_ROLE_EXPR}, started_at)"
+        )
+        conn.commit()
+
+    def _connect(self) -> sqlite3.Connection:
+        """A connection to an existing table; the schema is created once per instance."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.path)
+        if not self._ready:
+            with self._ready_lock:
+                if not self._ready:
+                    try:
+                        self._create(conn)
+                    except BaseException:
+                        conn.close()
+                        raise
+                    self._ready = True
         return conn
 
     def add(self, record: PromptRecord) -> None:
@@ -89,15 +110,12 @@ class PromptLog:
     def list_by_role(self, role: str, limit: int = 20) -> "builtins.list[PromptRecord]":
         """The newest records of one model role (e.g. `guard`), newest first."""
         with closing(self._connect()) as conn:
-            rows = conn.execute("SELECT record FROM prompt_log ORDER BY started_at DESC, rowid DESC").fetchall()
-        out: builtins.list[PromptRecord] = []
-        for (raw,) in rows:
-            rec = PromptRecord.model_validate_json(raw)
-            if rec.role == role:
-                out.append(rec)
-                if len(out) >= limit:
-                    break
-        return out
+            rows = conn.execute(
+                f"SELECT record FROM prompt_log WHERE {_ROLE_EXPR} = ? "
+                "ORDER BY started_at DESC, rowid DESC LIMIT ?",
+                (role, limit),
+            ).fetchall()
+        return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
     def total_usage(self) -> Usage:
         return self.usage()

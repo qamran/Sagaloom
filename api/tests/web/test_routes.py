@@ -800,3 +800,170 @@ async def test_message_route_uses_shielded(make_env, monkeypatch):
     tid = await env.new_thread()
     r, _ = await env.send(tid, "How many moons?")
     assert r.status_code == 200 and len(calls) == 1 and callable(calls[0])
+
+
+# ---------- M3 Wave 1 Task 4 (#73): the thread list reads registry summaries ----------
+
+ROW_KEYS = {
+    "thread_id", "world_id", "pending", "created_at", "kind", "title", "badge", "approved", "rejected",
+    "running",
+}
+
+
+def _count_reads(env) -> list[str]:
+    """Wraps the graph's `aget_state`; the returned list collects the thread id of every read."""
+    real, calls = env.deps.graph.aget_state, []
+
+    async def counting(config, *a, **kw):
+        calls.append(config["configurable"]["thread_id"])
+        return await real(config, *a, **kw)
+
+    env.deps.graph.aget_state = counting
+    return calls
+
+
+async def test_list_threads_reads_no_checkpoint_after_a_turn(make_env):
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    await env.send(tid)
+    calls = _count_reads(env)
+    [row] = (await env.client.get("/api/threads")).json()
+    assert calls == []
+    assert (row["pending"], row["title"], row["badge"], row["running"]) == (1, "Add Ostra", "clear", False)
+    assert [r["thread_id"] for r in (await env.client.get("/api/threads", params={"pending": "true"})).json()] == [tid]
+    assert calls == []
+
+
+async def test_list_threads_summarises_legacy_rows_once(make_env):
+    env = make_env([create_call()])
+    a, b = await env.new_thread(), await env.new_thread()
+    await env.send(a)
+    for tid in (a, b):  # rows written before M3 have no summary
+        env.deps.threads.set_summary(tid, None)
+    calls = _count_reads(env)
+    first = (await env.client.get("/api/threads")).json()
+    assert sorted(calls) == sorted([a, b])
+    calls.clear()
+    second = (await env.client.get("/api/threads")).json()
+    assert calls == [] and second == first
+    assert {r["thread_id"]: (r["pending"], r["title"]) for r in second} == {a: (1, "Add Ostra"), b: (0, None)}
+
+
+async def test_running_thread_is_read_live_and_not_stored(make_env):
+    from sagaloom.store.threads import ThreadSummary
+    from sagaloom.web.thread_list import list_rows
+
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    await env.send(tid)
+    stale = ThreadSummary(pending=99, badge="conflict", approved=5, rejected=5, title="stale")
+    env.deps.threads.set_summary(tid, stale)
+    lock = env.deps.locks.setdefault(tid, asyncio.Lock())
+    await lock.acquire()
+    try:
+        calls = _count_reads(env)
+        [row] = (await env.client.get("/api/threads")).json()
+        assert calls == [tid]  # read live, never from the summary
+        assert (row["pending"], row["badge"], row["approved"], row["title"], row["running"]) == (
+            1, "clear", 0, "Add Ostra", True,
+        )
+        assert env.deps.threads.get(tid).summary == stale  # nothing was written
+        env.deps.threads.set_summary(tid, None)
+        await env.client.get("/api/threads")
+        assert env.deps.threads.get(tid).summary is None  # a running thread's read is not stored
+    finally:
+        lock.release()
+    del env.deps.locks[tid]
+
+    # A turn that takes the lock while the checkpoint is being read: not stored either.
+    real = env.deps.graph.aget_state
+
+    async def lock_taken_meanwhile(config, *a, **kw):
+        state = await real(config, *a, **kw)
+        await env.deps.locks.setdefault(tid, asyncio.Lock()).acquire()
+        return state
+
+    env.deps.graph.aget_state = lock_taken_meanwhile
+    [row] = await list_rows(env.deps, pending=False, world_id=None, kind=None)
+    assert row["running"] is True and env.deps.threads.get(tid).summary is None
+    env.deps.locks.pop(tid).release()
+
+    env.deps.graph.aget_state = real
+    [row] = (await env.client.get("/api/threads")).json()  # idle again: filled lazily
+    assert row["running"] is False and env.deps.threads.get(tid).summary.pending == 1
+
+
+async def test_turn_start_clears_summary(make_env, monkeypatch):
+    import sagaloom.web.routes as routes_mod
+
+    env = make_env([AIMessage(content="One moon.")])
+    tid = await env.new_thread()
+    await env.send(tid, "How many moons?")
+    assert env.deps.threads.get(tid).summary.title == "How many moons?"
+
+    started, gate = asyncio.Event(), asyncio.Event()
+
+    async def held_turn(graph, input_or_command, config, **kw):
+        started.set()
+        await gate.wait()
+        yield {"event": "done", "data": {}}
+
+    monkeypatch.setattr(routes_mod, "run_turn_events", held_turn)
+    turn = asyncio.create_task(env.send(tid, "And the sun?"))
+    await asyncio.wait_for(started.wait(), 5)
+    assert env.deps.threads.get(tid).summary is None  # cleared when the turn took the lock
+    calls = _count_reads(env)
+    [row] = (await env.client.get("/api/threads")).json()
+    assert calls == [tid] and row["running"] is True
+    gate.set()
+    r, events = await turn
+    assert names(events) == ["done"] and tid not in env.deps.locks
+    assert env.deps.threads.get(tid).summary is not None  # written again before `done`
+
+    # A request that takes the lock and then refuses (409) also clears it; the list refills it.
+    bad, _ = await env.decide(tid, approve("p1"))
+    assert bad.status_code == 409 and env.deps.threads.get(tid).summary is None
+
+
+async def test_summary_refreshed_before_done(make_env, monkeypatch):
+    import sagaloom.web.routes as routes_mod
+
+    env = make_env([create_call(), AIMessage(content="Saved it.")])
+    tid = await env.new_thread()
+    await env.send(tid)
+    assert env.deps.threads.get(tid).summary.pending == 1
+    pid = await env.pending_id(tid)
+    real_sse, seen = routes_mod.sse_response, []
+
+    def spy(events):
+        async def watch():
+            async for ev in events:
+                if ev["event"] == "done":
+                    s = env.deps.threads.get(tid).summary
+                    seen.append(s and (s.pending, s.approved, s.badge))
+                yield ev
+
+        return real_sse(watch())
+
+    monkeypatch.setattr(routes_mod, "sse_response", spy)
+    r, events = await env.decide(tid, approve(pid))
+    assert names(events)[-1] == "done"
+    assert seen == [(0, 1, None)]
+
+
+async def test_list_threads_row_shape_unchanged(make_env):
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    await env.send(tid)
+    [summarised] = (await env.client.get("/api/threads")).json()
+    env.deps.threads.set_summary(tid, None)
+    [lazy] = (await env.client.get("/api/threads")).json()
+    lock = env.deps.locks.setdefault(tid, asyncio.Lock())
+    await lock.acquire()
+    try:
+        [live] = (await env.client.get("/api/threads")).json()
+    finally:
+        lock.release()
+    for row in (summarised, lazy, live):
+        assert set(row) == ROW_KEYS
+    assert summarised == lazy == {**live, "running": False}

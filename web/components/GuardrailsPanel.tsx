@@ -10,6 +10,7 @@ const BADGE: Record<GuardLogRow["verdict"], string> = {
   unsafe: "border-conflict text-conflict",
   injection: "border-conflict text-conflict",
   unknown: "border-border text-muted-foreground",
+  error: "border-failed text-failed",
 };
 
 /** The input guard (R13.1): an on/off switch, the policy read-only, and the recent verdicts. */

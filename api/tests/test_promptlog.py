@@ -1,7 +1,9 @@
 """Prompt capture (R20.1, R20.2, R12 cost)."""
 
 import json
+import sqlite3
 import uuid
+from contextlib import closing
 
 import pytest
 from langchain_core.messages import (
@@ -203,3 +205,51 @@ def test_list_by_role_returns_only_that_role_newest_first_capped(tmp_path):
     assert [r.id for r in log.list_by_role("guard", limit=2)] == ["d", "c"]
     assert [r.id for r in log.list_by_role("agent")] == ["b"]
     assert log.list_by_role("judge") == []
+
+
+def test_list_by_role_filters_in_sql(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    roles = ["guard", "agent", "judge"]
+    for i in range(10):
+        log.add(_rec(f"r{i}", roles[i % 3], f"2026-01-01T00:00:{i:02d}"))
+    log.add(_rec("none", None, "2026-01-01T00:00:59"))
+    assert [r.id for r in log.list_by_role("guard")] == ["r9", "r6", "r3", "r0"]
+    assert [r.id for r in log.list_by_role("agent", limit=2)] == ["r7", "r4"]
+    assert [r.id for r in log.list_by_role("judge", limit=1)] == ["r8"]
+    assert log.list_by_role("extractor") == []
+    # the filter runs in SQL: the query is served by the role index, not a full scan
+    with closing(log._connect()) as conn:
+        plan = " ".join(
+            str(row[-1])
+            for row in conn.execute(
+                "EXPLAIN QUERY PLAN SELECT record FROM prompt_log "
+                "WHERE json_extract(record, '$.role') = ? ORDER BY started_at DESC, rowid DESC LIMIT ?",
+                ("guard", 5),
+            )
+        )
+    assert "prompt_log_role" in plan
+
+
+def test_role_index_exists(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_rec("a", "guard", "2026-01-01T00:00:01"))
+    with closing(sqlite3.connect(tmp_path / "prompts.sqlite")) as conn:
+        names = {row[1] for row in conn.execute("PRAGMA index_list(prompt_log)")}
+    assert {"prompt_log_thread", "prompt_log_role"} <= names
+
+
+def test_schema_created_once_per_log(tmp_path, monkeypatch):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    calls = []
+    real = log._create
+
+    def spy(conn):
+        calls.append(1)
+        return real(conn)
+
+    monkeypatch.setattr(log, "_create", spy)
+    log.add(_rec("a", "guard", "2026-01-01T00:00:01"))
+    log.list("t1")
+    log.list_by_role("guard")
+    log.usage()
+    assert len(calls) == 1

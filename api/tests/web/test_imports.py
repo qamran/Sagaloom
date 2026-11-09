@@ -309,3 +309,13 @@ async def test_shutdown_during_extraction_removes_the_import_row(make_env):
     await asyncio.wait_for(_cancel_turns(env.deps.tasks), 5)
     assert import_threads(env) == []
     assert not lock.locked() and env.deps.tasks == set()
+
+
+async def test_import_writes_the_thread_summary(make_env):
+    """#73: the import's summary is in the registry when the stream ends, so the list reads none."""
+    env = make_env(extraction=found(cand("Ostra", OSTRA)))
+    r, events = await post_import(env, "Notes.\n\n" + OSTRA)
+    assert names(events)[-1] == "done"
+    [t] = import_threads(env)
+    assert t.summary is not None
+    assert (t.summary.pending, t.summary.title) == (1, "session-12-notes.md")

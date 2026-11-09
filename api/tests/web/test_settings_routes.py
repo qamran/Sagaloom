@@ -106,3 +106,24 @@ async def test_put_enabled_tools_and_unknown_tool_422(make_env):
     assert (await env.client.put("/api/settings", json={"enabled_tools": ["nope"]})).status_code == 422
     r = await env.client.put("/api/settings", json={"enabled_tools": None})
     assert r.json()["settings"]["enabled_tools"] is None
+
+
+async def test_guard_log_marks_a_failed_call_error(make_env):
+    import json
+
+    from sagaloom.promptlog import PromptRecord
+
+    env = make_env()
+
+    def rec(id, at, response):
+        return PromptRecord(
+            id=id, thread_id="t1", run_id="r", provider="openrouter", model="google/gemma", role="guard",
+            request={"messages": [], "tools": []}, response=response, started_at=at,
+        )
+
+    log = env.deps.promptlog
+    log.add(rec("a", "2026-01-01T00:00:01", None))  # the call raised: no response was recorded
+    log.add(rec("b", "2026-01-01T00:00:02", {"content": "prose", "tool_calls": []}))
+    log.add(rec("c", "2026-01-01T00:00:03", {"content": json.dumps({"verdict": "safe", "reason": "ok"}), "tool_calls": []}))
+    rows = (await env.client.get("/api/guard/log")).json()
+    assert [(x["verdict"], x["reason"]) for x in rows] == [("safe", "ok"), ("unknown", ""), ("error", "")]

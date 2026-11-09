@@ -277,7 +277,8 @@ export interface GuardLogRow {
   thread_id: string;
   started_at: string;
   model: string;
-  verdict: "safe" | "unsafe" | "injection" | "unknown";
+  /** `error`: the guard call itself failed (the message was blocked); `unknown`: a reply that did not parse. */
+  verdict: "safe" | "unsafe" | "injection" | "unknown" | "error";
   reason: string;
 }
 

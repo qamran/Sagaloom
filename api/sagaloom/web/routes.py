@@ -12,7 +12,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from sagaloom.check.badge import with_badges, worst_badge
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
 from sagaloom.graph.nodes import RoleModel
@@ -30,6 +29,13 @@ from sagaloom.text import first_line, message_text
 from sagaloom.tools.canon_tools import TOOL_SPECS
 from sagaloom.web.imports import import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
+from sagaloom.web.thread_list import (
+    list_rows,
+    pending_interrupt,
+    refresh_summary,
+    thread_title,
+    with_summary,
+)
 
 log = logging.getLogger(__name__)
 
@@ -107,37 +113,6 @@ def message_dict(m: BaseMessage) -> dict:
     return out
 
 
-def _pending(state) -> dict | None:
-    """The pending interrupt, each check with its badge (derived here, so a checkpoint written
-    before badges existed still shows them)."""
-    return with_badges(dict(state.interrupts[0].value)) if state.interrupts else None
-
-
-TITLE_CHARS = 80
-
-
-def _outcomes(messages: list) -> tuple[int, int]:
-    """(approved, rejected), counted from the review notes' `outcome`; a note without one (written
-    before outcomes existed), a failed write and a refused commit count as neither."""
-    outcomes = [
-        m.additional_kwargs.get("outcome")
-        for m in messages
-        if isinstance(m, HumanMessage) and m.name == "review"
-    ]
-    return outcomes.count("approved"), outcomes.count("rejected")
-
-
-def _thread_title(title: str | None, messages: list) -> str | None:
-    """The registry title, else the author's first message on one line, cut to TITLE_CHARS."""
-    if title:
-        return title
-    first = next((m for m in messages if isinstance(m, HumanMessage) and not m.name), None)
-    if first is None:
-        return None
-    text = " ".join(message_text(first.content).split())
-    return text if len(text) <= TITLE_CHARS else text[: TITLE_CHARS - 1] + "…"
-
-
 def _turn_config(
     request: Request, thread, emit: Callable[[str, dict], None], turn_id: str
 ) -> dict:
@@ -175,6 +150,13 @@ async def _take_turn(request: Request, thread_id: str) -> Callable[[], None]:
             if locks.get(thread_id) is lock:
                 del locks[thread_id]
 
+    try:
+        # The list summary is from before this turn: clear it, so a turn cut off mid-way leaves
+        # none to go stale (it is written again before the turn's `done` or `error`).
+        _deps(request).threads.set_summary(thread_id, None)
+    except BaseException:
+        release()
+        raise
     return release
 
 
@@ -204,7 +186,10 @@ def _stream_run(request: Request, thread, input_or_command: Any, release: Callab
     # run itself ends (Review Focus 5).
     return sse_response(
         shielded(
-            run_turn_events(d.graph, input_or_command, cfg, extra=queue, usage_fn=usage_fn),
+            with_summary(
+                run_turn_events(d.graph, input_or_command, cfg, extra=queue, usage_fn=usage_fn),
+                lambda: refresh_summary(d, thread.thread_id),
+            ),
             on_finish=release,
             tasks=d.tasks,
         )
@@ -313,6 +298,7 @@ async def post_import(world_id: str, body: NewImport, request: Request):
             usage_fn,
             d.threads,
         )
+        events = with_summary(events, lambda: refresh_summary(d, thread_id))
         return sse_response(shielded(events, on_finish=release, tasks=d.tasks))
     except BaseException:
         release()
@@ -380,37 +366,8 @@ async def list_threads(
 ) -> list[dict]:
     """Newest first; `badge` is the worst badge among the pending checks, `running` whether the
     thread's turn lock is held."""
-    d = _deps(request)
-    out = []
-    for t in reversed(d.threads.list(world_id, kind)):
-        try:
-            state = await d.graph.aget_state({"configurable": {"thread_id": t.thread_id}})
-            interrupt = _pending(state)
-            count = len(interrupt["proposals"]) if interrupt else 0
-            if pending and not count:
-                continue
-            checks = interrupt["checks"].values() if interrupt else []
-            messages = (state.values or {}).get("messages") or []
-            approved, rejected = _outcomes(messages)
-            lock = d.locks.get(t.thread_id)
-            row = {
-                "thread_id": t.thread_id,
-                "world_id": t.world_id,
-                "pending": count,
-                "created_at": t.created_at,
-                "kind": t.kind,
-                "title": _thread_title(t.title, messages),
-                "badge": worst_badge(c["badge"] for c in checks),
-                "approved": approved,
-                "rejected": rejected,
-                "running": lock is not None and lock.locked(),
-            }
-        except Exception:
-            # One unreadable checkpoint must not take the whole list down.
-            log.exception("list_threads: unreadable checkpoint %s", t.thread_id)
-            continue
-        out.append(row)
-    return out
+    # Read from the registry's summaries, not every checkpoint (`web/thread_list.py`).
+    return await list_rows(_deps(request), pending=pending, world_id=world_id, kind=kind)
 
 
 @router.get("/threads/{thread_id}")
@@ -419,12 +376,12 @@ async def get_thread(thread_id: str, request: Request) -> dict:
     state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
     values = state.values or {}
     messages = values.get("messages") or []
-    interrupt = _pending(state)
+    interrupt = pending_interrupt(state)
     return {
         "thread_id": thread_id,
         "world_id": t.world_id,
         "kind": t.kind,
-        "title": _thread_title(t.title, messages),
+        "title": thread_title(t.title, messages),
         "messages": [message_dict(m) for m in messages],
         "pending_interrupt": (
             {"proposals": interrupt["proposals"], "checks": interrupt["checks"],
@@ -466,7 +423,7 @@ async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
     release = await _take_turn(request, thread_id)
     try:
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
-        interrupt = _pending(state)
+        interrupt = pending_interrupt(state)
         if interrupt is None:
             raise HTTPException(status_code=409, detail="no pending approval")
         asked = sorted(p["proposal_id"] for p in interrupt["proposals"])
@@ -559,14 +516,18 @@ def guard_log(request: Request, limit: int = 20) -> list[dict]:
     """Recent input-guard verdicts, read from the prompt log (role `guard`)."""
     rows = []
     for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100))):
-        v = parse_verdict(rec.response)
+        if rec.response is None:  # the call raised (and the guard blocked the message)
+            verdict, reason = "error", ""
+        else:  # a response that does not parse is "unknown"
+            v = parse_verdict(rec.response)
+            verdict, reason = (v.verdict, v.reason) if v else ("unknown", "")
         rows.append(
             {
                 "thread_id": rec.thread_id,
                 "started_at": rec.started_at,
                 "model": rec.model,
-                "verdict": v.verdict if v else "unknown",
-                "reason": v.reason if v else "",
+                "verdict": verdict,
+                "reason": reason,
             }
         )
     return rows
