@@ -98,7 +98,8 @@ function keySecret(entry: Pick<EntryDraft, "status" | "facts"> | null | undefine
  * the line explains the badge: the worst conflict (hard before possible, keyed before prose);
  * else a retconned fact; else a duplicate note; else what a delete touches; else a note's prose.
  * `secret` says a flag's existing side is masked; callers fold the world's toggle into it and
- * `proseSecret` (ReviewQueue passes predicates that hide nothing while the world shows secrets).
+ * `proseSecret` (ReviewQueue passes predicates that hide nothing while the world shows secrets),
+ * and pass `shown` so the draft's own secret keys and values show too (ruling R4).
  */
 export function proposalSummary(
   p: Proposal,
@@ -106,6 +107,8 @@ export function proposalSummary(
   secret: (f: Flag) => boolean,
   /** Masks a flag's prose, like the card; defaults to `secret`. */
   proseSecret: (f: Flag) => boolean = secret,
+  /** The world shows secrets: the draft's own secret keys and values are not masked either. */
+  shown = false,
 ): string {
   // A flag's prose, or, when masked, the badge and the cited entry's ID, as the card shows a
   // masked flag (its Cite and a hidden explanation).
@@ -125,10 +128,11 @@ export function proposalSummary(
     // proposed fact under the key, or a secret draft, hides the new side.
     const key = norm(flag.fact_key);
     const draftSecret =
-      p.after?.status === "secret" || !!p.after?.facts.some((f) => norm(f.key) === key && f.status === "secret");
+      !shown &&
+      (p.after?.status === "secret" || !!p.after?.facts.some((f) => norm(f.key) === key && f.status === "secret"));
     const proposed = flag.new_fact === null ? "removed" : draftSecret ? SECRET : flagValue(flag, flag.new_fact);
     // Like FactTable: a key whose facts are all secret names the secret, so it is masked too.
-    const name = keySecret(p.after, key) || keySecret(p.before, key) ? SECRET : flag.fact_key;
+    const name = !shown && (keySecret(p.after, key) || keySecret(p.before, key)) ? SECRET : flag.fact_key;
     // Nothing readable is left to say: name no key and no sides.
     if (name === SECRET && existing === SECRET && proposed === SECRET) return SECRET_CHANGES;
     return `${name}: ${existing} → ${proposed}`;

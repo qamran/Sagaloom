@@ -75,6 +75,18 @@ describe("proposalSummary", () => {
     expect(proposalSummary(secretDraft, check([added]), open)).toBe("a secret fact: Salt → a secret fact");
   });
 
+  it("unmasks a secret draft key and value while the world shows secrets (R4)", () => {
+    const secretFact: Proposal = {
+      ...create,
+      after: { ...create.after!, facts: [{ key: "Motto", value: "Tide", refs: [], status: "secret", told_by: null }] },
+    };
+    const added = flag({ kind: "retcon", fact_key: "Motto", existing_fact: "Salt", new_fact: "Tide" });
+    expect(proposalSummary(secretFact, check([added]), open)).toBe("a secret fact: Salt → a secret fact");
+    expect(proposalSummary(secretFact, check([added]), open, open, true)).toBe("Motto: Salt → Tide");
+    const secretDraft: Proposal = { ...create, after: { ...create.after!, status: "secret" } };
+    expect(proposalSummary(secretDraft, check([added]), open, open, true)).toBe("Motto: Salt → Tide");
+  });
+
   it("strips the judge's key prefix but never a retcon's bare value", () => {
     const judged = flag({
       fact_key: "Moons", existing_fact: "Only light in the night sky: Ister", new_fact: "moons: Two", severity: "hard",

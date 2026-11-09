@@ -51,6 +51,30 @@ describe("ReviewQueue", () => {
     expect(screen.queryByText("Secret entry")).toBeNull();
   });
 
+  it("queue summary unmasks a secret draft fact while the world shows secrets", () => {
+    const motto: Proposal = {
+      ...proposal("p_c", "Tide Council", "canon"),
+      after: {
+        title: "Tide Council", type: "faction", body: "", status: "canon", aliases: [],
+        facts: [{ key: "Motto", value: "Tide", refs: [], status: "secret", told_by: null }],
+      },
+    };
+    const retcon: Flag = { ...flag, kind: "retcon", severity: null, entry_id: "", fact_key: "Motto", existing_fact: "Salt", new_fact: "Tide", existing_secret: false };
+    const one: PendingInterrupt = { proposals: [motto], checks: { p_c: check("p_c", [retcon]) } };
+    const view = () => (
+      <SecretsWorldProvider worldId="w1">
+        <ReviewQueue pending={one} canon={[ister]} selectedId="p_c" chosen={{}} onSelect={vi.fn()} />
+      </SecretsWorldProvider>
+    );
+    const { unmount } = render(view());
+    expect(screen.getByText("a secret fact: Salt → a secret fact")).toBeInTheDocument();
+    expect(screen.queryByText(/Tide$/)).toBeNull();
+    unmount();
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(view());
+    expect(screen.getByText("Motto: Salt → Tide")).toBeInTheDocument();
+  });
+
   it("follows the provider's world, not the active one", () => {
     sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
     render(

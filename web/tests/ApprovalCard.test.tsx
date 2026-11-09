@@ -806,6 +806,57 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
     expect(screen.queryByRole("button", { name: "Show secret entry to edit" })).toBeNull();
   });
 
+  it("edit form hides a secret fact's key until that row's Show, and keeps it on submit", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={onDecide} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Fact 1 key")).toHaveValue("Moons");
+    const key = screen.getByLabelText("Fact 2 key");
+    expect(key).toBeDisabled();
+    expect(key).toHaveValue("");
+    expect(key).toHaveAttribute("placeholder", "Secret fact");
+    expect(screen.queryByDisplayValue("Hidden truth")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
+    expect(onDecide.mock.calls[0][0].edited.facts[1].key).toBe("Hidden truth");
+    cleanup();
+    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show secret fact 2" }));
+    expect(screen.getByLabelText("Fact 2 key")).toHaveValue("Hidden truth");
+    expect(screen.getByLabelText("Fact 2 key")).toBeEnabled();
+    cleanup();
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Fact 2 key")).toHaveValue("Hidden truth");
+  });
+
+  it("Show to edit reveals facts hidden only because the stored entry is secret (R5)", async () => {
+    // The draft is canon and so is the proposal's before; only the stored entry in canon is secret.
+    const stored = { ...before, title: "The Choir Ledger", status: "secret" } as Entry;
+    const proposal: Proposal = {
+      ...update, before: { ...before, title: "The Choir Ledger" } as Entry,
+      after: {
+        ...update.after!, title: "The Choir Ledger",
+        facts: [fact("Holder", "The Mayor"), fact("Contents", "Names", "secret")],
+      },
+    };
+    render(<ApprovalCard proposal={proposal} check={check("none", [])} canon={[stored]} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Title")).toBeDisabled();
+    expect(screen.getByLabelText("Fact 1 key")).toBeDisabled();
+    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry to edit" }));
+    expect(screen.getByLabelText("Title")).toHaveValue("The Choir Ledger");
+    expect(screen.getByLabelText("Fact 1 key")).toHaveValue("Holder");
+    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "text");
+    // A fact that is secret in its own right still needs its own Show.
+    expect(screen.getByLabelText("Fact 2 key")).toBeDisabled();
+    expect(screen.getByLabelText("Fact 2 value")).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Show secret fact 2" }));
+    expect(screen.getByLabelText("Fact 2 key")).toHaveValue("Contents");
+  });
+
   it("submitting an unrevealed secret edit keeps title and body", async () => {
     const onDecide = vi.fn();
     render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={onDecide} />);

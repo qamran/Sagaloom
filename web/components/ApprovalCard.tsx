@@ -131,6 +131,13 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   const title = proposal.after?.title ?? proposal.before?.title ?? "Untitled";
   const titleHidden = entrySecret && !worldShown && !entryRevealed;
   const shownTitle = titleHidden ? "Secret entry" : title;
+  // The Edit form also counts the stored entry as it is now in canon: it may have turned secret
+  // after this proposal was drafted, so `before` alone is not enough.
+  const storedSecret =
+    entrySecret ||
+    (!!proposal.entry_id &&
+      (byId.get(proposal.entry_id)?.status === "secret" ||
+        canon?.some((e) => e.id === proposal.entry_id && e.status === "secret") === true));
   const dependentSecret = (id: string) => !worldShown && (unknown(id) || byId.get(id)?.status === "secret");
   const type = proposal.after?.type ?? proposal.before?.type;
   const version =
@@ -262,7 +269,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         ) : editing && proposal.after ? (
           <EditForm
             draft={proposal.after}
-            secretEntry={entrySecret || (!!proposal.entry_id && byId.get(proposal.entry_id)?.status === "secret")}
+            secretEntry={storedSecret}
             disabled={disabled}
             onCancel={() => setEditing(false)}
             onSubmit={(edited) => onDecide({ proposal_id: pid, action: "edit", edited })}
@@ -396,7 +403,7 @@ function EditForm({
   const worldShown = useWorldShowSecrets();
   // Hidden fields are never bound to the draft's text, so it is not in the DOM; submitting without
   // Show sends the draft's own title and body (the state below is never edited while hidden).
-  const entryHidden = secretEntry && !worldShown && !entryShown;
+  const entryHidden = (secretEntry || draft.status === "secret") && !worldShown && !entryShown;
 
   const setFact = (i: number, patch: Partial<Fact>) =>
     setFacts((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
@@ -443,10 +450,17 @@ function EditForm({
         <legend className="mb-1 text-xs font-semibold uppercase tracking-[1px]">Facts</legend>
         {facts.map((f, i) => {
           const n = i + 1;
-          const hide = (secretEntry || draft.status === "secret" || f.status === "secret") && !worldShown && !revealed.has(i);
+          // Hidden for the entry's sake until Show to edit, or for the fact's own until its row's Show.
+          const hide =
+            !worldShown && !revealed.has(i) && (f.status === "secret" || ((secretEntry || draft.status === "secret") && !entryShown));
           return (
             <div key={i} className="flex flex-wrap items-center gap-2">
-              <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />
+              {hide ? (
+                // Like the title: a hidden key is not bound to its text, so it is not in the DOM.
+                <input aria-label={`Fact ${n} key`} disabled value="" maxLength={40} placeholder="Secret fact" className={`${INPUT} flex-[1_1_120px]`} />
+              ) : (
+                <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />
+              )}
               <input
                 aria-label={`Fact ${n} value`}
                 type={hide ? "password" : "text"}

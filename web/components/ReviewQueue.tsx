@@ -72,7 +72,7 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
                 {badge === "failed"
                   ? CHECK_FAILED_TEXT
                   : worldShown
-                    ? proposalSummary(p, check, nothingHidden, nothingHidden)
+                    ? proposalSummary(p, check, nothingHidden, nothingHidden, true)
                     : proposalSummary(p, check, existingSecretOf(p, canon), proseSecretOf(p, canon))}
               </span>
             </button>
