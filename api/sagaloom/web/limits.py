@@ -163,7 +163,7 @@ class RateLimitMiddleware:
         """Drop the expired keys at the least recently hit end of `_totals`, stopping at the first
         live one, so a new key at the cap costs only the keys it removes. An expired key behind
         a live one (moved there by a 429, which adds no hit) waits for the periodic sweep or the
-        eviction below. `_turns` is not walked: its order is by any hit, not by turn hit."""
+        eviction in `_admit`. `_turns` is not walked: its order is by any hit, not by turn hit."""
         while self._totals:
             key, q = next(iter(self._totals.items()))
             if q and q[-1] > now - self.window_s:
