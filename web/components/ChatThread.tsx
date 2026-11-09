@@ -6,9 +6,12 @@ import { ApprovalCard } from "@/components/ApprovalCard";
 import { CourseChip } from "@/components/CourseChip";
 import { RememberedChip } from "@/components/RememberedChip";
 import { Composer } from "@/components/Composer";
+import { EntityText } from "@/components/EntityText";
 import { UnderTheHood } from "@/components/UnderTheHood";
 import { getEntries, getLlmLog, getSettings } from "@/lib/api";
+import type { Named } from "@/lib/mentions";
 import { checkSummary } from "@/lib/review";
+import { useShowSecrets } from "@/lib/secrets";
 import { buildTurnViews } from "@/lib/turns";
 import type { ChatMessage } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
@@ -33,7 +36,19 @@ function ActivityLine({ label, done, warn, chip }: { label: string; done: boolea
   );
 }
 
-function Message({ m, done, worldId }: { m: ChatMessage; done: boolean; worldId?: string }) {
+function Message({
+  m,
+  done,
+  worldId,
+  entries,
+  showSecrets,
+}: {
+  m: ChatMessage;
+  done: boolean;
+  worldId?: string;
+  entries?: Named[];
+  showSecrets: boolean;
+}) {
   if (m.role === "memory") {
     // Chips come from the items (note and value), never from the agent-facing content.
     return (
@@ -86,7 +101,7 @@ function Message({ m, done, worldId }: { m: ChatMessage; done: boolean; worldId?
       {m.content && (
         <div className="max-w-[90%] whitespace-pre-wrap font-heading text-[16px] leading-[1.6] text-[#e3dfd5]">
           <span className="sr-only">Sagaloom: </span>
-          {m.content}
+          <EntityText text={m.content} entries={entries} showSecrets={showSecrets} />
         </div>
       )}
       {m.tool_calls && m.tool_calls.length > 0 && (
@@ -124,6 +139,8 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   const worldId = s.pending?.proposals[0]?.world_id ?? world?.id;
   // The drawer's secrets follow the thread's world (R4); undefined (always hidden) until it is known.
   const hoodWorld = s.worldId ?? undefined;
+  // Chips and @ suggestions follow the thread's world too; closed until it is known.
+  const [threadShowSecrets] = useShowSecrets(hoodWorld);
   const { data: canon } = useQuery({
     queryKey: ["entries", worldId],
     queryFn: () => getEntries(worldId as string),
@@ -235,6 +252,8 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
             key={i}
             m={m}
             worldId={s.worldId ?? world?.id}
+            entries={canon}
+            showSecrets={threadShowSecrets}
             done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
           />
         ))}
@@ -298,6 +317,8 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           disabled={!s.loaded || busy || !!pending}
           hint={pending ? PENDING_HINT : null}
           prefill={initialPrompt}
+          entries={canon}
+          showSecrets={threadShowSecrets}
           placeholder={`Ask about ${world?.name ?? "your world"}, add a fact, or brainstorm.`}
         />
       </div>

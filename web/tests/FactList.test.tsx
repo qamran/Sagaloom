@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FactList } from "@/components/FactList";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
+import type { Named } from "@/lib/mentions";
 import type { Fact } from "@/lib/types";
 
 vi.mock("@/lib/world", () => ({ useWorld: () => ({ world: { id: "w1", name: "Velmar" } }) }));
@@ -78,5 +79,35 @@ describe("FactList hideAll and the world toggle", () => {
   it("without hideAll, only secret facts are hidden", () => {
     render(<FactList facts={facts} />);
     expect(screen.getByText("One")).toBeInTheDocument();
+  });
+});
+
+describe("FactList entity chips", () => {
+  const entries: Named[] = [
+    { id: "ent_0001", title: "Velmar", type: "place", aliases: [], status: "canon" },
+    { id: "ent_0004", title: "Ashen Choir", type: "faction", aliases: [], status: "canon" },
+    { id: "ent_0019", title: "The Choir Ledger", type: "item", aliases: [], status: "secret" },
+  ];
+  const list = (f: Partial<Fact>): Fact[] => [
+    { key: "Moons", value: "Three", refs: [], status: "canon", told_by: null, ...f },
+  ];
+
+  it("renders told_by naming an entry as a chip, and refs as chips", () => {
+    render(<FactList entries={entries} facts={list({ told_by: "the Ashen Choir", refs: ["ent_0001"] })} />);
+    expect(screen.getByRole("link", { name: /Ashen Choir/ })).toHaveAttribute("href", "/canon/ent_0004");
+    expect(screen.getByRole("link", { name: /Velmar/ })).toHaveAttribute("href", "/canon/ent_0001");
+  });
+
+  it("never turns a hidden secret ref or teller into a chip or shows its title", () => {
+    render(<FactList entries={entries} facts={list({ told_by: "The Choir Ledger", refs: ["ent_0019"] })} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getAllByText(/Choir Ledger/)).toHaveLength(1); // the plain told-by text only
+  });
+
+  it("chips the secret entry once the world toggle is on", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<FactList entries={entries} facts={list({ refs: ["ent_0019"] })} />);
+    expect(screen.getByRole("link", { name: /The Choir Ledger/ })).toHaveAttribute("href", "/canon/ent_0019");
+    sessionStorage.clear();
   });
 });

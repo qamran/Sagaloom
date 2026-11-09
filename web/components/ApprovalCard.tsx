@@ -213,7 +213,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
             </div>
             <section aria-label="Drafted facts" className="flex flex-col gap-2">
               <h4 className="m-0 text-xs font-semibold uppercase tracking-[1px]">Facts to commit</h4>
-              <FactList facts={proposal.after.facts} hideAll={proposal.after.status === "secret"} />
+              <FactList facts={proposal.after.facts} entries={canon} hideAll={proposal.after.status === "secret"} />
             </section>
           </div>
         ) : (

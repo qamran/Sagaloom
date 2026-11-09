@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { EntityChip } from "@/components/EntityChip";
+import { EntityText } from "@/components/EntityText";
+import type { Named } from "@/lib/mentions";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Fact, Status } from "@/lib/types";
 
@@ -10,7 +13,23 @@ const BADGE: Partial<Record<Status, string>> = {
   secret: "text-conflict border-[#5a4228] bg-[#221c15]",
 };
 
-function FactRow({ fact, hidden, onShow }: { fact: Fact; hidden: boolean; onShow: () => void }) {
+function FactRow({
+  fact,
+  hidden,
+  onShow,
+  entries,
+  showSecrets,
+}: {
+  fact: Fact;
+  hidden: boolean;
+  onShow: () => void;
+  entries?: Named[];
+  showSecrets: boolean;
+}) {
+  // A ref to a secret entry is left out while hidden, so its title never appears.
+  const refs = (fact.refs ?? [])
+    .map((id) => entries?.find((e) => e.id === id))
+    .filter((e): e is Named => !!e && (showSecrets || e.status !== "secret"));
   const badge = fact.status !== "canon" ? BADGE[fact.status] : undefined;
   return (
     <div>
@@ -38,8 +57,14 @@ function FactRow({ fact, hidden, onShow }: { fact: Fact; hidden: boolean; onShow
           <span className={`rounded-md border px-1.5 text-[11px] ${badge}`}>{fact.status}</span>
         )}
         {fact.told_by && !hidden && (
-          <span className="text-xs text-muted-foreground">told by {fact.told_by}</span>
+          <span className="text-xs text-muted-foreground">
+            told by <EntityText text={fact.told_by} entries={entries} showSecrets={showSecrets} />
+          </span>
         )}
+        {!hidden &&
+          refs.map((e) => (
+            <EntityChip key={e.id} type={e.type} name={e.title} href={`/canon/${e.id}`} />
+          ))}
       </div>
     </div>
   );
@@ -51,7 +76,16 @@ const factId = (f: Fact) => JSON.stringify([f.key, f.value]);
  * key: value rows with a status badge. Secret facts stay hidden until Show is clicked or the
  * world toggle is on (R12.12); `hideAll` hides every fact, for a secret entry's draft.
  */
-export function FactList({ facts, hideAll = false }: { facts: Fact[]; hideAll?: boolean }) {
+export function FactList({
+  facts,
+  hideAll = false,
+  entries,
+}: {
+  facts: Fact[];
+  hideAll?: boolean;
+  /** The world's entries: refs and told_by become chips. */
+  entries?: Named[];
+}) {
   const [shown, setShown] = useState<Set<string>>(new Set());
   const worldShown = useWorldShowSecrets();
   if (facts.length === 0) {
@@ -63,6 +97,8 @@ export function FactList({ facts, hideAll = false }: { facts: Fact[]; hideAll?: 
         <FactRow
           key={`${f.key}-${i}`}
           fact={f}
+          entries={entries}
+          showSecrets={worldShown}
           hidden={(hideAll || f.status === "secret") && !worldShown && !shown.has(factId(f))}
           onShow={() => setShown((s) => new Set(s).add(factId(f)))}
         />

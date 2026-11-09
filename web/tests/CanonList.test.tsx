@@ -79,3 +79,11 @@ describe("CanonList world toggle", () => {
     expect(screen.getByRole("button", { name: "Hide secret entries" })).toBeInTheDocument();
   });
 });
+
+describe("CanonList type dots", () => {
+  it("gives each row a dot in its type colour", async () => {
+    renderList();
+    const link = await screen.findByRole("link", { name: /Sky of Velmar/ });
+    expect(link.querySelector("[data-type-dot]")).toHaveClass("bg-place");
+  });
+});

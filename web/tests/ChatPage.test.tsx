@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
-import { createThread, forgetMemory, getLlmLog, getReviewThreads, getSettings, getThread } from "@/lib/api";
+import { createThread, forgetMemory, getEntries, getLlmLog, getReviewThreads, getSettings, getThread } from "@/lib/api";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { SettingsPayload, ThreadSummary } from "@/lib/types";
 
@@ -292,5 +292,46 @@ describe("/chat/[threadId]", () => {
     expect(wrapped).toHaveTextContent("[secret fact hidden]");
     expect(wrapped).not.toHaveTextContent("Sings: Yes");
     expect(within(drawer).getByRole("button", { name: "Show secrets" })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("assistant entity chips", () => {
+  const entry = (id: string, title: string, type: string, status = "canon", aliases: string[] = []) => ({
+    id, title, type, status, aliases, world_id: "w1",
+  });
+  const mount = async (text: string) => {
+    vi.mocked(getEntries).mockResolvedValue([
+      entry("ent_0012", "Ister", "place", "canon", ["the red moon"]),
+      entry("ent_0019", "The Choir Ledger", "item", "secret"),
+    ] as never);
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1", kind: "chat", title: null, world_id: "w1",
+      messages: [{ role: "user", content: "ent_0012?" }, { role: "assistant", content: text }],
+      pending_interrupt: null, usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    } as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><ChatThread threadId="t1" /></QueryClientProvider>);
+  };
+
+  it("renders entries named in assistant text as chips, but not in the author's message", async () => {
+    await mount("Ister, the red moon (ent_0012)");
+    const links = await screen.findAllByRole("link", { name: /place/ });
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/canon/ent_0012", "/canon/ent_0012", "/canon/ent_0012"]);
+    expect(links.map((l) => l.textContent)).toEqual(["place Ister", "place the red moon", "place ent_0012"]);
+    expect(screen.getByText("ent_0012?")).toBeInTheDocument(); // author text untouched
+  });
+
+  it("leaves a hidden secret entry as plain text", async () => {
+    await mount("See ent_0019, the Choir Ledger.");
+    await waitFor(() => expect(getEntries).toHaveBeenCalled());
+    expect(await screen.findByText(/See ent_0019/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /item/ })).toBeNull();
+  });
+
+  it("chips the secret entry when the thread's world has secrets shown", async () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    await mount("See ent_0019.");
+    expect(await screen.findByRole("link", { name: /item/ })).toHaveAttribute("href", "/canon/ent_0019");
+    sessionStorage.clear();
   });
 });

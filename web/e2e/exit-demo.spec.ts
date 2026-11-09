@@ -47,7 +47,8 @@ test("M1 exit demo", async ({ page }) => {
   await sorn.getByRole("button", { name: /^Approve/ }).click();
   await expect(log(page)).toContainText(/committed as ent_\d{4}/);
   await page.getByRole("link", { name: "Canon", exact: true }).click();
-  await expect(page.getByRole("link", { name: /Captain Sorn/ }).first()).toBeVisible();
+  // In the Canon list, not a chip in the chat text, so this also proves the navigation happened.
+  await expect(page.getByRole("navigation", { name: "Entries" }).getByRole("link", { name: /Captain Sorn/ })).toBeVisible();
 
   // 5. The pending card survives a reload (R5.5).
   await page.getByRole("link", { name: "Chat", exact: true }).click();
