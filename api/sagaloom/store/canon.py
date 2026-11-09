@@ -1,5 +1,6 @@
 import re
 from datetime import UTC, datetime
+from typing import Literal
 
 import chromadb
 from langchain_core.embeddings import Embeddings
@@ -181,18 +182,28 @@ class CanonStore:
             if any(_mentions(t, n) for n in [e.title, *e.aliases])
         ]
 
-    def find_mentions(self, world_id: str, entry: Entry, *, links: bool = True) -> list[Entry]:
-        """Entries whose body names `entry` (title or alias). With `links` (the delete check),
-        an entry that only links to it counts too; the "Mentioned in" route passes
-        links=False, so a secret link such as the Mayor's to the Choir is not revealed."""
+    def find_dependents(
+        self, world_id: str, entry: Entry
+    ) -> list[tuple[Entry, Literal["text", "link"]]]:
+        """Entries that depend on `entry`: those whose body names it (title or alias) first, as
+        "text", then those tied to it only by a link, as "link". A link may be secret (the
+        Mayor's to the Choir), so the delete card names a "link" dependent only while the
+        world shows secrets."""
         names = [entry.title, *entry.aliases]
-        out = []
+        text: list[tuple[Entry, Literal["text", "link"]]] = []
+        linked: list[tuple[Entry, Literal["text", "link"]]] = []
         for e in self.list_entries(world_id):
             if e.id == entry.id:
                 continue
             body = norm(e.body)
-            if (links and any(link.target_id == entry.id for link in e.links)) or any(
-                _mentions(body, n) for n in names
-            ):
-                out.append(e)
-        return out
+            if any(_mentions(body, n) for n in names):
+                text.append((e, "text"))
+            elif any(link.target_id == entry.id for link in e.links):
+                linked.append((e, "link"))
+        return text + linked
+
+    def find_mentions(self, world_id: str, entry: Entry, *, links: bool = True) -> list[Entry]:
+        """Entries whose body names `entry` (title or alias). With `links` (the delete check),
+        an entry that only links to it counts too; the "Mentioned in" route passes
+        links=False, so a secret link such as the Mayor's to the Choir is not revealed."""
+        return [e for e, via in self.find_dependents(world_id, entry) if links or via == "text"]

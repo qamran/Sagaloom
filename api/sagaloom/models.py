@@ -111,13 +111,20 @@ class Flag(BaseModel):
     existing_secret: bool = False
 
 
-class EntryRef(BaseModel):
+class _RefBase(BaseModel):
     id: str
     title: str
     type: EntryType
 
 
-class MentionRef(EntryRef):
+class EntryRef(_RefBase):
+    """A delete-check dependent. `via="link"` marks an entry tied only by a link (which may be
+    secret), so the web can count it without naming it while secrets are hidden."""
+
+    via: Literal["text", "link"] = "text"
+
+
+class MentionRef(_RefBase):
     """An entry that names another in its text ("Mentioned in"); the web masks a secret one."""
 
     status: Status
