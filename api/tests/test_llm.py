@@ -357,3 +357,73 @@ async def test_in_band_error_surfaces_as_model_unavailable():
             await model.ainvoke("hi")
     assert gemini_error_event(info.value) is None
     assert _error_event(info.value)["data"] == {"message": MODEL_UNAVAILABLE, "retryable": True}
+
+
+def _error_body(code) -> dict:
+    return {**IN_BAND_ERROR, "error": {**IN_BAND_ERROR["error"], "code": code}}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("structured", [False, True])
+async def test_an_in_band_client_error_is_left_as_it_was(streaming, structured):
+    """An explicit 4xx inside a 200 is not a fake 502: retrying a client error cannot help."""
+    body = _error_body(400)
+    reply = _sse(body) if streaming else httpx.Response(200, json=body)
+    model, client, _ = _openrouter(reply, streaming=streaming)
+    runnable = model.with_structured_output(Pick) if structured else model
+    async with client:
+        with pytest.raises(Exception) as info:
+            await runnable.ainvoke("hi")
+    assert not isinstance(info.value, openai.InternalServerError)
+
+
+@pytest.mark.parametrize("code", [None, "server_error", 408, 429, 500, 503])
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_in_band_errors_that_may_pass_are_translated(code, streaming):
+    body = _error_body(code)
+    if code is None:
+        del body["error"]["code"]
+    reply = _sse(body) if streaming else httpx.Response(200, json=body)
+    model, client, _ = _openrouter(reply, streaming=streaming)
+    async with client:
+        with pytest.raises(openai.InternalServerError) as info:
+            await model.ainvoke("hi")
+    assert "in-band provider error" in str(info.value)
+    assert info.value.request.url == httpx.URL("https://openrouter.ai/api/v1/chat/completions")
+
+
+async def test_a_genuine_agenerate_error_with_a_valid_body_passes_through(monkeypatch):
+    from langchain_openai import ChatOpenAI
+
+    boom = RuntimeError("boom")
+    boom.response = httpx.Response(
+        200, json=_completion("x"), request=httpx.Request("POST", "https://x/chat/completions")
+    )
+
+    async def fail(self, *a, **k):
+        raise boom
+
+    monkeypatch.setattr(ChatOpenAI, "_agenerate", fail)
+    model, client, _ = _openrouter()
+    async with client:
+        with pytest.raises(RuntimeError) as info:
+            await model.ainvoke("hi")
+    assert info.value is boom
+
+
+async def test_a_status_error_inside_astream_passes_through(monkeypatch):
+    from langchain_openai import ChatOpenAI
+
+    req = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    real = openai.RateLimitError("slow down", response=httpx.Response(429, request=req), body={"x": 1})
+
+    async def fail(self, *a, **k):
+        raise real
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(ChatOpenAI, "_astream", fail)
+    model, client, _ = _openrouter(streaming=True)
+    async with client:
+        with pytest.raises(openai.RateLimitError) as info:
+            await model.ainvoke("hi")
+    assert info.value is real

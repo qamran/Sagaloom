@@ -26,13 +26,21 @@ def install_warning_filters() -> None:
     )
 
 
+def _may_pass(err: dict) -> bool:
+    """Whether an in-band error may pass on a retry: its `code` is absent, not an int (OpenRouter
+    also sends strings such as "server_error"), 408, 429 or 5xx. An explicit other 4xx cannot."""
+    code = err.get("code")
+    return not isinstance(code, int) or isinstance(code, bool) or code in (408, 429) or code >= 500
+
+
 def _in_band_error(body: Any) -> dict | None:
-    """The provider error in an OpenRouter body that is an error, not a completion: an `error`
-    object with no `choices`. None for anything else."""
+    """The transient provider error in a body that is an error, not a completion: an `error`
+    object with no `choices`, whose code `_may_pass`. None for anything else, which then fails
+    exactly as it did before."""
     if not isinstance(body, dict) or body.get("choices"):
         return None
     err = body.get("error")
-    return err if isinstance(err, dict) and err else None
+    return err if isinstance(err, dict) and err and _may_pass(err) else None
 
 
 def _provider_error(err: dict, url: Any) -> openai.InternalServerError:
@@ -40,7 +48,7 @@ def _provider_error(err: dict, url: Any) -> openai.InternalServerError:
     transient API error (TRANSIENT_API_ERRORS). The provider's message, code and metadata stay in
     the text and the body."""
     text = (
-        f"OpenRouter in-band provider error (code {err.get('code')}): "
+        f"in-band provider error (code {err.get('code')}): "
         f"{err.get('message') or 'no message'}; metadata={err.get('metadata')}"
     )
     response = httpx.Response(502, request=httpx.Request("POST", str(url)))
@@ -63,7 +71,9 @@ class OpenRouterChat(ChatOpenAI):
       on `choices=None` and langchain attaches the raw response to the exception;
     - `_astream`: any streamed call, where openai's SSE reader raises a bare `openai.APIError`
       carrying the error object as its body.
-    Async only: nothing in the app calls a chat model synchronously."""
+    Only an error that may pass on a retry is translated (`_may_pass`); an explicit 4xx is left
+    as it was. `_create_chat_result` also serves the sync plain path; the structured and streamed
+    seams are async only, since nothing in the app calls a chat model synchronously."""
 
     def _convert_chunk_to_generation_chunk(self, chunk, default_chunk_class, base_generation_info):
         gen = super()._convert_chunk_to_generation_chunk(
@@ -74,7 +84,7 @@ class OpenRouterChat(ChatOpenAI):
         return gen
 
     def _chat_url(self) -> str:
-        return f"{(self.openai_api_base or '').rstrip('/')}/chat/completions"
+        return f"{str(self.root_async_client.base_url).rstrip('/')}/chat/completions"
 
     def _create_chat_result(self, response: Any, generation_info: dict | None = None):
         # Read the two fields only: dumping a structured completion would warn about `parsed`.
@@ -106,8 +116,8 @@ class OpenRouterChat(ChatOpenAI):
                 yield chunk
         except openai.APIError as exc:
             # Only the bare class: its subclasses are real HTTP status and connection errors.
-            if type(exc) is openai.APIError and isinstance(exc.body, dict):
-                raise _provider_error(exc.body, exc.request.url) from exc
+            if type(exc) is openai.APIError and (err := _in_band_error({"error": exc.body})):
+                raise _provider_error(err, exc.request.url) from exc
             raise
 
 
