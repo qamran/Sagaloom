@@ -35,7 +35,7 @@ describe("ImportPage", () => {
 
     run = runOf({ phase: "error", error: FAILED });
     rerender(<ImportPage />);
-    expect(screen.getByRole("alert")).toHaveTextContent(FAILED);
+    expect(await screen.findByRole("alert")).toHaveTextContent(FAILED);
     expect(screen.getByLabelText("Text to import")).toHaveValue("Ister has two moons.");
     expect(paste().getByRole("button", { name: "Extract entries" })).toBeEnabled();
   });

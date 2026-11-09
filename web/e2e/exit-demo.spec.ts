@@ -495,12 +495,24 @@ test("M1 exit demo", async ({ page }) => {
 
   // 33c. A change to the Mayor: the judge's request holds her secret fact, masked until the drawer's Show secrets.
   await newThread();
-  await send(page, "Mayor Elsbeth Varr is sixty years old.");
-  await settle(page);
-  if ((await anyProposal(page).count()) === 0) {
-    throw new Error(`the agent did not propose the Mayor's change. Its reply: ${await log(page).innerText()}`);
+  const MAYOR_CHANGE = "Mayor Elsbeth Varr is sixty years old.";
+  // The model sometimes drafts the change as a new entry (a create) rather than an update of ent_0003:
+  // a create has no check against her secret fact, so reject that card and send the message once more.
+  const mayorCreate = () => card(page, "Mayor Elsbeth Varr").filter({ hasText: /New entry/ });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await send(page, MAYOR_CHANGE);
+    await settle(page);
+    if ((await anyProposal(page).count()) === 0) {
+      throw new Error(`the agent did not propose the Mayor's change. Its reply: ${await log(page).innerText()}`);
+    }
+    await expect(card(page, "Mayor Elsbeth Varr")).toBeVisible();
+    if ((await mayorCreate().count()) === 0) break;
+    if (attempt === 2) {
+      throw new Error("the agent drafted the Mayor's change as a new entry twice, not as an update of ent_0003");
+    }
+    await rejectAll(page);
+    await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
   }
-  await expect(card(page, "Mayor Elsbeth Varr")).toBeVisible();
   await page.getByRole("button", { name: "Under the hood" }).click();
   const hood = page.getByRole("complementary", { name: "Under the hood" });
   const hoodSecrets = hood.getByRole("button", { name: "Show secrets", exact: true });
