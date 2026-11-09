@@ -180,7 +180,9 @@ def create_app(
     # add_middleware puts the newest outermost: CORS wraps the limiters, so their 413/429
     # responses still carry CORS headers, and the rate limit counts requests the body cap rejects.
     app.add_middleware(BodyLimitMiddleware, max_bytes=max_body_bytes)
-    app.add_middleware(RateLimitMiddleware, **(rate_limits or {}))
+    app.add_middleware(
+        RateLimitMiddleware, **{"trusted_proxies": frozenset(settings.trusted_proxies), **(rate_limits or {})}
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     embed_model: str = "openai/text-embedding-3-small"
     api_shared_secret: SecretStr
     web_origin: str = "http://localhost:3000"
+    # Socket addresses whose X-Forwarded-For the rate limiter believes (env: a JSON list).
+    trusted_proxies: list[str] = []
     data_dir: Path = Path("data")
     price_in_per_mtok: float = 0.10
     price_out_per_mtok: float = 0.50
