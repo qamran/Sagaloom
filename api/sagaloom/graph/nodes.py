@@ -48,7 +48,7 @@ from sagaloom.models import (
 )
 from sagaloom.provenance import merge_provenance
 from sagaloom.settings_store import DevSettings, enabled_tool_names
-from sagaloom.store.canon import DuplicateTitleError
+from sagaloom.store.canon import DuplicateTitleError, VersionConflictError
 from sagaloom.text import message_text
 
 log = logging.getLogger(__name__)
@@ -494,7 +494,15 @@ _COMMIT_LOCK = threading.Lock()
 
 def _apply(store, p: Proposal) -> str:
     with _COMMIT_LOCK:
-        return _apply_locked(store, p)
+        try:
+            return _apply_locked(store, p)
+        except VersionConflictError as e:  # the store's own guard caught a write that raced us
+            if e.actual is None:
+                raise _CommitFailed(f"entry {e.entry_id} no longer exists") from e
+            raise _CommitFailed(
+                f"entry changed since it was checked (v{e.expected} → v{e.actual}); "
+                "propose it again"
+            ) from e
 
 
 def _apply_locked(store, p: Proposal) -> str:
@@ -504,7 +512,7 @@ def _apply_locked(store, p: Proposal) -> str:
             raise _CommitFailed("the proposal has no entry")
         entry_id = store.next_entry_id()
         entry = Entry(id=entry_id, world_id=p.world_id, version=1, **p.after.model_dump())
-        saved = store.upsert_entry(entry)
+        saved = store.upsert_entry(entry, expected_version=0)
         return f"Review: {pid} approved, committed as {saved.id} (v{saved.version})."
 
     current = store.get_entry(p.world_id, p.entry_id) if p.entry_id else None
@@ -529,7 +537,7 @@ def _apply_locked(store, p: Proposal) -> str:
             "version": current.version + 1,  # created_at is kept; upsert refreshes updated_at
         }
     )
-    saved = store.upsert_entry(entry)
+    saved = store.upsert_entry(entry, expected_version=current.version)
     return f"Review: {pid} approved, committed as {saved.id} (v{saved.version})."
 
 

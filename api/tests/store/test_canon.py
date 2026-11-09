@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from sagaloom.models import Entry, Fact, Link
-from sagaloom.store.canon import DuplicateTitleError
+from sagaloom.store.canon import DuplicateTitleError, VersionConflictError
 
 
 def mk(id="ent_0001", world="w1", title="Ister", type="place", body="A moon.", **kw):
@@ -154,3 +154,37 @@ def test_secret_entry_hit_has_no_facts(store):
     store.upsert_entry(mk(status="secret", facts=[Fact(key="Where", value="Under the quay")]))
     (hit,) = store.search("w1", "Ister")
     assert hit.facts == []
+
+
+# ---------- version guard (#63) ----------
+
+
+def test_upsert_refuses_stale_version(store):
+    v1 = store.upsert_entry(mk())
+    v2 = store.upsert_entry(v1.model_copy(update={"body": "Second.", "version": 2}))
+    with pytest.raises(VersionConflictError) as exc:
+        store.upsert_entry(v1.model_copy(update={"body": "Stale.", "version": 2}), expected_version=1)
+    assert isinstance(exc.value, ValueError)
+    assert (exc.value.entry_id, exc.value.expected, exc.value.actual) == ("ent_0001", 1, 2)
+    assert store.get_entry("w1", "ent_0001") == v2
+
+
+def test_upsert_create_refuses_existing_id(store):
+    v1 = store.upsert_entry(mk())
+    with pytest.raises(VersionConflictError) as exc:
+        store.upsert_entry(mk(body="Another."), expected_version=0)
+    assert (exc.value.expected, exc.value.actual) == (0, 1)
+    assert store.get_entry("w1", "ent_0001") == v1
+
+
+def test_upsert_with_matching_expected_version_writes(store):
+    store.upsert_entry(mk(), expected_version=0)
+    v1 = store.get_entry("w1", "ent_0001")
+    saved = store.upsert_entry(v1.model_copy(update={"body": "B", "version": 2}), expected_version=1)
+    assert store.get_entry("w1", "ent_0001") == saved and saved.version == 2
+
+
+def test_upsert_without_expected_version_unchanged(store):
+    store.upsert_entry(mk(version=3))
+    saved = store.upsert_entry(mk(body="Overwritten.", version=1))
+    assert store.get_entry("w1", "ent_0001") == saved and saved.body == "Overwritten."

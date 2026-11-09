@@ -20,6 +20,15 @@ class DuplicateTitleError(Exception):
         self.title = title
 
 
+class VersionConflictError(ValueError):
+    """The stored version is not the one the writer read (`actual` is None: no such entry)."""
+
+    def __init__(self, entry_id: str, expected: int, actual: int | None):
+        found = "does not exist" if actual is None else f"is at v{actual}"
+        super().__init__(f"Entry {entry_id} {found}, expected v{expected}")
+        self.entry_id, self.expected, self.actual = entry_id, expected, actual
+
+
 def _mentions(text_norm: str, name: str) -> bool:
     n = norm(name)
     return bool(n) and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text_norm) is not None
@@ -63,7 +72,15 @@ class CanonStore:
         entries = [Entry.model_validate_json(m["entry_json"]) for m in res["metadatas"]]
         return sorted(entries, key=lambda e: e.id)
 
-    def upsert_entry(self, entry: Entry) -> Entry:
+    def upsert_entry(self, entry: Entry, *, expected_version: int | None = None) -> Entry:
+        """Write `entry`. `expected_version` guards the write: `None` writes unconditionally
+        (seed, import), `0` means the id must not exist yet, `n` means the stored version must
+        be `n`; a mismatch raises VersionConflictError and nothing is written.
+
+        Chroma has no compare-and-swap, so this is still read-then-write inside one process. It
+        moves the check into the store, so every writer gets it, and it narrows the window; the
+        actual guarantee is the commit node's `_COMMIT_LOCK` plus running the API as a single
+        process."""
         tn = norm(entry.title)
         clash = self.col.get(
             where=_and({"world_id": entry.world_id}, {"title_norm": tn}), include=[]
@@ -71,10 +88,17 @@ class CanonStore:
         if any(i != entry.id for i in clash):
             raise DuplicateTitleError(entry.title)
         existing = self.col.get(ids=[entry.id], include=["metadatas"])
-        if existing["ids"]:
-            prev = Entry.model_validate_json(existing["metadatas"][0]["entry_json"])
-            if prev.world_id != entry.world_id:
-                raise ValueError(f"Entry id {entry.id} belongs to another world")
+        prev = (
+            Entry.model_validate_json(existing["metadatas"][0]["entry_json"])
+            if existing["ids"]
+            else None
+        )
+        if prev is not None and prev.world_id != entry.world_id:
+            raise ValueError(f"Entry id {entry.id} belongs to another world")
+        if expected_version is not None:
+            actual = prev.version if prev is not None else None
+            if (actual or 0) != expected_version:
+                raise VersionConflictError(entry.id, expected_version, actual)
         entry = entry.model_copy(update={"updated_at": datetime.now(UTC).isoformat()})
         doc = f"{entry.title}\n\n{entry.body}"
         self.col.upsert(

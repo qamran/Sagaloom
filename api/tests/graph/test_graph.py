@@ -513,6 +513,58 @@ def test_commit_refuses_proposal_checked_against_a_stale_version(store, action):
     assert "Nothing was written" in m.content
 
 
+@pytest.mark.parametrize("action", ["create", "update"])
+def test_commit_maps_version_conflict(store, monkeypatch, action):
+    """The store's own version guard (#63) catches a write that slipped past the node's check."""
+    from sagaloom.store.canon import VersionConflictError
+
+    v1 = seed(store, body="A city under one moon.")
+    p = (
+        P("p1", "Ostra")
+        if action == "create"
+        else Proposal(
+            proposal_id="p1", action="update", world_id=W, entry_id=v1.id, before=v1,
+            after=EntryDraft(title="Velmar", type="place", body="An edit."),
+        )
+    )
+    seen: list = []
+
+    def racing_upsert(entry, *, expected_version=None):
+        seen.append(expected_version)
+        raise VersionConflictError(entry.id, expected_version, expected_version + 1)
+
+    monkeypatch.setattr(store, "upsert_entry", racing_upsert)
+    out = make_commit_node(store)(_approved(p))
+    expected = 0 if action == "create" else 1
+    assert seen == [expected]
+    [m] = out["messages"]
+    assert m.content == (
+        "Review: p1 approved, but the commit failed: entry changed since it was checked "
+        f"(v{expected} → v{expected + 1}); propose it again. Nothing was written."
+    )
+    assert m.additional_kwargs == {"proposal_id": "p1", "outcome": "failed"}
+    assert out["pending_proposals"] == {"clear": ["p1"]}
+    assert store.get_entry(W, v1.id) == v1
+
+
+def test_commit_maps_version_conflict_on_a_deleted_entry(store, monkeypatch):
+    from sagaloom.store.canon import VersionConflictError
+
+    v1 = seed(store)
+    p = Proposal(
+        proposal_id="p1", action="update", world_id=W, entry_id=v1.id, before=v1,
+        after=EntryDraft(title="Velmar", type="place", body="An edit."),
+    )
+
+    def deleted_meanwhile(entry, *, expected_version=None):
+        raise VersionConflictError(entry.id, expected_version, None)
+
+    monkeypatch.setattr(store, "upsert_entry", deleted_meanwhile)
+    [m] = make_commit_node(store)(_approved(p))["messages"]
+    assert f"commit failed: entry {v1.id} no longer exists. Nothing was written." in m.content
+    assert m.additional_kwargs["outcome"] == "failed"
+
+
 def test_concurrent_create_commits_draw_distinct_ids(store, monkeypatch):
     import threading
     import time
