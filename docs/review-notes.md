@@ -113,3 +113,22 @@ The full eval suite on the same day (after Wave 5 changed the judge prompt):
 - guard: 5/5 blocked, 0/11 false blocks, 0 errors
 - router 15/15
 - both shared-loop tests passed
+
+## 10. Hidden secrets (Wave 7)
+
+**The threat model.** A secret is true in the world but hidden from the players (glossary). The risk Wave 7 answers is a shared screen: an author showing their world on a call should not reveal the Mayor's place in the Ashen Choir by opening the wrong panel. It is not a defence against someone with access to the machine or the API (single user, R12.12), so the masking is client-side and the records stay as they were.
+
+**What is masked where.** One world-level **Show secrets** toggle in the header (per world, per tab, in `sessionStorage`) drives every view, and each view reads the toggle of the world its content belongs to, not the world picker's (Ruling R4):
+- **Canon list:** secret entries are left out of the list and its search (Velmar shows 18 of 19); the count never hints at them.
+- **Entry page:** a secret fact shows as `Secret fact` with a **Show** button; a ref to a secret entry is dropped; a secret entry in **Mentioned in** is a `Secret entry` chip with no title or link; a secret entry's own page is hidden whole.
+- **Chips and `@`:** chips and suggestions come from the thread's world's entries only (Ruling R6), and a secret entry is neither chipped nor suggested while hidden.
+- **Approval cards:** a secret value in the fact table stays behind **Show** (as since M1).
+- **Under the hood:** inside `<untrusted_data>` blocks, a line marked `[secret]` or `(entry status: secret)`, and every line after `Entry status: secret`, reads `[secret fact hidden]`. Tool-call args with a secret status show as `name([secret fact hidden])`, and a call whose request was masked, or whose reply holds a secret status, says "Hidden: this call saw secret facts. Choose Show secrets to read it." under Response and Raw JSON (Ruling R5), so the drawer never shows what the card hides. The drawer has its own **Show secrets** button, bound to the thread's world. The prompt format the mask relies on is pinned by `web/tests/fixtures/judge-prompt.txt`, real `_build_prompt` output checked by `api/tests/check/test_prompt_fixture.py` (Ruling R1).
+
+**What the models see.** The chat agent never reads a secret: `search_canon` refuses `status="secret"`, a secret entry's hit carries only its id, title and type (no snippet, no facts), secret facts of other entries are left out, and an update the agent drafts keeps the stored secret facts it could not see. The contradiction judge does read secrets, because a secret counts as canon for checking; that is why its prompt is the one the drawer masks. `export_world` counts only entries that are not secret.
+
+**Why the records stay verbatim.** The PromptLog is the audit trail and the source of truth for usage and cost (R20.1, R14.2): it must say exactly what was sent to OpenRouter. Masking it at write time would make the drawer lie about the prompt and would lose the secret lines from the record for good. So masking is a view: the drawer's notice says "Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON copies the full record.", and both Copy buttons copy the full record. The price is that a copied record carries secrets (README, Known limitations).
+
+**How the demo proves it.** The exit demo checks 18 then 19 entries in the Canon list around the header toggle (on fresh data, in step 1), the masked fact and `Secret entry` chip on `/canon/ent_0003`, a judge call whose request shows `[secret fact hidden]` and not "Yes, at every full Ister" until the drawer's **Show secrets** is on, and the `@Ister` pick.
+
+**Evals after the seed change.** The full suite ran once on 2026-11-09 with `ent_0019` in the seed: all 15 passed. The three-moons contradiction was flagged against `ent_0012` only in 10 of 10 runs (the Ledger's "A cipher of moon phases" fact drew no flag), the founding date against `ent_0005` in 10 of 10, and Captain Sorn stayed clean. Scores: cite-existing-id 10/10, not-in-canon 9/10, seed-entry injection 10/10, declarative-proposed 10/10, statement-only-that-change 10/10, fetched-summary injection 10/10, reference-unavailable 10/10, planted-remember 10/10, consistent proposals 0 hard flags, guard 5/5 blocked and 0/11 false blocks, router 15/15, canary 10/10 (committed and shown to the chat agent in 2/10 runs each).

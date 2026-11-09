@@ -168,7 +168,7 @@ Sizes: S = 1–2 tasks, M = 3–4 tasks, L = 5+ tasks (M1 was 13 tasks). Each ta
 2. Full entry page: section cards from Markdown `##` headings (a body without headings is one "Description" card), Facts panel, "Mentioned in" chips from `GET /api/worlds/{id}/entries/{entry_id}/mentions` (`find_mentions` exists), version and source/licence line, "untrusted source" marker.
 3. Hidden secrets: secret entries and secret facts hidden in the sidebar and entry views behind a world-level "Show secrets" toggle (header, `sessionStorage`); server side `search_canon` rejects `status="secret"` and returns no snippet for secret entries; Under the hood drawer masks `[secret]` lines and secret entries' blocks on display with its own "Show secrets" control, records unchanged.
 
-**Demo step:** sidebar shows 17 of 18 entries; "Show secrets" reveals the secret one. Open the drawer on the three-moons turn with secrets hidden: the judge's prompt shows the Ister entry but `[secret]` lines of ent_0003 are masked.
+**Demo step:** sidebar shows 18 of 19 entries (the secret entry `ent_0019` was added on 2026-11-09, see §5); "Show secrets" reveals the secret one. Open the drawer on the three-moons turn with secrets hidden: the judge's prompt shows the Ister entry but `[secret]` lines of ent_0003 are masked.
 
 **Size:** M.
 
@@ -347,3 +347,8 @@ API: `guard.py`, `settings_store.py`, `memory.py`, `export.py`, `importing/{extr
 - **Who decides scope:** the user delegated the M2 scope, order and design calls to the Fable judge; this document is that call.
 - **Course review timing:** not tied to a wave. The user will say when to focus on the review, so the order above stands (option b).
 - **Review cadence:** Opus reviews every task; **Fable reviews every wave as a whole** before it is pushed, plus one final whole-M2 Fable review.
+
+### Added on 2026-11-09
+
+- **Wave 6 moves to M3 whole.** The fan-wiki import (R11.6, R11.5.5, R11.4.8) was the cut line in §4; the user cut it, so M2 is Waves 1–5, 7 and 8. No course points depend on it (§2, Wave 6).
+- **Velmar gains a secret entry.** `ent_0019` "The Choir Ledger" (an item, status `secret`) lists the Ashen Choir's singers, the Mayor among them, so the hidden-secrets demo has a whole secret entry as well as the Mayor's secret fact. The sidebar shows 18 of 19 entries until Show secrets is on. Existing data gets it with `api/scripts/seed_missing.py`, which never overwrites.
