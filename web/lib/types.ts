@@ -36,6 +36,13 @@ export interface Entry {
   updated_at: string;
 }
 
+export interface MentionRef {
+  id: string;
+  title: string;
+  type: EntryType;
+  status: Status;
+}
+
 export interface EntryDraft {
   title: string;
   type: EntryType;

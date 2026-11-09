@@ -11,6 +11,7 @@ import type {
   StudioData,
   ThreadState,
   LastRun,
+  MentionRef,
   ThreadSummary,
   World,
 } from "./types";
@@ -57,6 +58,10 @@ export const getEntries = (worldId: string) =>
   request<Entry[]>(`/worlds/${encodeURIComponent(worldId)}/entries`);
 export const getEntry = (worldId: string, id: string) =>
   request<Entry>(`/worlds/${encodeURIComponent(worldId)}/entries/${encodeURIComponent(id)}`);
+export const getMentions = (worldId: string, id: string) =>
+  request<MentionRef[]>(
+    `/worlds/${encodeURIComponent(worldId)}/entries/${encodeURIComponent(id)}/mentions`,
+  );
 export const createThread = (worldId: string) =>
   request<{ thread_id: string }>("/threads", post({ world_id: worldId }));
 export const getThread = (id: string) => request<ThreadState>(`/threads/${encodeURIComponent(id)}`);

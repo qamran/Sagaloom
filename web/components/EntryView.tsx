@@ -3,17 +3,19 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EntityChip } from "@/components/EntityChip";
 import { FactList } from "@/components/FactList";
-import { ApiError, getEntry } from "@/lib/api";
+import { ApiError, getEntry, getMentions } from "@/lib/api";
 import { TYPE_LABEL, TYPE_PLURAL, TYPE_TEXT } from "@/lib/entity";
 import { importedSections } from "@/lib/imported";
+import { sectionsOf } from "@/lib/sections";
 import { useShowSecrets } from "@/lib/secrets";
 import { markTour } from "@/lib/tour";
 import { useWorld } from "@/lib/world";
 
 const CARD = "rounded-xl border border-border bg-panel-2 px-5 py-[18px]";
 
-/** Basic read-only entry page (R12.11): meta line, body, Facts panel. Entry links are not shown in M1. */
+/** Entry page: meta line, one card per body section, provenance, Facts panel and who mentions it. Entry links are not shown. */
 export function EntryView({ entryId }: { entryId: string }) {
   const { world } = useWorld();
   const [revealed, setRevealed] = useState(false);
@@ -24,6 +26,13 @@ export function EntryView({ entryId }: { entryId: string }) {
     queryFn: () => getEntry(world!.id, entryId),
     enabled: !!world,
     retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 1,
+  });
+
+  const hiddenSecret = entry?.status === "secret" && !worldShown && !revealed;
+  const { data: mentions } = useQuery({
+    queryKey: ["mentions", world?.id, entryId],
+    queryFn: () => getMentions(world!.id, entryId),
+    enabled: !!world && !!entry && !hiddenSecret,
   });
 
   useEffect(() => {
@@ -54,6 +63,14 @@ export function EntryView({ entryId }: { entryId: string }) {
   const typeText = TYPE_TEXT[entry.type];
   const status = entry.status.charAt(0).toUpperCase() + entry.status.slice(1);
   const imported = entry.trusted ? [] : importedSections(entry.body);
+  const importedItems = !entry.trusted && imported.length === 0 ? ["the whole entry"] : imported;
+  const sections = sectionsOf(entry.body);
+  const provenance =
+    entry.source === "user"
+      ? "Source: your notes"
+      : entry.source === "reference"
+        ? "Source: Wikipedia reference"
+        : "Source: official canon";
 
   return (
     <div className="flex flex-wrap items-start gap-7">
@@ -98,11 +115,11 @@ export function EntryView({ entryId }: { entryId: string }) {
                   v{entry.version} · edited {new Date(entry.updated_at).toLocaleDateString("en-GB")}
                 </span>
               </div>
-              {imported.length > 0 && (
+              {importedItems.length > 0 && (
                 <div className="flex flex-col gap-0.5 text-xs">
                   <span className={`uppercase tracking-[1px] ${typeText}`}>Contains imported text</span>
                   <ul className="m-0 flex list-none flex-wrap gap-x-3 p-0 text-muted-foreground">
-                    {imported.map((label, i) => (
+                    {importedItems.map((label, i) => (
                       <li key={i}>{label}</li>
                     ))}
                   </ul>
@@ -110,14 +127,36 @@ export function EntryView({ entryId }: { entryId: string }) {
               )}
             </div>
 
-            <section className={CARD}>
-              <h2 className={`m-0 mb-2 text-xs font-semibold uppercase tracking-[1px] ${typeText}`}>
-                Description
-              </h2>
-              <p className="m-0 whitespace-pre-line font-heading text-[17px] leading-[1.65] text-[#e3dfd5]">
-                {entry.body || "No description yet."}
-              </p>
-            </section>
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              <div>
+                {provenance}
+                {entry.source_url && (
+                  <>
+                    {" · "}
+                    <a href={entry.source_url} target="_blank" rel="noreferrer">
+                      {entry.source_url}
+                    </a>
+                  </>
+                )}
+                {entry.source === "official" && entry.licence && ` · Licence ${entry.licence}`}
+              </div>
+              {!entry.trusted && <div className={`uppercase tracking-[1px] ${typeText}`}>Untrusted source</div>}
+            </div>
+
+            {sections.map((sec, i) => (
+              <section key={i} className={CARD}>
+                <h2
+                  className={`m-0 mb-2 text-xs font-semibold uppercase tracking-[1px] ${
+                    sec.imported ? typeText : "text-muted-foreground"
+                  }`}
+                >
+                  {sec.heading}
+                </h2>
+                <p className="m-0 whitespace-pre-line font-heading text-[17px] leading-[1.65] text-[#e3dfd5]">
+                  {sec.text || (i === 0 ? "No description yet." : "")}
+                </p>
+              </section>
+            ))}
           </>
         )}
       </article>
@@ -136,6 +175,24 @@ export function EntryView({ entryId }: { entryId: string }) {
           <p className="m-0 text-sm text-muted-foreground">Hidden with the entry.</p>
         ) : (
           <FactList facts={entry.facts} />
+        )}
+        {!hidden && (
+          <div className="flex flex-col gap-2 border-t border-border pt-3.5">
+            <h3 className="m-0 text-xs font-semibold uppercase tracking-[1px]">Mentioned in</h3>
+            {mentions && mentions.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {mentions.map((m) =>
+                  m.status === "secret" && !worldShown ? (
+                    <EntityChip key={m.id} type={m.type} name="Secret entry" />
+                  ) : (
+                    <EntityChip key={m.id} type={m.type} name={m.title} href={`/canon/${m.id}`} />
+                  ),
+                )}
+              </div>
+            ) : (
+              mentions && <p className="m-0 text-sm text-muted-foreground">No other entries mention it.</p>
+            )}
+          </div>
         )}
       </aside>
     </div>
