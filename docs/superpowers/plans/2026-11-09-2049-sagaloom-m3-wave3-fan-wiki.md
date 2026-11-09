@@ -257,6 +257,8 @@ Answer these before the task named. Each answer changes one function and its tes
 
 ### Task 3: Page URLs and the shared MediaWiki client (#90, Opus 5.5)
 
+Added by the M3 Wave 1 review (triaged here, because this task touches the shared HTTP and LLM error paths): tighten `api/tests/test_llm.py::test_an_in_band_client_error_is_left_as_it_was`. Assert `not isinstance(exc, TRANSIENT_API_ERRORS)` and the exact type for each path (`ValueError` plain, `TypeError` structured, bare `openai.APIError` streamed).
+
 **Files:**
 - Create: `api/sagaloom/wiki/pages.py`, `api/tests/wiki/test_pages.py`, `api/tests/fixtures/wiki_urls.json` (shared test vectors; Task 8 reads them too), `api/tests/wiki/test_live.py`
 - Modify: `api/sagaloom/wiki/client.py`, `api/sagaloom/web/app.py` (`await deps.wiki.aclose()` in `_open_runtime`'s `finally`)
