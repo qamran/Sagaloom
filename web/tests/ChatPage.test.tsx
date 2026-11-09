@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewChat from "@/app/chat/page";
 import { ChatThread } from "@/components/ChatThread";
-import { createThread, forgetMemory, getReviewThreads, getSettings, getThread } from "@/lib/api";
+import { createThread, forgetMemory, getLlmLog, getReviewThreads, getSettings, getThread } from "@/lib/api";
+import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { SettingsPayload, ThreadSummary } from "@/lib/types";
 
 const summary = (thread_id: string, world_id: string, pending: number): ThreadSummary => ({
@@ -42,6 +43,7 @@ beforeEach(() => {
   replace.mockReset();
   vi.mocked(createThread).mockReset().mockResolvedValue({ thread_id: "t_new" });
   vi.mocked(getReviewThreads).mockReset();
+  vi.mocked(getLlmLog).mockReset().mockResolvedValue([]);
 });
 
 describe("/chat", () => {
@@ -245,5 +247,50 @@ describe("/chat/[threadId]", () => {
     );
     await userEvent.click(await screen.findByRole("button", { name: /Undo/ }));
     expect(forgetMemory).toHaveBeenCalledWith("w_other", "tone", "grim");
+  });
+
+  it("masks Under the hood by the thread's world: another world's toggle does not reveal it", async () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true"); // the active world's toggle is on
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1",
+      kind: "chat",
+      title: null,
+      world_id: "w2",
+      messages: [{ role: "user", content: "hi" }],
+      pending_interrupt: null,
+      usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    } as never);
+    vi.mocked(getLlmLog).mockResolvedValue([
+      {
+        id: "c1",
+        thread_id: "t1",
+        run_id: "r1",
+        provider: "openrouter",
+        model: "m",
+        role: "judge",
+        params: {},
+        request: {
+          messages: [
+            { role: "user", content: '<untrusted_data source="ent_0003">\n- Sings: Yes [secret]\n</untrusted_data>' },
+          ],
+          tools: [],
+        },
+        response: null,
+        started_at: "",
+      },
+    ]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatThread threadId="t1" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("hi");
+    await userEvent.click(screen.getByRole("button", { name: "Under the hood" }));
+    const drawer = await screen.findByRole("complementary", { name: "Under the hood" });
+    const wrapped = await within(drawer).findByTestId("untrusted");
+    expect(wrapped).toHaveTextContent("[secret fact hidden]");
+    expect(wrapped).not.toHaveTextContent("Sings: Yes");
+    expect(within(drawer).getByRole("button", { name: "Show secrets" })).toHaveAttribute("aria-pressed", "false");
   });
 });

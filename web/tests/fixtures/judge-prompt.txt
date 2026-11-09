@@ -1,0 +1,67 @@
+# Proposal (a change to entry ent_0003)
+Facts marked [myth] or [rumour] are in-world beliefs, not facts about the world.
+<untrusted_data source="proposal">
+Title: Mayor Elsbeth Varr
+Type: character
+Entry status: canon
+Aliases: Elsbeth Varr, the Mayor
+Facts:
+- Role: Mayor of Velmar and chair of the Harbour Council [canon]
+- Age: 60 [canon]
+- Sings with the Ashen Choir: Yes, at every full Ister [secret]
+Body:
+Elsbeth Varr, aged fifty-four, has been mayor of Velmar for eleven years and chairs the Harbour Council. She is calm, careful and rarely seen on the quay after dark.
+</untrusted_data>
+
+# Pass 1: candidate fact pairs (same key)
+## Pairs with entry ent_0003
+<untrusted_data source="ent_0003">
+Proposed: Role: Mayor of Velmar and chair of the Harbour Council [canon]
+Existing: Role: Mayor of Velmar and chair of the Harbour Council [canon] (entry status: canon)
+Proposed: Age: 60 [canon]
+Existing: Age: 54 [canon] (entry status: canon)
+Proposed: Sings with the Ashen Choir: Yes, at every full Ister [secret]
+Existing: Sings with the Ashen Choir: Yes, at every full Ister [secret] (entry status: canon)
+</untrusted_data>
+
+# Pass 2: related entries (all facts, then prose)
+## Entry ent_0002
+<untrusted_data source="ent_0002">
+Title: The Harbour Council
+Type: faction
+Entry status: canon
+Aliases: the Council
+Facts:
+- Seats: Seven [canon]
+- Meets at: The Tidehall [canon]
+- Chaired by: Mayor Elsbeth Varr [canon]
+Body:
+The Harbour Council runs Velmar. Seven seats are held by elected harbour-wardens, and it meets in the Tidehall. Mayor Elsbeth Varr chairs it. The Salt Guild holds two of the seven seats and enforces the Law of Lanterns on its behalf.
+</untrusted_data>
+## Entry ent_0003
+<untrusted_data source="ent_0003">
+Title: Mayor Elsbeth Varr
+Type: character
+Entry status: canon
+Aliases: Elsbeth Varr, the Mayor
+Facts:
+- Role: Mayor of Velmar and chair of the Harbour Council [canon]
+- Age: 54 [canon]
+- Sings with the Ashen Choir: Yes, at every full Ister [secret]
+Body:
+Elsbeth Varr, aged fifty-four, has been mayor of Velmar for eleven years and chairs the Harbour Council. She is calm, careful and rarely seen on the quay after dark.
+</untrusted_data>
+## Entry ent_0019
+<untrusted_data source="ent_0019">
+Title: The Choir Ledger
+Type: item
+Entry status: secret
+Facts:
+- Kept in: Ilsa Corran's crypt below the Tidehall [canon]
+- Lists: Every member of the Ashen Choir [canon]
+- Written in: A cipher of moon phases [canon]
+Body:
+The Choir Ledger is a book kept in Ilsa Corran's crypt below the Tidehall. It lists every singer of the Ashen Choir, and Mayor Elsbeth Varr is among them. It is written in a cipher of moon phases.
+</untrusted_data>
+
+Report every contradiction between the proposal and these entries as a JudgeOutput. Use only the entry IDs listed above.

@@ -69,6 +69,7 @@ describe("useImport", () => {
     await waitFor(() => expect(result.current.candidates).toBe(2));
     expect(result.current.phase).toBe("extracting");
     expect(result.current.skipped).toBe(1);
+    expect(result.current.worldId).toBe("w1"); // the drawer's secrets follow the import's world
     release();
     await act(async () => {
       await p;

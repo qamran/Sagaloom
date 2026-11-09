@@ -23,7 +23,13 @@ export default function ImportPage() {
         </p>
       )}
       {running && (
-        <ImportProgress phase={run.phase} candidates={run.candidates} skipped={run.skipped} events={run.events} />
+        <ImportProgress
+          phase={run.phase}
+          candidates={run.candidates}
+          skipped={run.skipped}
+          events={run.events}
+          worldId={run.worldId ?? undefined}
+        />
       )}
       {/* Hidden, not unmounted, while running: a failed import keeps the pasted text and the chosen file. */}
       <div hidden={running}>

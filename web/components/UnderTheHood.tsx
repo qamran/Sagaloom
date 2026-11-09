@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { maskPrompt } from "@/lib/maskSecrets";
+import { useShowSecrets } from "@/lib/secrets";
 import type { LlmCall, NodeStep, TurnView } from "@/lib/turns";
 import type { PromptMessage } from "@/lib/types";
 
 const LABEL = "text-[11px] uppercase tracking-[0.9px] text-muted-foreground";
 const UNTRUSTED = /(<untrusted_data[^>]*>[\s\S]*?<\/untrusted_data>)/g;
+
+const MASKED_RESPONSE = "Hidden: this call saw secret facts. Choose Show secrets to read it.";
 
 const n = (v: number) => v.toLocaleString("en-US");
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -50,21 +54,32 @@ const ROLE_LABEL: Record<string, string> = {
 };
 const ROLE_COLOR: Record<string, string> = { system: "text-myth", user: "text-[#9FE0BF]", assistant: "text-[#a9d3ff]" };
 
-function Messages({ call }: { call: LlmCall }) {
+/** One call's message texts as shown: masked while secrets are hidden, and how many lines were. */
+function useShownTexts(call: LlmCall, hidden: boolean): { texts: string[]; masked: number } {
+  return useMemo(() => {
+    const raw = call.messages.map((m) => textOf(m.content));
+    if (!hidden) return { texts: raw, masked: 0 };
+    const out = raw.map(maskPrompt);
+    return { texts: out.map((o) => o.text), masked: out.reduce((a, o) => a + o.masked, 0) };
+  }, [call.messages, hidden]);
+}
+
+function Messages({ call, texts }: { call: LlmCall; texts: string[] }) {
   // System first; the rest keep the order they were sent in.
-  const ordered: PromptMessage[] = [
-    ...call.messages.filter((m) => m.role === "system"),
-    ...call.messages.filter((m) => m.role !== "system"),
+  const indexed = call.messages.map((m, i): [PromptMessage, string] => [m, texts[i]]);
+  const ordered = [
+    ...indexed.filter(([m]) => m.role === "system"),
+    ...indexed.filter(([m]) => m.role !== "system"),
   ];
   return (
     <section aria-label="Request" className="flex flex-col gap-2 bg-[#101314] px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]">
-      {ordered.map((m, i) => (
+      {ordered.map(([m, text], i) => (
         <div key={i}>
           <span data-testid="message-role" className={ROLE_COLOR[m.role] ?? "text-foreground"}>
             {m.role}
           </span>
           {m.name && <span className="text-muted-foreground"> · {m.name}</span>}
-          <Content text={textOf(m.content)} />
+          <Content text={text} />
           {m.tool_calls?.map((c, j) => (
             <div key={j} className="text-[#9FE0BF]">
               {c.name}({JSON.stringify(c.args)})
@@ -112,8 +127,30 @@ const requestJson = (call: LlmCall) => ({
   request: { messages: call.messages, tools: call.tools },
 });
 
-function CallCard({ call, index, defaultOpen }: { call: LlmCall; index: number; defaultOpen: boolean }) {
+function MaskedResponse() {
+  return (
+    <section aria-label="Response" className="bg-[#101314] px-3 py-2.5 text-xs text-muted-foreground">
+      {MASKED_RESPONSE}
+    </section>
+  );
+}
+
+function CallCard({
+  call,
+  index,
+  defaultOpen,
+  hidden,
+}: {
+  call: LlmCall;
+  index: number;
+  defaultOpen: boolean;
+  /** Whether secrets are hidden: the request's secret lines are masked, the record is not. */
+  hidden: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen);
+  const { texts, masked } = useShownTexts(call, hidden);
+  // The judge's reply has no markers, so a call that saw a secret hides its whole response.
+  const veiled = masked > 0;
   const [tab, setTab] = useState<"Request" | "Response" | "Raw JSON">("Request");
   const [copyError, setCopyError] = useState(false);
   const r = call.response;
@@ -185,9 +222,14 @@ function CallCard({ call, index, defaultOpen }: { call: LlmCall; index: number; 
               </button>
             ))}
           </div>
-          {tab === "Request" && <Messages call={call} />}
-          {tab === "Response" && <Response call={call} />}
-          {tab === "Raw JSON" && (
+          {tab === "Request" && <Messages call={call} texts={texts} />}
+          {tab === "Response" && (veiled ? <MaskedResponse /> : <Response call={call} />)}
+          {tab === "Raw JSON" && veiled && (
+            <pre data-testid="raw-json" className="m-0 bg-[#101314] px-3 py-2.5 text-xs text-muted-foreground">
+              {MASKED_RESPONSE}
+            </pre>
+          )}
+          {tab === "Raw JSON" && !veiled && (
             <pre
               data-testid="raw-json"
               className="m-0 max-h-[360px] overflow-auto whitespace-pre-wrap bg-[#101314] px-3 py-2.5 font-mono text-[11px] text-[#c9c6bd]"
@@ -218,17 +260,22 @@ function PathStep({ node }: { node: NodeStep }) {
 }
 
 /** The Under the hood drawer (R20.3): graph path, tool calls and every prompt sent to OpenRouter
- * for one turn. API keys never reach this data: the prompt log is redacted on the server. */
+ * for one turn. API keys never reach this data: the prompt log is redacted on the server.
+ * Secrets are masked on screen until `worldId`'s Show secrets is on; Copy stays verbatim. */
 export function UnderTheHood({
   turn,
   onClose,
   threadId,
+  worldId,
 }: {
   turn: TurnView;
   onClose: () => void;
   threadId?: string;
+  /** The world the turn's content belongs to (the thread's or import's), not the active one. */
+  worldId?: string;
 }) {
   const [copyError, setCopyError] = useState(false);
+  const [showSecrets, setShowSecrets] = useShowSecrets(worldId);
   const totals = turn.calls.reduce(
     (a, c) => ({ cost: a.cost + (c.response?.cost_usd ?? 0), ms: a.ms + (c.response?.latency_ms ?? 0) }),
     { cost: 0, ms: 0 },
@@ -258,8 +305,18 @@ export function UnderTheHood({
         </span>
         <button
           type="button"
+          aria-pressed={showSecrets}
+          onClick={() => setShowSecrets(!showSecrets)}
+          className={`ml-auto min-h-8 rounded-lg border px-2.5 text-xs ${
+            showSecrets ? "border-conflict text-conflict" : "border-border-strong text-muted-foreground"
+          }`}
+        >
+          Show secrets
+        </button>
+        <button
+          type="button"
           onClick={() => void copyTurn()}
-          className="ml-auto min-h-8 rounded-lg border border-border-strong px-2.5 text-xs text-foreground"
+          className="min-h-8 rounded-lg border border-border-strong px-2.5 text-xs text-foreground"
         >
           Copy turn as JSON
         </button>
@@ -327,13 +384,14 @@ export function UnderTheHood({
         <div className="flex flex-col gap-2">
           <div className={LABEL}>Prompts sent to OpenRouter</div>
           <p className="m-0 text-xs text-muted-foreground">
-            Prompts are shown verbatim as sent and may contain secret facts.
+            Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON
+            copies the full record.
           </p>
           {turn.calls.length === 0 && (
             <p className="m-0 text-xs text-muted-foreground">No model calls in this turn yet.</p>
           )}
           {turn.calls.map((c, i) => (
-            <CallCard key={c.id} call={c} index={i} defaultOpen={i === 0} />
+            <CallCard key={c.id} call={c} index={i} defaultOpen={i === 0} hidden={!showSecrets} />
           ))}
         </div>
         <p className="m-0 text-[11px] text-muted-foreground">

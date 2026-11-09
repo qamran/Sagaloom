@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UnderTheHood } from "@/components/UnderTheHood";
+import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { TurnView } from "@/lib/turns";
 
 const WRAPPED = '<untrusted_data source="ent_0012">Ister, the red moon.</untrusted_data>';
@@ -53,9 +54,13 @@ describe("UnderTheHood", () => {
     );
   });
 
-  it("warns that prompts are shown verbatim and may contain secret facts", () => {
+  it("says prompts are recorded as sent and secrets are hidden on screen", () => {
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
-    expect(screen.getByText("Prompts are shown verbatim as sent and may contain secret facts.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON copies the full record.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows system prompt, highlights untrusted_data, collapses tool schemas", () => {
@@ -121,5 +126,93 @@ describe("UnderTheHood", () => {
     second.unmount();
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
     expect(screen.getByText("Agent")).toBeInTheDocument();
+  });
+
+  describe("secrets", () => {
+    const SECRET_BLOCK =
+      '<untrusted_data source="ent_0003">\nTitle: Mayor Elsbeth Varr\n- Age: 54 [canon]\n- Sings with the Ashen Choir: Yes, at every full Ister [secret]\n</untrusted_data>';
+    const HIDDEN = "Hidden: this call saw secret facts. Choose Show secrets to read it.";
+    const secretTurn: TurnView = {
+      ...turn,
+      calls: [
+        {
+          ...turn.calls[0],
+          role: "judge",
+          messages: [{ role: "user", content: `# Proposal\n${SECRET_BLOCK}` }],
+          response: { ...turn.calls[0].response!, content: "The Mayor sings with the Ashen Choir." },
+        },
+      ],
+    };
+
+    async function tabs() {
+      const user = userEvent.setup();
+      const request = screen.getByRole("region", { name: "Request" });
+      const req = request.textContent ?? "";
+      await user.click(screen.getByRole("button", { name: "Response" }));
+      const res = screen.getByRole("region", { name: "Response" }).textContent ?? "";
+      await user.click(screen.getByRole("button", { name: "Raw JSON" }));
+      const raw = screen.getByTestId("raw-json").textContent ?? "";
+      await user.click(screen.getByRole("button", { name: "Request" }));
+      return { req, res, raw };
+    }
+
+    it("masks secret lines in the request, and the response and raw JSON, while hidden", async () => {
+      render(<UnderTheHood turn={secretTurn} worldId="w1" onClose={() => {}} />);
+      const request = screen.getByRole("region", { name: "Request" });
+      const wrapped = within(request).getByTestId("untrusted");
+      expect(wrapped).toHaveTextContent("[secret fact hidden]");
+      expect(wrapped).toHaveTextContent("- Age: 54 [canon]");
+      expect(wrapped).toHaveTextContent("<untrusted_data");
+      const { req, res, raw } = await tabs();
+      expect(req).not.toContain("Ashen Choir");
+      expect(res).toBe(HIDDEN);
+      expect(raw).toBe(HIDDEN);
+    });
+
+    it("shows all three tabs verbatim after the drawer's Show secrets, which is the world's toggle", async () => {
+      render(<UnderTheHood turn={secretTurn} worldId="w1" onClose={() => {}} />);
+      const toggle = screen.getByRole("button", { name: "Show secrets" });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      expect(sessionStorage.getItem(SHOW_SECRETS_KEY("w1"))).toBe("true");
+      const { req, res, raw } = await tabs();
+      expect(req).toContain("Sings with the Ashen Choir: Yes, at every full Ister [secret]");
+      expect(req).not.toContain("[secret fact hidden]");
+      expect(res).toContain("The Mayor sings with the Ashen Choir.");
+      expect(raw).toContain("Yes, at every full Ister");
+      expect(raw).toContain("The Mayor sings with the Ashen Choir.");
+    });
+
+    it("follows its own world's toggle, not another world's", () => {
+      sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+      render(<UnderTheHood turn={secretTurn} worldId="w2" onClose={() => {}} />);
+      expect(screen.getByRole("region", { name: "Request" })).not.toHaveTextContent("Ashen Choir");
+    });
+
+    it("copies the verbatim record whether secrets are hidden or shown", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.fn(async () => {});
+      stubClipboard(writeText);
+      render(<UnderTheHood turn={secretTurn} worldId="w1" onClose={() => {}} />);
+      await user.click(screen.getByRole("button", { name: "Copy as JSON" }));
+      await user.click(screen.getByRole("button", { name: "Copy turn as JSON" }));
+      await user.click(screen.getByRole("button", { name: "Show secrets" }));
+      await user.click(screen.getByRole("button", { name: "Copy as JSON" }));
+      const copies = writeText.mock.calls.map((c) => (c as unknown as [string])[0]);
+      expect(copies).toHaveLength(3);
+      for (const c of copies) {
+        expect(c).toContain("Yes, at every full Ister [secret]");
+        expect(c).not.toContain("[secret fact hidden]");
+      }
+      expect(copies[1]).toContain("The Mayor sings with the Ashen Choir.");
+    });
+
+    it("shows the response of a call with no secrets while hidden", async () => {
+      render(<UnderTheHood turn={turn} worldId="w1" onClose={() => {}} />);
+      await userEvent.click(screen.getByRole("button", { name: "Response" }));
+      expect(screen.getByText("No conflict.")).toBeInTheDocument();
+      expect(screen.queryByText(HIDDEN)).toBeNull();
+    });
   });
 });

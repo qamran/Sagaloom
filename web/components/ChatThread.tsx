@@ -122,6 +122,8 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   }, [threadId, setThreadId]);
 
   const worldId = s.pending?.proposals[0]?.world_id ?? world?.id;
+  // The drawer's secrets follow the thread's world (R4); undefined (always hidden) until it is known.
+  const hoodWorld = s.worldId ?? undefined;
   const { data: canon } = useQuery({
     queryKey: ["entries", worldId],
     queryFn: () => getEntries(worldId as string),
@@ -302,7 +304,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
     </main>
     {hood &&
       (shown ? (
-        <UnderTheHood turn={shown} threadId={threadId} onClose={() => setHood(false)} />
+        <UnderTheHood turn={shown} threadId={threadId} worldId={hoodWorld} onClose={() => setHood(false)} />
       ) : (
         <aside aria-label="Under the hood" className="w-full border-t border-[#3A3355] bg-[#14181A] p-[18px] md:max-w-[600px] md:flex-[1_1_560px] md:border-t-0 md:border-l">
           <h2 className="m-0 font-heading text-xl font-semibold">Under the hood</h2>

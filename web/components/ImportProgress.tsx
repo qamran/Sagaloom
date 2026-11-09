@@ -12,11 +12,14 @@ export function ImportProgress({
   candidates,
   skipped,
   events,
+  worldId,
 }: {
   phase: ImportPhase;
   candidates: number | null;
   skipped: number | null;
   events: SseEvent[];
+  /** The world being imported into: the drawer's secrets follow it. */
+  worldId?: string;
 }) {
   const [hood, setHood] = useState(false);
   return (
@@ -46,7 +49,13 @@ export function ImportProgress({
           Under the hood
         </button>
       </div>
-      {hood && <UnderTheHood turn={viewFromEvents({ turn: 1, kind: "message", events })} onClose={() => setHood(false)} />}
+      {hood && (
+        <UnderTheHood
+          turn={viewFromEvents({ turn: 1, kind: "message", events })}
+          worldId={worldId}
+          onClose={() => setHood(false)}
+        />
+      )}
     </section>
   );
 }

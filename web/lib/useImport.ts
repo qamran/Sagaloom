@@ -15,6 +15,8 @@ export interface ImportRun {
   skipped: number | null;
   /** The run's `node`, `llm_*`, `tool_result`, `interrupt` and `usage` events, for Under the hood. */
   events: SseEvent[];
+  /** The world the running (or last) import writes into, so its drawer follows that world's secrets. */
+  worldId: string | null;
   error: string | null;
   start: (worldId: string, body: { text: string; filename?: string }) => Promise<void>;
 }
@@ -30,6 +32,7 @@ export function useImport(): ImportRun {
   const [candidates, setCandidates] = useState<number | null>(null);
   const [skipped, setSkipped] = useState<number | null>(null);
   const [events, setEvents] = useState<SseEvent[]>([]);
+  const [worldId, setWorldId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -45,6 +48,7 @@ export function useImport(): ImportRun {
       setCandidates(null);
       setSkipped(null);
       setEvents([]);
+      setWorldId(worldId);
       setError(null);
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -117,5 +121,5 @@ export function useImport(): ImportRun {
     [qc, router],
   );
 
-  return { phase, candidates, skipped, events, error, start };
+  return { phase, candidates, skipped, events, worldId, error, start };
 }

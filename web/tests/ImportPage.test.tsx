@@ -13,7 +13,7 @@ let run: ImportRun;
 vi.mock("@/lib/useImport", () => ({ useImport: () => run }));
 
 const runOf = (over: Partial<ImportRun> = {}): ImportRun => ({
-  phase: "idle", candidates: null, skipped: null, events: [], error: null, start: vi.fn(async () => undefined), ...over,
+  phase: "idle", candidates: null, skipped: null, events: [], worldId: null, error: null, start: vi.fn(async () => undefined), ...over,
 });
 
 beforeEach(() => {
