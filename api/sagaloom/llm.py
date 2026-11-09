@@ -1,6 +1,9 @@
 import warnings
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
+import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from sagaloom.config import GEMINI_MODEL, Settings
@@ -23,11 +26,44 @@ def install_warning_filters() -> None:
     )
 
 
+def _in_band_error(body: Any) -> dict | None:
+    """The provider error in an OpenRouter body that is an error, not a completion: an `error`
+    object with no `choices`. None for anything else."""
+    if not isinstance(body, dict) or body.get("choices"):
+        return None
+    err = body.get("error")
+    return err if isinstance(err, dict) and err else None
+
+
+def _provider_error(err: dict, url: Any) -> openai.InternalServerError:
+    """An in-band provider error as the 502 it stands for, so every caller treats it as a
+    transient API error (TRANSIENT_API_ERRORS). The provider's message, code and metadata stay in
+    the text and the body."""
+    text = (
+        f"OpenRouter in-band provider error (code {err.get('code')}): "
+        f"{err.get('message') or 'no message'}; metadata={err.get('metadata')}"
+    )
+    response = httpx.Response(502, request=httpx.Request("POST", str(url)))
+    return openai.InternalServerError(text, response=response, body=err)
+
+
 class OpenRouterChat(ChatOpenAI):
-    """ChatOpenAI that keeps OpenRouter's raw `usage` (including the real `cost`) on streamed
-    calls. langchain-openai turns `chunk["usage"]` into token counts only, so the cost is lost
-    (R12); here it is also copied to `response_metadata["token_usage"]`, where the non-streamed
-    path already puts it and where `extract_usage` and the prompt log look."""
+    """ChatOpenAI with two OpenRouter fixes.
+
+    It keeps OpenRouter's raw `usage` (including the real `cost`) on streamed calls.
+    langchain-openai turns `chunk["usage"]` into token counts only, so the cost is lost (R12);
+    here it is also copied to `response_metadata["token_usage"]`, where the non-streamed path
+    already puts it and where `extract_usage` and the prompt log look.
+
+    It turns an in-band provider error (HTTP 200 whose body is `{"error": {...}, "choices": null}`)
+    into `openai.InternalServerError`, so the guard and router retry it, the judge fails closed
+    and the extractor counts a failed attempt. No single seam sees every shape, so three do:
+    - `_create_chat_result`: a plain non-streamed call, before langchain raises a bare ValueError;
+    - `_agenerate`: a structured non-streamed call, where openai's `parse` fails with a TypeError
+      on `choices=None` and langchain attaches the raw response to the exception;
+    - `_astream`: any streamed call, where openai's SSE reader raises a bare `openai.APIError`
+      carrying the error object as its body.
+    Async only: nothing in the app calls a chat model synchronously."""
 
     def _convert_chunk_to_generation_chunk(self, chunk, default_chunk_class, base_generation_info):
         gen = super()._convert_chunk_to_generation_chunk(
@@ -36,6 +72,43 @@ class OpenRouterChat(ChatOpenAI):
         if gen is not None and chunk.get("usage"):
             gen.message.response_metadata["token_usage"] = dict(chunk["usage"])
         return gen
+
+    def _chat_url(self) -> str:
+        return f"{(self.openai_api_base or '').rstrip('/')}/chat/completions"
+
+    def _create_chat_result(self, response: Any, generation_info: dict | None = None):
+        # Read the two fields only: dumping a structured completion would warn about `parsed`.
+        body = response if isinstance(response, dict) else {
+            "error": getattr(response, "error", None), "choices": getattr(response, "choices", None)
+        }
+        if (err := _in_band_error(body)) is not None:
+            raise _provider_error(err, self._chat_url())
+        return super()._create_chat_result(response, generation_info)
+
+    async def _agenerate(self, *args: Any, **kwargs: Any):
+        try:
+            return await super()._agenerate(*args, **kwargs)
+        except openai.APIError:
+            raise
+        except Exception as exc:
+            raw = getattr(exc, "response", None)
+            try:
+                body = raw.json() if raw is not None else None
+            except Exception:
+                body = None
+            if (err := _in_band_error(body)) is not None:
+                raise _provider_error(err, raw.request.url) from exc
+            raise
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator:
+        try:
+            async for chunk in super()._astream(*args, **kwargs):
+                yield chunk
+        except openai.APIError as exc:
+            # Only the bare class: its subclasses are real HTTP status and connection errors.
+            if type(exc) is openai.APIError and isinstance(exc.body, dict):
+                raise _provider_error(exc.body, exc.request.url) from exc
+            raise
 
 
 def make_chat_model(
