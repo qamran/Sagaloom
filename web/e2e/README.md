@@ -53,7 +53,7 @@ With the drawer open there are two buttons named **Show secrets**, so the step s
 
 The Wave 8 step (34) asks in a new thread "Delete the Ashen Choir." If the agent proposes no delete, the step fails and
 prints its reply. On the seed the Mayor (`ent_0003`) is the only entry tied to the Choir by a link alone, and her link
-is secret, so with secrets hidden the delete card must contain `and 1 linked entry` and must not contain `Elsbeth`.
+is secret, so with secrets hidden the delete card must contain `and 1 linked entry` and must contain `Secret entry` (The Choir Ledger) but not `Elsbeth`.
 Entries that name the Choir in their text are listed (The Choir Ledger as a `Secret entry` chip). The header's
 **Show secrets** makes the card name `Mayor Elsbeth Varr`; the step hides secrets again and clicks **Reject**. It
 asserts text, not layout.

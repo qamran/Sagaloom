@@ -581,6 +581,7 @@ test("M1 exit demo", async ({ page }) => {
   await expect(deleteCard).toBeVisible();
   await expect(deleteCard).toContainText("and 1 linked entry");
   await expect(deleteCard).not.toContainText("Elsbeth");
+  await expect(deleteCard).toContainText("Secret entry");
   // The world's Show secrets (in the header) names her, and the card follows it.
   await headerSecrets.click();
   await expect(headerSecrets).toHaveAttribute("aria-pressed", "true");
