@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-// The exit demo (M1, then Waves 1 to 4), end to end, against the real seed and real models.
+// The exit demo (M1, then Waves 1 to 5 and 7), end to end, against the real seed and real models.
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
 const scripted: { name: string; draft: { body: string } }[] = JSON.parse(fs.readFileSync(SEED, "utf-8"));
 const SORN_TEXT = scripted.find((s) => s.name === "captain_sorn")!.draft.body;
@@ -21,6 +21,19 @@ async function send(page: Page, text: string) {
 test("M1 exit demo", async ({ page }) => {
   // 1. Canon: Sky of Velmar shows its Moons fact.
   await page.goto("/canon");
+  // Wave 7 (step 33a): checked here, while the data is still fresh. Later steps commit entries, so the counts
+  // only match the seed now. The header's Show secrets reveals the one secret entry, the Choir Ledger.
+  const entryLinks = page.getByRole("navigation", { name: "Entries" }).getByRole("link");
+  const headerSecrets = page.getByRole("banner").getByRole("button", { name: "Show secrets", exact: true });
+  await expect(entryLinks).toHaveCount(18);
+  await expect(entryLinks.filter({ hasText: "The Choir Ledger" })).toHaveCount(0);
+  await headerSecrets.click();
+  await expect(headerSecrets).toHaveAttribute("aria-pressed", "true");
+  await expect(entryLinks).toHaveCount(19);
+  await expect(entryLinks.filter({ hasText: "The Choir Ledger" })).toHaveCount(1);
+  await headerSecrets.click();
+  await expect(headerSecrets).toHaveAttribute("aria-pressed", "false");
+  await expect(entryLinks).toHaveCount(18);
   await page.getByRole("link", { name: /Sky of Velmar/ }).first().click();
   await expect(page.getByRole("region", { name: "Facts" }).or(page.getByLabel("Facts"))).toContainText("Moons");
 
@@ -466,4 +479,73 @@ test("M1 exit demo", async ({ page }) => {
     await page.goto(`/canon/${skyEntry}`);
     await expect(page.getByText("Contains imported text")).toBeVisible();
   }
+
+  // ---- Wave 7: canon secrets (step 33a, the Entries count, runs in step 1 on fresh data) ----
+  // All in this page: Show secrets lives in sessionStorage, so it is per tab.
+  const SECRET_VALUE = "Yes, at every full Ister";
+
+  // 33b. The Mayor's secret fact is masked, and the secret Choir Ledger mentions her as "Secret entry".
+  await page.goto("/canon/ent_0003");
+  const mayorFacts = page.getByLabel("Facts");
+  await expect(mayorFacts.getByText("Secret fact", { exact: true })).toBeVisible();
+  await expect(mayorFacts.getByRole("button", { name: "Show secret fact" })).toBeVisible();
+  await expect(mayorFacts).not.toContainText(SECRET_VALUE);
+  await expect(mayorFacts.getByText("Secret entry", { exact: true })).toBeVisible();
+  await expect(mayorFacts).not.toContainText("The Choir Ledger");
+
+  // 33c. A change to the Mayor: the judge's request holds her secret fact, masked until the drawer's Show secrets.
+  await newThread();
+  await send(page, "Mayor Elsbeth Varr is sixty years old.");
+  await settle(page);
+  if ((await anyProposal(page).count()) === 0) {
+    throw new Error(`the agent did not propose the Mayor's change. Its reply: ${await log(page).innerText()}`);
+  }
+  await expect(card(page, "Mayor Elsbeth Varr")).toBeVisible();
+  await page.getByRole("button", { name: "Under the hood" }).click();
+  const hood = page.getByRole("complementary", { name: "Under the hood" });
+  const hoodSecrets = hood.getByRole("button", { name: "Show secrets", exact: true });
+  // Find the judge call whose request was masked, as step 7 finds the judge turn: search the call cards.
+  const judgeCalls = hood.getByRole("button", { name: /Contradiction judge/ });
+  const hoodTurns = page.getByLabel("Turn shown in Under the hood");
+  let maskedRequest: Locator | undefined;
+  // The turn picker only appears once a thread has more than one turn; this new thread has one.
+  const turnOptions = await hoodTurns.locator("option").count();
+  for (let i = Math.max(turnOptions, 1) - 1; i >= 0 && !maskedRequest; i--) {
+    if (turnOptions > 0) await hoodTurns.selectOption({ index: i });
+    if (!(await judgeCalls.first().waitFor({ timeout: 5_000 }).then(() => true, () => false))) continue;
+    for (let j = 0; j < (await judgeCalls.count()); j++) {
+      const call = judgeCalls.nth(j);
+      if ((await call.getAttribute("aria-expanded")) !== "true") await call.click();
+      const request = call.locator("xpath=..").getByRole("region", { name: "Request" });
+      await expect(request).toBeVisible();
+      if (((await request.textContent()) ?? "").includes("[secret fact hidden]")) {
+        maskedRequest = request;
+        break;
+      }
+    }
+  }
+  if (!maskedRequest) throw new Error("no Contradiction judge call in this thread has a masked request");
+  await expect(maskedRequest).not.toContainText(SECRET_VALUE);
+  await hoodSecrets.click();
+  await expect(hoodSecrets).toHaveAttribute("aria-pressed", "true");
+  await expect(maskedRequest).toContainText(SECRET_VALUE);
+  await expect(maskedRequest).not.toContainText("[secret fact hidden]");
+  await hoodSecrets.click();
+  await expect(hoodSecrets).toHaveAttribute("aria-pressed", "false");
+  await expect(maskedRequest).toContainText("[secret fact hidden]");
+  // The model may draft more than the one change: reject every card.
+  await rejectAll(page);
+  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+
+  // 33d. @ suggests entries: picking Ister puts its title in the box (plain text, nothing is sent).
+  const box = page.getByLabel("Message Sagaloom");
+  await box.fill("@Ister");
+  await page
+    .getByRole("listbox", { name: "Entry suggestions" })
+    .getByRole("option")
+    .filter({ hasText: "Ister, the red moon" })
+    .click();
+  await expect(box).toHaveValue("Ister, the red moon ");
+  await box.fill("");
+  await expect(box).toHaveValue("");
 });
