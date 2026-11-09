@@ -1,4 +1,5 @@
 from sagaloom.check.myth import apply_save_as_myth
+from sagaloom.check.retcon import detect_retcons
 from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Flag, Proposal
 
 BEFORE = Entry(
@@ -113,8 +114,6 @@ def test_save_as_myth_two_removed_keys_test_the_union_of_their_values():
         title="Sky of Velmar", type="place", body="Three moons.",
         facts=[Fact(key="Night sky", value="One (Ister)"), Fact(key="Number of moons", value="Three")],
     )
-    from sagaloom.check.retcon import detect_retcons
-
     flags = detect_retcons(before, after)
     assert sorted(f.fact_key for f in flags if f.new_fact is None) == ["Moons", "Tide"]
     p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0007", before=before, after=after)
@@ -137,8 +136,6 @@ def test_dropping_one_value_of_a_kept_key_is_not_a_removed_key():
         title="The Ashen Choir", type="faction", body="A choir.",
         facts=[Fact(key="Members", value="About sixty"), Fact(key="Weather", value="Evening sea fog")],
     )
-    from sagaloom.check.retcon import detect_retcons
-
     flags = detect_retcons(before, after)
     assert [f.new_fact for f in flags] == [None]
     p = Proposal(proposal_id="p1", action="update", world_id="w1", entry_id="ent_0004", before=before, after=after)

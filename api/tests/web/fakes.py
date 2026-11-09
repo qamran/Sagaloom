@@ -201,7 +201,7 @@ class Env:
 
 
 @pytest.fixture
-def make_env(store, tmp_path):
+def make_env(store, tmp_path, aclose_later):
     def build(
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
         guard=None, router=None, extraction=None,
@@ -245,6 +245,7 @@ def make_env(store, tmp_path):
         )
         app = create_app(settings, deps)
         client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)
+        aclose_later(client)
         return Env(client, app, deps, agent, settings)
 
     return build

@@ -13,6 +13,7 @@ from langgraph.store.base import BaseStore
 from pydantic import ValidationError
 
 from sagaloom.config import Settings, load_env_files
+from sagaloom.llm import install_warning_filters
 from sagaloom.locks import KeyedLocks
 from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
@@ -94,6 +95,7 @@ async def _open_runtime(app: FastAPI):
     """Builds Chroma and the graph (unless supplied), then seeds Velmar on first run."""
     deps: AppDeps = app.state.deps
     settings: Settings = app.state.settings
+    install_warning_filters()
     async with AsyncExitStack() as stack:
         if deps.store is None:
             import chromadb

@@ -1497,7 +1497,7 @@ async def test_prompt_record_lists_only_enabled_tools_after_a_toggle(store, tmp_
     from sagaloom.promptlog import PromptLog, PromptLogHandler
 
     current = DevSettings()
-    agent = BindingChat(script=iter([AIMessage(content="one"), AIMessage(content="two")]))
+    agent = BindingChat(script=iter([AIMessage(content="one"), AIMessage(content="two")]), metadata={"role": "agent"})  # as make_model_for stamps it
     roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])),
              "extractor": StubLLM(FactList(facts=[])), "guard": safe_guard(), "router": scripted_router()}
     graph = build_graph(
@@ -1515,7 +1515,7 @@ async def test_prompt_record_lists_only_enabled_tools_after_a_toggle(store, tmp_
     await run(graph, start("again"), cfg())
     names = [{t["function"]["name"] for t in rec.request["tools"]}
              for rec in sorted(log.list("t-rec"), key=lambda r: r.started_at)
-             if rec.role in (None, "agent")]
+             if rec.role == "agent"]
     assert names and "real_world_reference" in names[0]
     assert "real_world_reference" not in names[-1] and "export_world" in names[-1]
 

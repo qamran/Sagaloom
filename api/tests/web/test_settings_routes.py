@@ -61,6 +61,17 @@ async def test_put_null_clears_max_tokens(make_env):
     assert (await env.client.get("/api/settings")).json()["settings"]["agent_max_tokens"] is None
 
 
+async def test_put_null_clears_system_prompt(make_env):
+    env = make_env()
+    await env.client.put("/api/settings", json={"agent_system_prompt": "x"})
+    assert (await env.client.get("/api/settings")).json()["settings"]["agent_system_prompt"] == "x"
+    r = await env.client.put("/api/settings", json={"agent_system_prompt": None})
+    assert r.status_code == 200
+    assert r.json()["settings"]["agent_system_prompt"] is None
+    assert (await env.client.get("/api/settings")).json()["settings"]["agent_system_prompt"] is None
+    assert env.deps.dev_settings.get().agent_system_prompt is None
+
+
 async def test_put_null_temperature_rejected(make_env):
     env = make_env()
     assert (await env.client.put("/api/settings", json={"agent_temperature": None})).status_code == 422

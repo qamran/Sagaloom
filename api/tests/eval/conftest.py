@@ -11,7 +11,11 @@ from pathlib import Path
 import pytest
 from pytest_asyncio import is_async_test
 
+from sagaloom.llm import install_warning_filters
+
 _EVAL_DIR = Path(__file__).resolve().parent
+
+install_warning_filters()
 
 
 def pytest_collection_modifyitems(items):

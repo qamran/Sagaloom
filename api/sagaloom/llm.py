@@ -1,9 +1,25 @@
+import warnings
+
 import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from sagaloom.config import GEMINI_MODEL, Settings
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def install_warning_filters() -> None:
+    """Hides one third-party warning: Pydantic's serializer warning for `parsed`.
+
+    When langchain-openai dumps a `ParsedChatCompletion`, `parsed` holds our structured-output
+    model while the response type is parametrised with none of it, so Pydantic warns on every
+    structured call. The value is the correct one, so only that exact message is ignored; any
+    other serializer warning still shows."""
+    warnings.filterwarnings(
+        "ignore",
+        message=r"Pydantic serializer warnings:\s+PydanticSerializationUnexpectedValue\([^\n]*field_name='parsed'",
+        category=UserWarning,
+    )
 
 
 class OpenRouterChat(ChatOpenAI):

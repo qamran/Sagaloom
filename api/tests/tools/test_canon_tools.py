@@ -1,9 +1,11 @@
 import json
 
+import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
+from pydantic import ValidationError
 
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.models import Entry, Fact
@@ -293,11 +295,8 @@ async def test_messages_injection_is_required(store):
     """Called without the injected messages, the tool must fail, not fail open to user/trusted."""
     ts, *_ = tools_for(store)
     args = {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W}
-    try:
-        out = await call(ts["create_or_update_entry"], args)
-    except Exception:
-        return
-    assert not isinstance(out, Command), "a proposal was made without the turn's messages"
+    with pytest.raises(ValidationError):
+        await call(ts["create_or_update_entry"], args)
 
 
 def test_search_hit_carries_trusted(store):

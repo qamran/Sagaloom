@@ -186,27 +186,41 @@ async def test_openrouter_error_unchanged():
 
     from sagaloom.web.sse import MODEL_UNAVAILABLE, _error_event
 
-    client = httpx.AsyncClient(
+    async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda r: httpx.Response(429, json={"error": {"message": "x"}}))
-    )
-    oa = openai.AsyncOpenAI(api_key="k", base_url="https://openrouter.ai/api/v1", max_retries=0, http_client=client)
-    with pytest.raises(openai.APIStatusError) as info:
-        await oa.chat.completions.create(model="m", messages=[{"role": "user", "content": "hi"}])
+    ) as client:
+        oa = openai.AsyncOpenAI(
+            api_key="k", base_url="https://openrouter.ai/api/v1", max_retries=0, http_client=client
+        )
+        with pytest.raises(openai.APIStatusError) as info:
+            await oa.chat.completions.create(model="m", messages=[{"role": "user", "content": "hi"}])
     ev = _error_event(info.value)
     assert ev["data"] == {"message": MODEL_UNAVAILABLE, "retryable": True}
 
 
-def test_gemini_error_becomes_an_error_event_with_switch_back():
+@pytest.mark.parametrize(
+    "status,copy",
+    [
+        (429, "Gemini's free tier is out of requests right now."),
+        (503, "Gemini is overloaded right now."),
+    ],
+)
+def test_gemini_error_becomes_an_error_event_with_switch_back(status, copy):
     import httpx
     import openai
 
     from sagaloom.web.sse import _error_event
 
     req = httpx.Request("POST", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
-    exc = openai.RateLimitError("x", response=httpx.Response(429, request=req), body=None)
+    response = httpx.Response(status, request=req)
+    exc = (
+        openai.RateLimitError("x", response=response, body=None)
+        if status == 429
+        else openai.InternalServerError("x", response=response, body=None)
+    )
     ev = _error_event(exc)
     assert ev["event"] == "error"
-    assert ev["data"]["message"] == "Gemini's free tier is out of requests right now."
+    assert ev["data"]["message"] == copy
     assert ev["data"]["switch_back"] == "openrouter"
 
 

@@ -26,7 +26,7 @@ class NamedJudge(FakeJudge):
         return {"model_name": self.model_name}
 
 
-def build_switchable_env(store, tmp_path) -> Env:
+def build_switchable_env(store, tmp_path, aclose_later) -> Env:
     settings = Settings(_env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path)
     ms = ModelSettings(tmp_path / "model_settings.json", settings)
     agent = ScriptedChat(script=itertools.cycle([create_call(title="Velmar Docks", content="Drafting.")]))
@@ -58,6 +58,7 @@ def build_switchable_env(store, tmp_path) -> Env:
     )
     app = create_app(settings, deps)
     client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)
+    aclose_later(client)
     env = Env(client, app, deps, agent, settings)
     env.built = built  # type: ignore[attr-defined]
     return env
@@ -88,9 +89,9 @@ async def test_settings_models_need_the_secret(make_env):
     assert r.status_code == 401
 
 
-async def test_switching_judge_model_shows_in_next_prompt_record(store, tmp_path):
+async def test_switching_judge_model_shows_in_next_prompt_record(store, tmp_path, aclose_later):
     store.upsert_entry(Entry(id="ent_0001", world_id=W, title="Velmar", type="place", body="A city."))
-    env = build_switchable_env(store, tmp_path)
+    env = build_switchable_env(store, tmp_path, aclose_later)
 
     tid1 = await env.new_thread()
     await env.send(tid1, "Add the Velmar docks")

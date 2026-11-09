@@ -1,5 +1,5 @@
 from sagaloom.config import Settings
-from sagaloom.llm import make_chat_model, make_embeddings
+from sagaloom.llm import install_warning_filters, make_chat_model, make_embeddings
 
 
 def _settings(**kw):
@@ -132,9 +132,10 @@ def test_gemini_model_needs_a_key():
 )
 async def test_gemini_errors_once(status, copy):
     client, seen = _mock_client(status)
-    model = make_gemini_model(_gemini_settings(), http_async_client=client)
-    with pytest.raises(openai.APIStatusError) as info:
-        await model.ainvoke("hi")
+    async with client:
+        model = make_gemini_model(_gemini_settings(), http_async_client=client)
+        with pytest.raises(openai.APIStatusError) as info:
+            await model.ainvoke("hi")
     assert len(seen) == 1
     assert seen[0].url.host == "generativelanguage.googleapis.com"
     assert gemini_error_event(info.value) == {
@@ -147,9 +148,10 @@ async def test_gemini_errors_once(status, copy):
 
 async def test_gemini_other_status_is_not_special():
     client, _ = _mock_client(500)
-    model = make_gemini_model(_gemini_settings(), http_async_client=client)
-    with pytest.raises(openai.APIStatusError) as info:
-        await model.ainvoke("hi")
+    async with client:
+        model = make_gemini_model(_gemini_settings(), http_async_client=client)
+        with pytest.raises(openai.APIStatusError) as info:
+            await model.ainvoke("hi")
     assert gemini_error_event(info.value) is None
 
 
@@ -160,3 +162,47 @@ def test_llm_does_not_import_studio():
 
     imports = [l for l in inspect.getsource(llm).splitlines() if l.startswith(("import ", "from "))]
     assert not any("sagaloom.studio" in l for l in imports)
+
+
+def _dump_with_field(field_name: str):
+    """Dumps a ParsedChatCompletion whose `parsed` model the schema does not describe, the shape
+    langchain-openai produces for structured output; returns the warnings recorded."""
+    import warnings
+
+    from openai.types.chat.parsed_chat_completion import (
+        ParsedChatCompletion,
+        ParsedChatCompletionMessage,
+        ParsedChoice,
+    )
+    from pydantic import BaseModel
+
+    class Out(BaseModel):
+        a: int
+
+    msg = ParsedChatCompletionMessage[None].model_construct(
+        role="assistant", content="{}", parsed=Out(a=1)
+    )
+    choice = ParsedChoice[None].model_construct(index=0, finish_reason="stop", message=msg)
+    done = ParsedChatCompletion[None].model_construct(
+        id="x", created=1, model="m", object="chat.completion", choices=[choice]
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        install_warning_filters()
+        if field_name == "parsed":
+            done.model_dump()
+        else:
+            class Other(BaseModel):
+                note: None = None
+
+            Other.model_construct(note=Out(a=1)).model_dump()
+    return caught
+
+
+def test_parsed_serializer_warning_is_filtered():
+    assert _dump_with_field("parsed") == []
+
+
+def test_other_serializer_warnings_still_show():
+    caught = _dump_with_field("note")
+    assert len(caught) == 1 and "field_name='note'" in str(caught[0].message)
