@@ -1,3 +1,5 @@
+import { isImportedHeading } from "@/lib/imported";
+
 export interface Section {
   heading: string;
   text: string;
@@ -11,11 +13,13 @@ export function sectionsOf(body: string): Section[] {
   for (const line of body.split("\n")) {
     if (line.startsWith("## ")) {
       const heading = line.slice(3).trim();
-      sections.push({ heading, text: "", imported: heading.startsWith("Imported from ") });
+      sections.push({ heading, text: "", imported: isImportedHeading(heading) });
       lines.push([]);
     } else {
       lines[lines.length - 1].push(line);
     }
   }
-  return sections.map((s, i) => ({ ...s, text: lines[i].join("\n").trim() }));
+  const out = sections.map((s, i) => ({ ...s, text: lines[i].join("\n").trim() }));
+  // A body that opens with a heading has no description: drop the empty leading card.
+  return out.length > 1 && out[0].text === "" ? out.slice(1) : out;
 }

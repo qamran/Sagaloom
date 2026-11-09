@@ -192,4 +192,21 @@ describe("EntryView full page", () => {
     renderIt();
     expect(await screen.findByText(/v3 · edited/)).toBeInTheDocument();
   });
+
+  it("does not mark an untrusted reference entry as wholly imported", async () => {
+    vi.mocked(getEntry).mockResolvedValue(
+      entry({ trusted: false, source: "reference", source_url: "https://en.wikipedia.org/wiki/X" }),
+    );
+    renderIt();
+    expect(await screen.findByText("Untrusted source")).toBeInTheDocument();
+    expect(screen.getByText(/Source: Wikipedia reference/)).toBeInTheDocument();
+    expect(screen.queryByText("Contains imported text")).toBeNull();
+  });
+
+  it("says when mentions could not be loaded", async () => {
+    vi.mocked(getMentions).mockRejectedValue(new Error("x"));
+    vi.mocked(getEntry).mockResolvedValue(entry({}));
+    renderIt();
+    expect(await screen.findByText("Could not load mentions.")).toBeInTheDocument();
+  });
 });

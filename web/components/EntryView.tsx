@@ -29,7 +29,7 @@ export function EntryView({ entryId }: { entryId: string }) {
   });
 
   const hiddenSecret = entry?.status === "secret" && !worldShown && !revealed;
-  const { data: mentions } = useQuery({
+  const { data: mentions, isError: mentionsError } = useQuery({
     queryKey: ["mentions", world?.id, entryId],
     queryFn: () => getMentions(world!.id, entryId),
     enabled: !!world && !!entry && !hiddenSecret,
@@ -63,7 +63,7 @@ export function EntryView({ entryId }: { entryId: string }) {
   const typeText = TYPE_TEXT[entry.type];
   const status = entry.status.charAt(0).toUpperCase() + entry.status.slice(1);
   const imported = entry.trusted ? [] : importedSections(entry.body);
-  const importedItems = !entry.trusted && imported.length === 0 ? ["the whole entry"] : imported;
+  const importedItems = !entry.trusted && entry.source === "user" && imported.length === 0 ? ["the whole entry"] : imported;
   const sections = sectionsOf(entry.body);
   const provenance =
     entry.source === "user"
@@ -179,7 +179,9 @@ export function EntryView({ entryId }: { entryId: string }) {
         {!hidden && (
           <div className="flex flex-col gap-2 border-t border-border pt-3.5">
             <h3 className="m-0 text-xs font-semibold uppercase tracking-[1px]">Mentioned in</h3>
-            {mentions && mentions.length > 0 ? (
+            {mentionsError ? (
+              <p className="m-0 text-sm text-muted-foreground">Could not load mentions.</p>
+            ) : mentions && mentions.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {mentions.map((m) =>
                   m.status === "secret" && !worldShown ? (

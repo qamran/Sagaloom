@@ -19,6 +19,12 @@ describe("sectionsOf", () => {
     const s = sectionsOf("Intro.\n\n## Imported from notes.md (2026-11-07)\nText.");
     expect(s[1]).toEqual({ heading: "Imported from notes.md (2026-11-07)", text: "Text.", imported: true });
   });
+  it("does not mark an undated Imported from heading as imported", () => {
+    expect(sectionsOf("Intro.\n## Imported from X\nT.")[1].imported).toBe(false);
+  });
+  it("drops the empty Description when the body opens with a heading", () => {
+    expect(sectionsOf("## History\nOld.")).toEqual([{ heading: "History", text: "Old.", imported: false }]);
+  });
   it("does not split on ###", () => {
     const s = sectionsOf("Intro.\n### Sub\nMore.");
     expect(s).toHaveLength(1);
