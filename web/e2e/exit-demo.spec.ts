@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-// The exit demo (M1, then Waves 1 to 5 and 7), end to end, against the real seed and real models.
+// The exit demo (M1, then Waves 1 to 5, 7 and 8), end to end, against the real seed and real models.
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
 const scripted: { name: string; draft: { body: string } }[] = JSON.parse(fs.readFileSync(SEED, "utf-8"));
 const SORN_TEXT = scripted.find((s) => s.name === "captain_sorn")!.draft.body;
@@ -566,4 +566,28 @@ test("M1 exit demo", async ({ page }) => {
   await expect(box).toHaveValue("Ister, the red moon ");
   await box.fill("");
   await expect(box).toHaveValue("");
+
+  // ---- Wave 8 ----
+  // 34. A delete lists what depends on the entry. The Mayor (ent_0003) is tied to the Ashen Choir by a link only,
+  // and her link is secret: with secrets hidden she is a count ("and 1 linked entry"), never named. Entries that
+  // name the Choir in their text are listed (The Choir Ledger, which is secret, as a "Secret entry" chip).
+  await newThread();
+  await send(page, "Delete the Ashen Choir.");
+  await settle(page);
+  const deleteCard = card(page, "The Ashen Choir");
+  if ((await deleteCard.count()) === 0) {
+    throw new Error(`the agent did not propose deleting the Ashen Choir. Its reply: ${await log(page).innerText()}`);
+  }
+  await expect(deleteCard).toBeVisible();
+  await expect(deleteCard).toContainText("and 1 linked entry");
+  await expect(deleteCard).not.toContainText("Elsbeth");
+  // The world's Show secrets (in the header) names her, and the card follows it.
+  await headerSecrets.click();
+  await expect(headerSecrets).toHaveAttribute("aria-pressed", "true");
+  await expect(deleteCard).toContainText("Mayor Elsbeth Varr");
+  await headerSecrets.click();
+  await expect(headerSecrets).toHaveAttribute("aria-pressed", "false");
+  await expect(deleteCard).not.toContainText("Elsbeth");
+  await rejectAll(page);
+  await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
 });

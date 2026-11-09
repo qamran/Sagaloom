@@ -4,7 +4,8 @@
 Wave 1 (input guard), Wave 2 (reference tool, Markdown export, tool toggles) and Wave 3 (long-term memory,
 the router mode chip, the highlighted agent graph), Wave 4 (the Review tab: a two-proposal batch, the
 complete fact table, one submit), Wave 5 (the Import page: paste notes, review the extracted proposals, the
-imported-text marker) and Wave 7 (hidden secrets, the entry page, the drawer mask, `@` suggestions). Wave 6 moved to M3.
+imported-text marker), Wave 7 (hidden secrets, the entry page, the drawer mask, `@` suggestions) and Wave 8 (the delete
+card's linked-entry count). Wave 6 moved to M3.
 
 Run it from `web/`:
 
@@ -49,3 +50,10 @@ The Wave 7 step (33) checks hidden secrets, all in the demo's one page, because 
 
 With the drawer open there are two buttons named **Show secrets**, so the step scopes each: the header's through
 `getByRole("banner")`, the drawer's through `getByRole("complementary", { name: "Under the hood" })`.
+
+The Wave 8 step (34) asks in a new thread "Delete the Ashen Choir." If the agent proposes no delete, the step fails and
+prints its reply. On the seed the Mayor (`ent_0003`) is the only entry tied to the Choir by a link alone, and her link
+is secret, so with secrets hidden the delete card must contain `and 1 linked entry` and must not contain `Elsbeth`.
+Entries that name the Choir in their text are listed (The Choir Ledger as a `Secret entry` chip). The header's
+**Show secrets** makes the card name `Mayor Elsbeth Varr`; the step hides secrets again and clicks **Reject**. It
+asserts text, not layout.
