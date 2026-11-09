@@ -24,7 +24,7 @@ export function CanonList() {
 
   const needle = search.trim().toLowerCase();
   const all = data ?? [];
-  // Secret entries never affect the count or the search until revealed (no search oracle).
+  // Secret entries are left out of the visible list and its search until revealed; the footer button shows their count.
   const hiddenCount = all.filter((e) => e.status === "secret").length;
   const entries = all.filter(
     (e) =>

@@ -58,7 +58,7 @@ describe("UnderTheHood", () => {
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
     expect(
       screen.getByText(
-        "Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON copies the full record.",
+        "Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON copies the record as sent.",
       ),
     ).toBeInTheDocument();
   });

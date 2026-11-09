@@ -76,7 +76,7 @@ The Fable wave-review fixes get #60. Each commit carries `Refs: #N`, and the tas
   - Header and drawer toggle: `Show secrets` (an `aria-pressed` button).
   - Drawer mask line: `[secret fact hidden]`.
   - Drawer masked response: `Hidden: this call saw secret facts. Choose Show secrets to read it.`
-  - Drawer notice: `Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON copies the full record.`
+  - Drawer notice: `Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON copies the record as sent.`
   - `search_canon` refusal: `Secret entries can't be searched by status. Search by topic instead.`
   - Masked "Mentioned in" chip: `Secret entry`.
   - No mentions: `No other entries mention it.`

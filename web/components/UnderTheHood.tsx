@@ -398,7 +398,7 @@ export function UnderTheHood({
           <div className={LABEL}>Prompts sent to OpenRouter</div>
           <p className="m-0 text-xs text-muted-foreground">
             Prompts are recorded exactly as sent; secret facts are hidden on screen until you choose Show. Copy as JSON
-            copies the full record.
+            copies the record as sent.
           </p>
           {turn.calls.length === 0 && (
             <p className="m-0 text-xs text-muted-foreground">No model calls in this turn yet.</p>
