@@ -136,8 +136,8 @@ const PROPOSED_CELL: Partial<Record<FactResult, string>> = {
   "Changed (retcon)": "bg-event-bg text-event",
 };
 const STATUS_TAG: Record<Exclude<Fact["status"], "canon">, string> = {
-  myth: "text-myth border-violet-line-strong bg-character-bg",
-  rumour: "text-myth border-violet-line-strong bg-character-bg",
+  myth: "text-myth border-violet-line-strong bg-myth-bg",
+  rumour: "text-myth border-violet-line-strong bg-myth-bg",
   secret: "text-conflict border-conflict-line bg-conflict-bg",
 };
 

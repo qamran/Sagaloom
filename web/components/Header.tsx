@@ -233,7 +233,7 @@ export function Header() {
           className={`flex min-h-11 items-center rounded-[7px] border border-violet-line-strong px-[13px] text-[13px] no-underline hover:no-underline sm:min-h-9 ${
             pathname.startsWith("/studio")
               ? "border-myth bg-myth font-semibold text-background hover:text-background"
-              : "text-myth hover:bg-character-bg hover:text-myth"
+              : "text-myth hover:bg-myth-bg hover:text-myth"
           }`}
         >
           Studio

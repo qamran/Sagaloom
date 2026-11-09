@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
+import { BADGE_CLASS, badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
 import type { CheckResult, Entry, Flag, Proposal } from "@/lib/types";
 
 const flag = (over: Partial<Flag>): Flag => ({
@@ -230,5 +230,11 @@ describe("proposalSummary secret fact", () => {
   it("keeps the arrow form when only part is masked", () => {
     const f = flag({ kind: "retcon", fact_key: "Seats", existing_fact: "Seven", new_fact: "Five" });
     expect(proposalSummary(create, check([f]), () => true)).toBe("Seats: a secret fact → Five");
+  });
+});
+
+describe("BADGE_CLASS", () => {
+  it("fills the failed badge from the failed token", () => {
+    expect(BADGE_CLASS.failed).toBe("bg-failed text-background");
   });
 });

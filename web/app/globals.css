@@ -22,6 +22,7 @@
   --raised: #1a1f1d;
 
   /* amber "conflict" family and the violet "under the hood" outlines */
+  --failed: #e8785a;
   --conflict-bg: #221c15;
   --conflict-bg-2: #261e14;
   --conflict-line: #5a4228;
@@ -55,6 +56,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-conflict: var(--conflict);
   --color-myth: var(--myth);
+  --color-failed: var(--failed);
   --color-prose: var(--prose);
   --color-prose-muted: var(--prose-muted);
   --color-well: var(--well);
@@ -76,6 +78,7 @@
   --color-item: var(--item);
   /* chip fills and outlines: character, place and faction are from the mockup; the rest are derived the same way */
   --color-character-bg: #211c33;
+  --color-myth-bg: #211c33;
   --color-character-line: #463d6e;
   --color-place-bg: #17291f;
   --color-place-line: #2f5a42;

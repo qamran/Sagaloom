@@ -16,7 +16,7 @@ export const BADGE_LABEL: Record<Badge, string> = {
 /** Colours from the Global Constraints badge table, with the text colour each one needs. */
 export const BADGE_CLASS: Record<Badge, string> = {
   conflict: "bg-conflict text-background",
-  failed: "bg-destructive text-background",
+  failed: "bg-failed text-background",
   possible: "border border-conflict text-conflict",
   retcon: "bg-event text-background",
   note: "bg-myth text-background",
