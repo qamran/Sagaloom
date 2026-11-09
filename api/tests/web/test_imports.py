@@ -117,7 +117,7 @@ async def test_import_rejects_bad_filename(make_env):
     env = make_env(extraction=found())
     for bad in [
         "notes.pdf", "../a.md", "a\\b.txt", "x" * 118 + ".md", "a\n.md", "a\x01b.txt", "a\x7f.md",
-        "a .md", "a .txt", "a\x85.md",
+        "a\u2028.md", "a\u2029.txt", "a\x85.md",
     ]:
         r, _ = await post_import(env, OSTRA, filename=bad)
         assert r.status_code == 422, bad

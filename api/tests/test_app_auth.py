@@ -9,12 +9,13 @@ ORIGIN = "http://localhost:3000"
 
 
 @pytest.fixture
-def client(aclose_later):
+def client(aclose_later, tmp_path):
     settings = Settings(
         _env_file=None,
         openrouter_api_key="test-key",
         api_shared_secret=SECRET,
         web_origin=ORIGIN,
+        data_dir=tmp_path,  # never the developer's api/data/
     )
     app = create_app(settings)
     c = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")

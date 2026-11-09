@@ -1,7 +1,6 @@
 """JSON + SSE endpoints (R19.1). Everything here is mounted behind the shared-secret check."""
 
 import asyncio
-import logging
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -36,8 +35,6 @@ from sagaloom.web.thread_list import (
     thread_title,
     with_summary,
 )
-
-log = logging.getLogger(__name__)
 
 router = APIRouter()
 

@@ -97,7 +97,8 @@ class RateLimitMiddleware:
 
     The key is the socket peer's address (see `client_key`); `X-Forwarded-For` is read only when
     that peer is in `trusted_proxies`. At most `max_keys` clients are tracked: a new client first
-    sweeps expired keys and, if the map is still full, evicts the least recently hit one."""
+    drops the expired keys at the least recently hit end and, if the map is still full, evicts
+    the least recently hit one."""
 
     def __init__(
         self,
@@ -145,7 +146,7 @@ class RateLimitMiddleware:
                 self._turns.move_to_end(key)
             return
         if len(self._totals) >= self.max_keys:
-            self._sweep(now)
+            self._sweep_front(now)
         # Evicting a live key forgets its window, so a client rotating through more than
         # `max_keys` spoofed keys gets a fresh one. That is the accepted cost of bounded memory.
         while self._totals and len(self._totals) >= self.max_keys:
@@ -157,6 +158,18 @@ class RateLimitMiddleware:
         while q and q[0] <= now - self.window_s:
             q.popleft()
         return q
+
+    def _sweep_front(self, now: float) -> None:
+        """Drop the expired keys at the least recently hit end of `_totals`, stopping at the first
+        live one, so a new key at the cap costs only the keys it removes. An expired key behind
+        a live one (moved there by a 429, which adds no hit) waits for the periodic sweep or the
+        eviction below. `_turns` is not walked: its order is by any hit, not by turn hit."""
+        while self._totals:
+            key, q = next(iter(self._totals.items()))
+            if q and q[-1] > now - self.window_s:
+                return
+            del self._totals[key]
+            self._turns.pop(key, None)
 
     def _sweep(self, now: float) -> None:
         for hits in (self._turns, self._totals):

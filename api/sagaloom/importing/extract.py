@@ -219,8 +219,8 @@ def _one_by_one(items: list) -> tuple[list[Candidate], list[Skipped]]:
             candidates.append(Candidate.model_validate(item))
         except ValidationError:
             title = item.get("title") if isinstance(item, dict) else None
-            ok = isinstance(title, str) and title.strip()
-            skipped.append(Skipped(title=title[:TITLE_CHARS] if ok else UNTITLED, reason=INVALID))
+            title = first_line(title) if isinstance(title, str) else ""
+            skipped.append(Skipped(title=title[:TITLE_CHARS] or UNTITLED, reason=INVALID))
     return candidates, skipped
 
 
@@ -235,9 +235,9 @@ async def _extract(
         SystemMessage(content=EXTRACT_SYSTEM),
         HumanMessage(content=wrap_untrusted(chunk, f"import:{label}")),
     ]
+    structured = llm.with_structured_output(ExtractionOutput, include_raw=True)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            structured = llm.with_structured_output(ExtractionOutput, include_raw=True)
             reply = await structured.ainvoke(messages, config)
             parsed = reply.get("parsed") if isinstance(reply, dict) else None
             if isinstance(parsed, ExtractionOutput):

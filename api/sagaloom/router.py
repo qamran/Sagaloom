@@ -7,8 +7,6 @@ plain lore statement becomes a proposal. A failed call never blocks the turn: th
 no mode section (unlike the guard, which fails closed).
 """
 
-import logging
-
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -16,8 +14,6 @@ from pydantic import BaseModel, Field
 from sagaloom.graph.state import Mode
 from sagaloom.security import wrap_untrusted
 from sagaloom.structured import ask_structured
-
-log = logging.getLogger(__name__)
 
 # Kill switch (spec F3). When True the mode is still classified, stored and shown, but no mode
 # section reaches the agent's prompt. Read at call time, through the module.

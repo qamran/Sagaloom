@@ -11,10 +11,11 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 def install_warning_filters() -> None:
     """Hides one third-party warning: Pydantic's serializer warning for `parsed`.
 
-    When langchain-openai dumps a `ParsedChatCompletion`, `parsed` holds our structured-output
-    model while the response type is parametrised with none of it, so Pydantic warns on every
-    structured call. The value is the correct one, so only that exact message is ignored; any
-    other serializer warning still shows."""
+    It comes from langchain-openai's streamed structured-output path, the one the graph uses:
+    `beta.chat.completions.stream`, then `model_dump()` of the final parsed completion. There
+    `parsed` holds our structured-output model while the completion type is parametrised with
+    none of it, so Pydantic warns on every structured call. The value is the correct one, so only
+    that exact message is ignored; any other serializer warning still shows."""
     warnings.filterwarnings(
         "ignore",
         message=r"Pydantic serializer warnings:\s+PydanticSerializationUnexpectedValue\([^\n]*field_name='parsed'",

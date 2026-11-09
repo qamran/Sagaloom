@@ -849,6 +849,26 @@ async def test_list_threads_summarises_legacy_rows_once(make_env):
     assert {r["thread_id"]: (r["pending"], r["title"]) for r in second} == {a: (1, "Add Ostra"), b: (0, None)}
 
 
+async def test_list_threads_survives_a_failed_summary_write(make_env, monkeypatch, caplog):
+    """The summary write is a best-effort cache: a registry error there must not 500 the list."""
+    import sqlite3
+
+    env = make_env()
+    ids = [await env.new_thread() for _ in range(2)]
+    for tid in ids:
+        env.deps.threads.set_summary(tid, None)
+
+    def locked(thread_id, summary):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(env.deps.threads, "set_summary_if_unset", locked)
+    with caplog.at_level("ERROR"):
+        r = await env.client.get("/api/threads")
+    assert r.status_code == 200
+    assert [row["thread_id"] for row in r.json()] == ids[::-1]
+    assert f"could not store summary {ids[0]}" in caplog.text
+
+
 async def test_running_thread_is_read_live_and_not_stored(make_env):
     from sagaloom.store.threads import ThreadSummary
     from sagaloom.web.thread_list import list_rows

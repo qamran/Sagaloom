@@ -179,12 +179,12 @@ def test_xff_ignored_from_untrusted_peer():
         assert limiter.client_key(scope_from(None, "1.1.1.1")) == "unknown"
 
 
-async def test_untrusted_peer_is_keyed_by_socket_whatever_the_header_says():
+async def test_untrusted_peer_is_keyed_by_socket_whatever_the_header_says(tmp_path):
     from sagaloom.config import Settings
     from sagaloom.web.app import create_app
 
     # The default trusts no proxy, so rotating X-Forwarded-For buys no fresh window.
-    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s")
+    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
     assert settings.trusted_proxies == []
     app = create_app(settings, rate_limits={"total_limit": 2})
     async with client(app) as c:
@@ -195,12 +195,12 @@ async def test_untrusted_peer_is_keyed_by_socket_whatever_the_header_says():
         assert list(limiter_of(app)._totals) == ["127.0.0.1"]
 
 
-async def test_trusted_proxies_setting_reaches_the_limiter(monkeypatch):
+async def test_trusted_proxies_setting_reaches_the_limiter(monkeypatch, tmp_path):
     from sagaloom.config import Settings
     from sagaloom.web.app import create_app
 
     monkeypatch.setenv("TRUSTED_PROXIES", '["127.0.0.1"]')
-    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s")
+    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
     assert settings.trusted_proxies == ["127.0.0.1"]
     app = create_app(settings, rate_limits={"total_limit": 1})
     async with client(app) as c:
@@ -224,11 +224,13 @@ async def test_total_limit_counts_gets():
         assert r.status_code == 429 and "Retry-After" in r.headers
 
 
-async def test_limit_response_carries_cors_headers():
+async def test_limit_response_carries_cors_headers(tmp_path):
     from sagaloom.config import Settings
     from sagaloom.web.app import create_app
 
-    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", web_origin="http://web.test")
+    settings = Settings(
+        _env_file=None, openrouter_api_key="k", api_shared_secret="s", web_origin="http://web.test", data_dir=tmp_path
+    )
     app = create_app(settings, rate_limits={"total_limit": 1}, max_body_bytes=50)
     async with client(app) as c:
         h = {"Origin": "http://web.test", "X-Sagaloom-Secret": "s"}
@@ -313,3 +315,24 @@ async def test_eviction_sweeps_expired_keys_first():
         await c.get("/api/worlds", headers={"X-Forwarded-For": "4.4.4.4"})
         # Both expired keys go, not just the least recent one.
         assert list(limiter._totals) == ["3.3.3.3", "4.4.4.4"]
+
+
+async def test_cap_sweep_stops_at_first_live_key():
+    """At the cap only the expired keys at the front are walked: the walk stops at the first live
+    key, so an expired key behind it (moved there by a 429, which adds no hit) stays."""
+    clock = Clock()
+    app = build(total_limit=1, max_keys=4, clock=clock, trusted_proxies=PEER)
+    async with client(app) as c:
+        for ip in ("1.1.1.1", "2.2.2.2", "4.4.4.4"):
+            assert (await c.get("/api/worlds", headers={"X-Forwarded-For": ip})).status_code == 200
+        clock.now += 30
+        assert (await c.get("/api/worlds", headers={"X-Forwarded-For": "3.3.3.3"})).status_code == 200
+        clock.now += 1
+        assert (await c.get("/api/worlds", headers={"X-Forwarded-For": "4.4.4.4"})).status_code == 429
+        limiter = limiter_of(app)
+        assert list(limiter._totals) == ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"]
+        clock.now += 30  # 1.1.1.1, 2.2.2.2 and 4.4.4.4 have expired, 3.3.3.3 has not
+        limiter._last_sweep = clock.now  # keep the periodic sweep out of it
+        await c.get("/api/worlds", headers={"X-Forwarded-For": "5.5.5.5"})
+        assert list(limiter._totals) == ["3.3.3.3", "4.4.4.4", "5.5.5.5"]
+        assert len(limiter._totals) <= 4 and set(limiter._turns) <= set(limiter._totals)

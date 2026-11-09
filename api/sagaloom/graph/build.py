@@ -22,7 +22,6 @@ from langgraph.store.memory import InMemoryStore
 
 from sagaloom import models as sagaloom_models
 from sagaloom.config import Settings
-from sagaloom.locks import KeyedLocks
 from sagaloom.graph.nodes import (
     ModelFor,
     RoleModel,
@@ -42,6 +41,7 @@ from sagaloom.graph.nodes import (
     route_entry,
 )
 from sagaloom.graph.state import SagaState
+from sagaloom.locks import KeyedLocks
 from sagaloom.settings_store import DevSettings
 from sagaloom.tools.canon_tools import make_tools
 from sagaloom.wiki.client import WikiClient

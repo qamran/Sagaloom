@@ -86,6 +86,8 @@ export interface MemoryResult {
   value: string;
   stored: boolean;
   note: string;
+  /** Set by the API since M3 (absent on older thread history); the UI reads `stored` and `note`. */
+  reason?: "stored" | "not_said" | "full" | "invalid" | "unavailable";
 }
 
 /** `GET/DELETE /worlds/{id}/memory`. */

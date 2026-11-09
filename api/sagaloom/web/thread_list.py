@@ -143,9 +143,15 @@ async def list_rows(
                 continue
             was_running, running = running, _running(deps, t.thread_id)
             # No await between this check and the write: a turn that took the lock meanwhile
-            # has cleared the summary, and a read from before it must not fill it.
+            # has cleared the summary, and a read from before it must not fill it. A turn that
+            # took and released the lock within this read cannot be overwritten either: it
+            # stored its own summary before releasing, so `set_summary_if_unset` writes nothing.
             if not was_running and not running:
-                deps.threads.set_summary_if_unset(t.thread_id, summary)
+                try:
+                    deps.threads.set_summary_if_unset(t.thread_id, summary)
+                except Exception:
+                    # A best-effort cache write: the row was read, so it still lists.
+                    log.exception("list_threads: could not store summary %s", t.thread_id)
         if pending and not summary.pending:
             continue
         out.append(_row(t, summary, running))

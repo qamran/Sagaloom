@@ -1,5 +1,7 @@
 """Router unit tests (R6.5, spec §3.4). No real LLM calls."""
 
+import httpx
+import openai
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -63,3 +65,20 @@ async def test_route_raises_after_the_last_attempt():
     with pytest.raises(ValueError):
         await route(model, "x")
     assert len(model.prompts) == 2
+
+
+# The router retries a transient API error once (M3 Wave 1 Task 5), but not a 400: a retry
+# would repeat the same bad request.
+async def test_route_retries_once_after_a_transient_error():
+    model = Stub(openai.APIConnectionError(request=httpx.Request("POST", "http://x")), RouteDecision(mode="edit"))
+    assert (await route(model, "x")).mode == "edit"
+    assert len(model.prompts) == 2
+
+
+async def test_route_does_not_retry_a_400():
+    req = httpx.Request("POST", "http://x")
+    err = openai.BadRequestError("bad", response=httpx.Response(400, request=req), body=None)
+    model = Stub(err, RouteDecision(mode="edit"))
+    with pytest.raises(openai.BadRequestError):
+        await route(model, "x")
+    assert len(model.prompts) == 1

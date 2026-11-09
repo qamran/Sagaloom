@@ -28,7 +28,7 @@ from sagaloom.check.myth import apply_save_as_myth
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
-from sagaloom.structured import ChatModelLike  # noqa: F401  (re-exported; defined in structured)
+from sagaloom.locks import KeyedLocks
 from sagaloom.memory import (
     agent_note,
     apply_updates,
@@ -36,7 +36,6 @@ from sagaloom.memory import (
     render_preferences,
     unavailable,
 )
-from sagaloom.locks import KeyedLocks
 from sagaloom.models import (
     PROVENANCE_FIELDS,
     CheckResult,
@@ -48,6 +47,7 @@ from sagaloom.models import (
 from sagaloom.provenance import merge_provenance
 from sagaloom.settings_store import DevSettings, enabled_tool_names
 from sagaloom.store.canon import DuplicateTitleError, VersionConflictError
+from sagaloom.structured import ChatModelLike  # noqa: F401  (re-exported; defined in structured)
 from sagaloom.text import message_text
 
 log = logging.getLogger(__name__)
@@ -511,9 +511,11 @@ def _apply_locked(store, p: Proposal) -> str:
         saved = store.upsert_entry(entry, expected_version=0)
         return f"Review: {pid} approved, committed as {saved.id} (v{saved.version})."
 
-    current = store.get_entry(p.world_id, p.entry_id) if p.entry_id else None
+    if not p.entry_id:
+        raise _CommitFailed("the proposal has no entry")
+    current = store.get_entry(p.world_id, p.entry_id)
     if current is None:
-        raise VersionConflictError(p.entry_id or "", p.before.version if p.before else 0, None)
+        raise VersionConflictError(p.entry_id, p.before.version if p.before else 0, None)
     if p.before is not None and current.version != p.before.version:
         # Approved against a stale `before`: writing it would undo the other change unflagged.
         raise VersionConflictError(current.id, p.before.version, current.version)

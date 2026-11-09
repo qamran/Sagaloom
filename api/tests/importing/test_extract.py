@@ -479,7 +479,12 @@ async def test_one_invalid_candidate_is_skipped_alone(store):
 async def test_invalid_candidates_from_tool_call_args_are_skipped_alone(store):
     """With no JSON in the content, the first tool call's args are read; an item without a usable
     title is listed under a neutral one."""
-    args = {"candidates": [gull(), 42, {"title": ["x"], "type": "place"}, {"title": "T" * 130}]}
+    args = {
+        "candidates": [
+            gull(), 42, {"title": ["x"], "type": "place"}, {"title": "T" * 130}, {"title": "\nWyrm\nmore"},
+            {"title": "\n \n"},
+        ]
+    }
     raw = AIMessage(content="", tool_calls=[{"name": "ExtractionOutput", "args": args, "id": "c1"}])
     plan = await build_import(store, StubLLM(raw_reply(raw)), W, GULL, LABEL, today=TODAY)
     assert [p.after.title for p in plan.proposals] == ["Gull Market"]
@@ -487,6 +492,8 @@ async def test_invalid_candidates_from_tool_call_args_are_skipped_alone(store):
         ("An extracted entry", INVALID),
         ("An extracted entry", INVALID),
         ("T" * 120, INVALID),
+        ("Wyrm", INVALID),  # cut to its first line, like every other title (M3 Wave 1 M3)
+        ("An extracted entry", INVALID),
     ]
     assert plan.failed_parts == 0
 
@@ -495,6 +502,7 @@ async def test_unreadable_raw_reply_is_a_failed_attempt(store):
     llm = StubLLM(raw_reply(AIMessage(content="not json")))
     plan = await build_import(store, llm, W, GULL, LABEL, today=TODAY)
     assert len(llm.prompts) == 2
+    assert len(llm.schemas) == 1  # the structured runnable is built once, not per attempt
     assert plan.proposals == []
     assert [(s.title, s.reason) for s in plan.skipped] == [("Part 1 of the text", PART_FAILED)]
     assert (plan.failed_parts, plan.parts) == (1, 1)

@@ -579,17 +579,37 @@ def test_commit_maps_version_conflict(store, monkeypatch):
 def test_commit_maps_create_race_to_already_exists(store, monkeypatch):
     from sagaloom.store.canon import VersionConflictError
 
+    seen: list = []
+
     def taken(entry, *, expected_version=None):
+        seen.append(expected_version)
         raise VersionConflictError("ent_0099", 0, 1)
 
     monkeypatch.setattr(store, "upsert_entry", taken)
     out = make_commit_node(store)(_approved(P("p_x", "Ostra")))
+    assert seen == [0]
     [m] = out["messages"]
     assert m.content == (
         "Review: p_x approved, but the commit failed: an entry with id ent_0099 already exists; "
         "propose it again. Nothing was written."
     )
     assert m.additional_kwargs == {"proposal_id": "p_x", "outcome": "failed"}
+    assert out["pending_proposals"] == {"clear": ["p_x"]}
+
+
+@pytest.mark.parametrize("action", ["update", "delete"])
+def test_commit_of_proposal_without_entry_id_names_the_cause(store, action):
+    """Unreachable from the tool (it always sets `entry_id`), but a hand-built proposal must not
+    read "entry  no longer exists"."""
+    p = Proposal(
+        proposal_id="p1", action=action, world_id=W, entry_id=None, before=None,
+        after=EntryDraft(title="Velmar", type="place", body="b") if action == "update" else None,
+    )
+    out = make_commit_node(store)(_approved(p))
+    [m] = out["messages"]
+    assert m.content == "Review: p1 approved, but the commit failed: the proposal has no entry. Nothing was written."
+    assert m.additional_kwargs == {"proposal_id": "p1", "outcome": "failed"}
+    assert store.list_entries(W) == []
 
 
 def test_conflict_copy_has_one_writer():
@@ -607,6 +627,7 @@ def test_commit_refuses_other_world_with_its_own_copy(store):
     assert m.content == "Review: p_x was not committed: it was proposed in another world."
     assert m.additional_kwargs == {"proposal_id": "p_x", "outcome": "refused"}
     assert "p_x" not in out["pending_proposals"]["clear"]
+    assert out["decisions"] == {"p_x": None}  # refused: the author must decide it again
     assert store.list_entries(W) == [] and store.list_entries("other") == []
 
 

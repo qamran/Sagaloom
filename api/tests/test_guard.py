@@ -4,9 +4,9 @@ import httpx
 import openai
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import ValidationError
 
 from sagaloom.guard import BLOCK_COPY, GUARD_POLICY, GuardVerdict, classify
+from sagaloom.structured import InvalidReply
 
 
 class StubGuard:
@@ -64,7 +64,7 @@ async def test_classify_accepts_a_dict_reply():
 
 @pytest.mark.parametrize("reply", [None, {"reason": "no verdict"}, {"verdict": "maybe", "reason": "x"}])
 async def test_classify_raises_on_invalid_output(reply):
-    with pytest.raises((ValueError, ValidationError)):
+    with pytest.raises(InvalidReply):
         await classify(StubGuard(reply), "x")
 
 
@@ -109,7 +109,7 @@ async def test_classify_raises_after_two_failures():
         await classify(stub, "x")
     assert len(stub.prompts) == 2
     bad = SequenceGuard([None, {"verdict": "maybe", "reason": "x"}])
-    with pytest.raises((ValueError, ValidationError)):
+    with pytest.raises(InvalidReply):
         await classify(bad, "x")
     assert len(bad.prompts) == 2
 

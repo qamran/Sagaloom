@@ -7,7 +7,6 @@ exception from `classify` blocks the message.
 """
 
 import json
-import logging
 from typing import Annotated, Literal
 
 from langchain_core.language_models import BaseChatModel
@@ -16,8 +15,6 @@ from pydantic import AfterValidator, BaseModel, Field, ValidationError
 
 from sagaloom.security import wrap_untrusted
 from sagaloom.structured import ask_structured
-
-log = logging.getLogger(__name__)
 
 REASON_CHARS = 200
 
