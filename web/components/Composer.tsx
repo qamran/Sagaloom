@@ -136,7 +136,7 @@ export function Composer({
             <ul
               id="composer-mentions"
               role="listbox"
-              aria-label="Entries"
+              aria-label="Entry suggestions"
               className="absolute bottom-full left-0 z-10 mb-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border-strong bg-panel-2 py-1 text-sm shadow-lg"
             >
               {options.map((o, i) => (

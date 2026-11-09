@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryView } from "@/components/EntryView";
-import { getEntry, getMentions } from "@/lib/api";
+import { getEntries, getEntry, getMentions } from "@/lib/api";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { Entry } from "@/lib/types";
 
@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => {
       super("x");
     }
   }
-  return { getEntry: vi.fn(), getMentions: vi.fn(), ApiError };
+  return { getEntry: vi.fn(), getEntries: vi.fn(), getMentions: vi.fn(), ApiError };
 });
 
 const entry = (over: Partial<Entry>): Entry => ({
@@ -32,6 +32,7 @@ const renderIt = () =>
 beforeEach(() => {
   vi.mocked(getEntry).mockReset();
   vi.mocked(getMentions).mockReset();
+  vi.mocked(getEntries).mockReset().mockResolvedValue([]);
   vi.mocked(getMentions).mockResolvedValue([]);
   sessionStorage.clear();
 });
@@ -208,5 +209,18 @@ describe("EntryView full page", () => {
     vi.mocked(getEntry).mockResolvedValue(entry({}));
     renderIt();
     expect(await screen.findByText("Could not load mentions.")).toBeInTheDocument();
+  });
+});
+
+describe("EntryView fact refs", () => {
+  it("renders a fact ref as a chip to the referenced entry", async () => {
+    vi.mocked(getEntries).mockResolvedValue([
+      entry({ id: "ent_0004", title: "Ashen Choir", type: "faction" }),
+    ]);
+    vi.mocked(getEntry).mockResolvedValue(
+      entry({ facts: [{ key: "Sings to", value: "Ister", refs: ["ent_0004"], status: "canon", told_by: null }] }),
+    );
+    renderIt();
+    expect(await screen.findByRole("link", { name: /Ashen Choir/ })).toHaveAttribute("href", "/canon/ent_0004");
   });
 });

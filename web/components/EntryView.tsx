@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { EntityChip } from "@/components/EntityChip";
 import { FactList } from "@/components/FactList";
-import { ApiError, getEntry, getMentions } from "@/lib/api";
+import { ApiError, getEntries, getEntry, getMentions } from "@/lib/api";
 import { TYPE_LABEL, TYPE_PLURAL, TYPE_TEXT } from "@/lib/entity";
 import { importedSections } from "@/lib/imported";
 import { sectionsOf } from "@/lib/sections";
@@ -26,6 +26,13 @@ export function EntryView({ entryId }: { entryId: string }) {
     queryFn: () => getEntry(world!.id, entryId),
     enabled: !!world,
     retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 1,
+  });
+
+  // Same key as the Canon list, so this is usually cached; refs and tellers chip from it.
+  const { data: worldEntries } = useQuery({
+    queryKey: ["entries", world?.id],
+    queryFn: () => getEntries(world!.id),
+    enabled: !!world,
   });
 
   const hiddenSecret = entry?.status === "secret" && !worldShown && !revealed;
@@ -174,7 +181,7 @@ export function EntryView({ entryId }: { entryId: string }) {
         {hidden ? (
           <p className="m-0 text-sm text-muted-foreground">Hidden with the entry.</p>
         ) : (
-          <FactList facts={entry.facts} />
+          <FactList facts={entry.facts} entries={worldEntries} />
         )}
         {!hidden && (
           <div className="flex flex-col gap-2 border-t border-border pt-3.5">

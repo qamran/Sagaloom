@@ -14,9 +14,10 @@ const summary = (thread_id: string, world_id: string, pending: number): ThreadSu
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+const active = vi.hoisted(() => ({ id: "w1" }));
 vi.mock("@/lib/world", () => ({
   useWorld: () => ({
-    world: { id: "w1", name: "Velmar", is_demo: true, divergent: false },
+    world: { id: active.id, name: "Velmar", is_demo: true, divergent: false },
     isLoading: false,
     error: null,
     setThreadId: () => undefined,
@@ -333,5 +334,33 @@ describe("assistant entity chips", () => {
     await mount("See ent_0019.");
     expect(await screen.findByRole("link", { name: /item/ })).toHaveAttribute("href", "/canon/ent_0019");
     sessionStorage.clear();
+  });
+  it("uses only the thread's world for chips and @ suggestions, not the active world", async () => {
+    const e = (id: string, title: string, world_id: string, status: string) => ({
+      id, title, type: "item", status, aliases: [], world_id,
+    });
+    vi.mocked(getEntries).mockImplementation((async (w: string) =>
+      w === "w1"
+        ? [e("ent_0001", "Plain Thing", "w1", "canon")]
+        : [e("ent_0050", "Chalk Vault", "w2", "secret")]) as never);
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w2"), "true");
+    active.id = "w2";
+    try {
+      vi.mocked(getThread).mockResolvedValue({
+        thread_id: "t1", kind: "chat", title: null, world_id: "w1",
+        messages: [{ role: "assistant", content: "See ent_0050 and the Chalk Vault, and Plain Thing." }],
+        pending_interrupt: null, usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+      } as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(<QueryClientProvider client={qc}><ChatThread threadId="t1" /></QueryClientProvider>);
+      await screen.findByRole("link", { name: /Plain Thing/ });
+      expect(screen.queryByRole("link", { name: /Chalk Vault|ent_0050/ })).toBeNull();
+      await userEvent.type(screen.getByRole("combobox"), "@ch");
+      expect(screen.queryByRole("listbox")).toBeNull();
+    } finally {
+      active.id = "w1";
+      sessionStorage.clear();
+    }
   });
 });

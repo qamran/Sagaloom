@@ -141,6 +141,12 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   const hoodWorld = s.worldId ?? undefined;
   // Chips and @ suggestions follow the thread's world too; closed until it is known.
   const [threadShowSecrets] = useShowSecrets(hoodWorld);
+  // Chips and suggestions use the thread's own world only (R6), never the active one; none until it is known.
+  const { data: threadEntries } = useQuery({
+    queryKey: ["entries", hoodWorld],
+    queryFn: () => getEntries(hoodWorld as string),
+    enabled: !!hoodWorld,
+  });
   const { data: canon } = useQuery({
     queryKey: ["entries", worldId],
     queryFn: () => getEntries(worldId as string),
@@ -252,7 +258,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
             key={i}
             m={m}
             worldId={s.worldId ?? world?.id}
-            entries={canon}
+            entries={threadEntries}
             showSecrets={threadShowSecrets}
             done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
           />
@@ -317,7 +323,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           disabled={!s.loaded || busy || !!pending}
           hint={pending ? PENDING_HINT : null}
           prefill={initialPrompt}
-          entries={canon}
+          entries={threadEntries}
           showSecrets={threadShowSecrets}
           placeholder={`Ask about ${world?.name ?? "your world"}, add a fact, or brainstorm.`}
         />
