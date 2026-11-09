@@ -728,3 +728,91 @@ describe("ApprovalCard toggle follows the proposal's world", () => {
     expect(screen.getByText("Names of the Choir.")).toBeInTheDocument();
   });
 });
+
+describe("ApprovalCard secret leftovers (Wave 8)", () => {
+  const choir = { ...before, id: "ent_0004", title: "The Ashen Choir", type: "faction" } as Entry;
+  const mayor = { ...before, id: "ent_0003", title: "The Mayor", type: "character" } as Entry;
+  const salt = { ...before, id: "ent_0011", title: "The Salt Guild", type: "faction" } as Entry;
+  const del: Proposal = { ...update, proposal_id: "p_2", action: "delete", entry_id: "ent_0004", before: choir, after: null };
+  const delCheck = (dependents: CheckResult["dependents"]): CheckResult => ({
+    proposal_id: "p_2", verdict: "none", flags: [], dependents,
+  });
+  const mayorRef = { id: "ent_0003", title: "The Mayor", type: "character" as const, via: "link" as const };
+  const saltRef = { id: "ent_0011", title: "The Salt Guild", type: "faction" as const, via: "text" as const };
+
+  it("delete card counts a link-only dependent while secrets are hidden", () => {
+    const { unmount } = render(
+      <ApprovalCard proposal={del} check={delCheck([saltRef, mayorRef])} canon={[choir, mayor, salt]} onDecide={vi.fn()} />,
+    );
+    expect(screen.getByText("These entries mention it:")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /The Salt Guild/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Mayor/)).toBeNull();
+    expect(screen.queryByText("ent_0003")).toBeNull();
+    expect(document.querySelector('a[href="/canon/ent_0003"]')).toBeNull();
+    expect(screen.getByText("and 1 linked entry")).toBeInTheDocument();
+    unmount();
+
+    // With no text mentions, the count is the whole line.
+    render(<ApprovalCard proposal={del} check={delCheck([mayorRef, { ...mayorRef, id: "ent_0099" }])} canon={[choir, mayor]} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/Mayor/)).toBeNull();
+    expect(screen.queryByText("These entries mention it:")).toBeNull();
+    expect(screen.queryByText("No other entries mention it.")).toBeNull();
+    expect(screen.getByText("2 linked entries depend on it")).toBeInTheDocument();
+    cleanup();
+    render(<ApprovalCard proposal={del} check={delCheck([mayorRef])} canon={[choir, mayor]} onDecide={vi.fn()} />);
+    expect(screen.getByText("1 linked entry depends on it")).toBeInTheDocument();
+  });
+
+  it("delete card names link-only dependents when the world shows secrets", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<ApprovalCard proposal={del} check={delCheck([saltRef, mayorRef])} canon={[choir, mayor, salt]} onDecide={vi.fn()} />);
+    const links = screen.getAllByRole("link", { name: /The Salt Guild|The Mayor/ });
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/canon/ent_0011", "/canon/ent_0003"]);
+    expect(screen.queryByText(/linked entr/)).toBeNull();
+  });
+
+  const secretUpdate: Proposal = {
+    ...update,
+    before: { ...before, title: "The Choir Ledger", body: "Kept under the Mayor's floor.", status: "secret" } as Entry,
+    after: { ...update.after!, title: "The Choir Ledger", body: "Kept under the Mayor's floor.", status: "canon", facts: [] },
+  };
+
+  it("edit form masks a secret draft until Show to edit", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={onDecide} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.queryByDisplayValue("The Choir Ledger")).toBeNull();
+    expect(screen.queryByDisplayValue("Kept under the Mayor's floor.")).toBeNull();
+    const title = screen.getByLabelText("Title");
+    const body = screen.getByLabelText("Body");
+    expect(title).toBeDisabled();
+    expect(body).toBeDisabled();
+    expect(title).toHaveAttribute("placeholder", "Secret entry: hidden");
+    expect(body).toHaveAttribute("placeholder", "Secret entry: hidden");
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry to edit" }));
+    expect(screen.getByLabelText("Title")).toHaveValue("The Choir Ledger");
+    expect(screen.getByLabelText("Body")).toHaveValue("Kept under the Mayor's floor.");
+    await userEvent.clear(screen.getByLabelText("Title"));
+    await userEvent.type(screen.getByLabelText("Title"), "The Ledger");
+    await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
+    expect(onDecide.mock.calls[0][0].edited.title).toBe("The Ledger");
+    cleanup();
+
+    // The world toggle shows them without the per-form reveal.
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Title")).toHaveValue("The Choir Ledger");
+    expect(screen.queryByRole("button", { name: "Show secret entry to edit" })).toBeNull();
+  });
+
+  it("submitting an unrevealed secret edit keeps title and body", async () => {
+    const onDecide = vi.fn();
+    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={onDecide} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
+    expect(onDecide).toHaveBeenCalledWith({
+      proposal_id: "p_1", action: "edit", edited: { ...secretUpdate.after!, facts: [] },
+    });
+  });
+});

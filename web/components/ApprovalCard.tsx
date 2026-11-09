@@ -15,6 +15,9 @@ import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, 
 export const CHECK_FAILED_TEXT =
   "The contradiction check couldn't run. Review this change yourself before approving.";
 
+const TEXTAREA =
+  "w-full rounded-lg border border-border bg-background px-3 py-2 font-heading text-[15px] text-foreground";
+const HIDDEN_ENTRY = "Secret entry: hidden";
 const STATUSES: Status[] = ["canon", "myth", "rumour", "secret"];
 const ACTION_LABEL: Record<Proposal["action"], string> = { create: "New entry", update: "Update", delete: "Delete" };
 const DECISION_LABEL: Record<Decision["action"], string> = {
@@ -241,25 +244,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         ) : (
           <div className="flex flex-col gap-2 rounded-[10px] border border-border px-3.5 py-3 text-[13px]">
             <div>This entry will be deleted from canon.</div>
-            {check.dependents.length > 0 ? (
-              <>
-                <div className="text-muted-foreground">These entries mention it:</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {check.dependents.map((d) =>
-                    dependentSecret(d.id) ? (
-                      <EntityChip key={d.id} type={d.type} name="Secret entry" />
-                    ) : (
-                      <span key={d.id} className="inline-flex items-center gap-1.5">
-                        <EntityChip type={d.type} name={d.title} href={`/canon/${encodeURIComponent(d.id)}`} />
-                        <span className="text-xs text-muted-foreground">{d.id}</span>
-                      </span>
-                    ),
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="text-muted-foreground">No other entries mention it.</div>
-            )}
+            <DeleteDependents dependents={check.dependents} worldShown={worldShown} secret={dependentSecret} />
           </div>
         )}
 
@@ -277,6 +262,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         ) : editing && proposal.after ? (
           <EditForm
             draft={proposal.after}
+            secretEntry={entrySecret || (!!proposal.entry_id && byId.get(proposal.entry_id)?.status === "secret")}
             disabled={disabled}
             onCancel={() => setEditing(false)}
             onSubmit={(edited) => onDecide({ proposal_id: pid, action: "edit", edited })}
@@ -328,6 +314,53 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   );
 }
 
+const linkedCount = (n: number) => (n === 1 ? "1 linked entry" : `${n} linked entries`);
+
+/**
+ * What a delete touches: entries naming it in their text, then entries tied to it only by a link.
+ * A link may be secret (the Mayor's to the Choir), so while the world hides secrets those are a
+ * count only: no title, ID, type or link.
+ */
+function DeleteDependents({
+  dependents,
+  worldShown,
+  secret,
+}: {
+  dependents: CheckResult["dependents"];
+  worldShown: boolean;
+  secret: (id: string) => boolean;
+}) {
+  const text = dependents.filter((d) => d.via !== "link");
+  const linked = dependents.filter((d) => d.via === "link");
+  const named = worldShown ? [...text, ...linked] : text;
+  const counted = worldShown ? 0 : linked.length;
+  if (named.length === 0 && counted === 0) return <div className="text-muted-foreground">No other entries mention it.</div>;
+  if (named.length === 0)
+    return (
+      <div className="text-muted-foreground">
+        {linkedCount(counted)} {counted === 1 ? "depends" : "depend"} on it
+      </div>
+    );
+  return (
+    <>
+      <div className="text-muted-foreground">These entries mention it:</div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {named.map((d) =>
+          secret(d.id) ? (
+            <EntityChip key={d.id} type={d.type} name="Secret entry" />
+          ) : (
+            <span key={d.id} className="inline-flex items-center gap-1.5">
+              <EntityChip type={d.type} name={d.title} href={`/canon/${encodeURIComponent(d.id)}`} />
+              <span className="text-xs text-muted-foreground">{d.id}</span>
+            </span>
+          ),
+        )}
+        {counted > 0 && <span className="text-muted-foreground">and {linkedCount(counted)}</span>}
+      </div>
+    </>
+  );
+}
+
 function SourceLine({ url }: { url?: string | null }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -343,11 +376,14 @@ function SourceLine({ url }: { url?: string | null }) {
 
 function EditForm({
   draft,
+  secretEntry,
   disabled,
   onCancel,
   onSubmit,
 }: {
   draft: EntryDraft;
+  /** The draft or the proposal's stored entry is secret: its title and body stay hidden until Show. */
+  secretEntry: boolean;
   disabled?: boolean;
   onCancel: () => void;
   onSubmit: (edited: EntryDraft) => void;
@@ -356,7 +392,11 @@ function EditForm({
   const [body, setBody] = useState(draft.body);
   const [facts, setFacts] = useState<Fact[]>(draft.facts);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  const [entryShown, setEntryShown] = useState(false);
   const worldShown = useWorldShowSecrets();
+  // Hidden fields are never bound to the draft's text, so it is not in the DOM; submitting without
+  // Show sends the draft's own title and body (the state below is never edited while hidden).
+  const entryHidden = secretEntry && !worldShown && !entryShown;
 
   const setFact = (i: number, patch: Partial<Fact>) =>
     setFacts((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
@@ -375,23 +415,35 @@ function EditForm({
     <form onSubmit={submit} aria-label="Edit proposal" className="flex flex-col gap-3 rounded-[10px] border border-border-strong px-3.5 py-3">
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} className={INPUT} />
+        {entryHidden ? (
+          <input disabled value="" placeholder={HIDDEN_ENTRY} maxLength={120} className={INPUT} />
+        ) : (
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} className={INPUT} />
+        )}
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Body
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={4}
-          maxLength={4000}
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 font-heading text-[15px] text-foreground"
-        />
+        {entryHidden ? (
+          <textarea disabled value="" placeholder={HIDDEN_ENTRY} rows={4} maxLength={4000} className={TEXTAREA} />
+        ) : (
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={4000} className={TEXTAREA} />
+        )}
       </label>
+      {entryHidden && (
+        <button
+          type="button"
+          onClick={() => setEntryShown(true)}
+          aria-label="Show secret entry to edit"
+          className={`${BTN_SECONDARY} self-start`}
+        >
+          Show to edit
+        </button>
+      )}
       <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
         <legend className="mb-1 text-xs font-semibold uppercase tracking-[1px]">Facts</legend>
         {facts.map((f, i) => {
           const n = i + 1;
-          const hide = (draft.status === "secret" || f.status === "secret") && !worldShown && !revealed.has(i);
+          const hide = (secretEntry || draft.status === "secret" || f.status === "secret") && !worldShown && !revealed.has(i);
           return (
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />

@@ -7,6 +7,7 @@ import { ApprovalCard } from "@/components/ApprovalCard";
 import { CourseChip } from "@/components/CourseChip";
 import { ReviewQueue } from "@/components/ReviewQueue";
 import { getEntries } from "@/lib/api";
+import { SecretsWorldProvider } from "@/lib/secrets";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
 import type { CheckResult, Decision, ImportNote, PendingInterrupt } from "@/lib/types";
@@ -164,89 +165,92 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
     void s.decide(proposals.map((p) => chosen[p.proposal_id]));
   };
 
+  // The queue and the card follow the thread's world's toggle ("" fails closed: nothing shows).
   return (
-    <div className="flex min-h-0 flex-1 flex-wrap">
-      <aside
-        aria-label="Pending proposals"
-        className="flex w-full shrink-0 flex-col gap-3.5 border-b border-border bg-panel px-4 py-5 md:w-[380px] md:border-b-0 md:border-r"
-      >
-        <h1 className="m-0 font-heading text-[26px] font-medium leading-[1.15]">Review</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
-          {n} {n === 1 ? "proposal" : "proposals"} · nothing enters canon until you decide
-        </p>
-        {shown.error && (
-          <p role="alert" className="m-0 text-sm text-conflict">
-            {shown.error}
+    <SecretsWorldProvider worldId={worldId ?? ""}>
+      <div className="flex min-h-0 flex-1 flex-wrap">
+        <aside
+          aria-label="Pending proposals"
+          className="flex w-full shrink-0 flex-col gap-3.5 border-b border-border bg-panel px-4 py-5 md:w-[380px] md:border-b-0 md:border-r"
+        >
+          <h1 className="m-0 font-heading text-[26px] font-medium leading-[1.15]">Review</h1>
+          <p className="m-0 text-[13px] text-muted-foreground">
+            {n} {n === 1 ? "proposal" : "proposals"} · nothing enters canon until you decide
           </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          {clean.length > 0 && (
+          {shown.error && (
+            <p role="alert" className="m-0 text-sm text-conflict">
+              {shown.error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {clean.length > 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void s.chooseMany(clean.map((p) => ({ proposal_id: p.proposal_id, action: "approve" })))}
+                className={BTN_PRIMARY}
+              >
+                Approve {clean.length} with no issues
+              </button>
+            )}
             <button
               type="button"
-              disabled={busy}
-              onClick={() => void s.chooseMany(clean.map((p) => ({ proposal_id: p.proposal_id, action: "approve" })))}
-              className={BTN_PRIMARY}
+              disabled={busy || unchosen.length === 0}
+              onClick={() => void s.chooseMany(unchosen.map((p) => ({ proposal_id: p.proposal_id, action: "reject" })))}
+              className={BTN_OUTLINE}
             >
-              Approve {clean.length} with no issues
+              Reject all
             </button>
-          )}
-          <button
-            type="button"
-            disabled={busy || unchosen.length === 0}
-            onClick={() => void s.chooseMany(unchosen.map((p) => ({ proposal_id: p.proposal_id, action: "reject" })))}
-            className={BTN_OUTLINE}
-          >
-            Reject all
-          </button>
-        </div>
-        <ReviewQueue
-          pending={shown}
-          canon={canon}
-          selectedId={current?.proposal_id ?? ""}
-          chosen={chosen}
-          onSelect={setSelected}
-        />
-      </aside>
-
-      <main className="flex min-w-0 flex-[999_1_520px] flex-col gap-4 px-4 py-6 md:px-10">
-        {isImport && current && (
-          <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
-            <span>
-              From {s.importNote?.source ?? "paste"}
-              {s.importNote?.first_lines[current.proposal_id] ? `: “${s.importNote.first_lines[current.proposal_id]}”` : ""}
-            </span>
-            <CourseChip card="injection_safe_extraction" label="Injection-safe extraction" />
-          </p>
-        )}
-        {current && (
-          <ApprovalCard
-            key={current.proposal_id}
-            proposal={current}
-            check={shown.checks[current.proposal_id]}
+          </div>
+          <ReviewQueue
+            pending={shown}
             canon={canon}
-            chosen={chosen[current.proposal_id]}
-            onUndo={() => s.unchoose(current.proposal_id)}
-            disabled={busy}
-            onDecide={(d) => void s.choose(d)}
+            selectedId={current?.proposal_id ?? ""}
+            chosen={chosen}
+            onSelect={setSelected}
           />
-        )}
-        {busy && (
-          <p role="status" className="m-0 text-sm text-muted-foreground">
-            Sending your decisions…
-          </p>
-        )}
-        {s.error && (
-          <p role="alert" className="m-0 text-sm text-conflict">
-            {s.error}
-          </p>
-        )}
-        <div>
-          <button type="button" disabled={!complete || busy} onClick={submit} className={BTN_PRIMARY}>
-            Submit {n} {n === 1 ? "decision" : "decisions"}
-          </button>
-        </div>
-        {isImport && <NotImported note={s.importNote} />}
-      </main>
-    </div>
+        </aside>
+
+        <main className="flex min-w-0 flex-[999_1_520px] flex-col gap-4 px-4 py-6 md:px-10">
+          {isImport && current && (
+            <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
+              <span>
+                From {s.importNote?.source ?? "paste"}
+                {s.importNote?.first_lines[current.proposal_id] ? `: “${s.importNote.first_lines[current.proposal_id]}”` : ""}
+              </span>
+              <CourseChip card="injection_safe_extraction" label="Injection-safe extraction" />
+            </p>
+          )}
+          {current && (
+            <ApprovalCard
+              key={current.proposal_id}
+              proposal={current}
+              check={shown.checks[current.proposal_id]}
+              canon={canon}
+              chosen={chosen[current.proposal_id]}
+              onUndo={() => s.unchoose(current.proposal_id)}
+              disabled={busy}
+              onDecide={(d) => void s.choose(d)}
+            />
+          )}
+          {busy && (
+            <p role="status" className="m-0 text-sm text-muted-foreground">
+              Sending your decisions…
+            </p>
+          )}
+          {s.error && (
+            <p role="alert" className="m-0 text-sm text-conflict">
+              {s.error}
+            </p>
+          )}
+          <div>
+            <button type="button" disabled={!complete || busy} onClick={submit} className={BTN_PRIMARY}>
+              Submit {n} {n === 1 ? "decision" : "decisions"}
+            </button>
+          </div>
+          {isImport && <NotImported note={s.importNote} />}
+        </main>
+      </div>
+    </SecretsWorldProvider>
   );
 }

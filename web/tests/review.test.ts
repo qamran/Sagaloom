@@ -162,6 +162,9 @@ describe("proposalSummary", () => {
     const del: Proposal = { ...create, action: "delete", after: null };
     const refs = [{ id: "ent_0003", title: "Mayor", type: "character" as const }];
     expect(proposalSummary(del, check([], { dependents: refs }), open)).toBe("Deletes this entry · 1 entry mentions it");
+    // A link-only dependent counts too: the number reveals no title.
+    const linked = [...refs, { ...refs[0], id: "ent_0019", via: "link" as const }];
+    expect(proposalSummary(del, check([], { dependents: linked }), open)).toBe("Deletes this entry · 2 entries mention it");
     expect(proposalSummary(del, check([], { dependents: [...refs, ...refs] }), open)).toBe(
       "Deletes this entry · 2 entries mention it",
     );

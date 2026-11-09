@@ -1,6 +1,7 @@
 import { CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
 import { TYPE_DOT } from "@/lib/entity";
 import { BADGE_CLASS, BADGE_LABEL, badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
+import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Decision, Entry, PendingInterrupt, Proposal } from "@/lib/types";
 
 const ACTION_LABEL: Record<Proposal["action"], string> = { create: "New", update: "Update", delete: "Delete" };
@@ -14,15 +15,23 @@ interface Props {
   onSelect: (proposalId: string) => void;
 }
 
-/** One button per pending proposal: badge, action, title and a one-line summary. */
+const nothingHidden = () => false;
+
+/**
+ * One button per pending proposal: badge, action, title and a one-line summary. Secrets follow the
+ * one rule (hidden while the content world's toggle is off); the queue has no per-row Show.
+ */
 export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Props) {
+  // One toggle for the whole queue: ReviewDetail scopes it to the thread's world, and every
+  // proposal it shows belongs to that world.
+  const worldShown = useWorldShowSecrets();
   return (
     <ul className="m-0 flex list-none flex-col gap-2 p-0">
       {pending.proposals.map((p) => {
         const check = pending.checks[p.proposal_id];
         if (!check) return null;
         const draft = p.after ?? p.before;
-        const secretEntry = p.before?.status === "secret" || p.after?.status === "secret";
+        const titleHidden = (p.before?.status === "secret" || p.after?.status === "secret") && !worldShown;
         const badge = badgeOf(check);
         const selected = p.proposal_id === selectedId;
         const decision = chosen[p.proposal_id];
@@ -49,8 +58,8 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
                 )}
               </span>
               <span className="flex items-center gap-2">
-                {secretEntry ? (
-                  // Always masked, like proposalSummary: the queue has no Show (R12.12, ruling R8).
+                {titleHidden ? (
+                  // A secret entry's title, masked like the card's until the world shows secrets (R12.12, ruling R8).
                   <span className="text-sm font-semibold">Secret entry</span>
                 ) : (
                   <>
@@ -62,7 +71,9 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
               <span className="text-xs text-muted-foreground">
                 {badge === "failed"
                   ? CHECK_FAILED_TEXT
-                  : proposalSummary(p, check, existingSecretOf(p, canon), proseSecretOf(p, canon))}
+                  : worldShown
+                    ? proposalSummary(p, check, nothingHidden, nothingHidden)
+                    : proposalSummary(p, check, existingSecretOf(p, canon), proseSecretOf(p, canon))}
               </span>
             </button>
           </li>

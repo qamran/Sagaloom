@@ -97,7 +97,8 @@ function keySecret(entry: Pick<EntryDraft, "status" | "facts"> | null | undefine
  * One line about a proposal for a list, in the badge's precedence (api/sagaloom/check/badge.py) so
  * the line explains the badge: the worst conflict (hard before possible, keyed before prose);
  * else a retconned fact; else a duplicate note; else what a delete touches; else a note's prose.
- * `secret` says a flag's existing side is masked.
+ * `secret` says a flag's existing side is masked; callers fold the world's toggle into it and
+ * `proseSecret` (ReviewQueue passes predicates that hide nothing while the world shows secrets).
  */
 export function proposalSummary(
   p: Proposal,
@@ -136,6 +137,7 @@ export function proposalSummary(
   // The explanation names the other entry's title: a secret entry is cited by ID only.
   if (dup) return proseSecret(dup) ? `${DUPLICATE}${dup.entry_id}` : dup.explanation;
   if (p.action === "delete") {
+    // Every dependent counts, link-only ones too: a number names no entry.
     const n = c.dependents.length;
     return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
   }

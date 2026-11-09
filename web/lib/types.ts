@@ -57,6 +57,9 @@ export interface EntryRef {
   id: string;
   title: string;
   type: EntryType;
+  /** A delete-check dependent named in its text, or tied only by a link (which may be secret).
+   *  Always sent by the API; optional only so hand-built results still type-check ("text"). */
+  via?: "text" | "link";
 }
 
 /** Review badge, worst first (api/sagaloom/check/badge.py). */
