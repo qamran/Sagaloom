@@ -434,7 +434,7 @@ This section defines how the graph enforces R4.2 (a check on every write) and R5
 
 ### Graph
 
-The diagram is the compiled graph's own `draw_mermaid()` output (R18.9); dashed edges are conditional. `route_entry` (R18.10) starts a chat turn at `guard` and an import at `check`; `route_after_commit` returns a chat turn to `agent` after `commit` and ends an import thread there, with no LLM call.
+The diagram is the compiled graph's own `draw_mermaid()` output (R18.9); dashed edges are conditional. `route_entry` (R18.10) starts a chat turn at `guard` and an import at `check`; `route_after_commit` returns a chat turn to `agent` after `commit`. An import thread returns to `check` while a proposal is still pending (one `commit` refused): the kept check is reused, so there is no judge call, and the gate asks again; otherwise the thread ends.
 
 ```mermaid
 ---
@@ -505,7 +505,7 @@ graph TD;
 | `approval_gate` | Calls `interrupt()` with the proposals and their check results, and resumes with `Command(resume={decisions, edits})` |
 | `remember` | Applies the verbatim gate to `memory_updates`, writes the preferences to the Store and clears the list (R10.2). It has no approval gate: preferences are not canon, and every write is shown and undoable |
 | `commit` | Writes approved proposals to Chroma (R11.2.6), clears them from state, and returns a tool message to the agent |
-| `route_after_commit` | Conditional edge after `commit`: `agent` for chat; `END` for import threads, which make no LLM call after the decision |
+| `route_after_commit` | Conditional edge after `commit`: `agent` for chat; for import threads `check` while a proposal is still pending (the kept check is reused, no judge call, and the gate asks again), otherwise `END` |
 
 ### Requirements
 
