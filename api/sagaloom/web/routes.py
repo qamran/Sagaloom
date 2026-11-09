@@ -1,6 +1,7 @@
 """JSON + SSE endpoints (R19.1). Everything here is mounted behind the shared-secret check."""
 
 import asyncio
+import logging
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -29,6 +30,8 @@ from sagaloom.text import message_text
 from sagaloom.tools.canon_tools import TOOL_SPECS
 from sagaloom.web.imports import import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -378,17 +381,17 @@ async def list_threads(
     d = _deps(request)
     out = []
     for t in reversed(d.threads.list(world_id, kind)):
-        state = await d.graph.aget_state({"configurable": {"thread_id": t.thread_id}})
-        interrupt = _pending(state)
-        count = len(interrupt["proposals"]) if interrupt else 0
-        if pending and not count:
-            continue
-        checks = interrupt["checks"].values() if interrupt else []
-        messages = (state.values or {}).get("messages") or []
-        approved, rejected = _outcomes(messages)
-        lock = d.locks.get(t.thread_id)
-        out.append(
-            {
+        try:
+            state = await d.graph.aget_state({"configurable": {"thread_id": t.thread_id}})
+            interrupt = _pending(state)
+            count = len(interrupt["proposals"]) if interrupt else 0
+            if pending and not count:
+                continue
+            checks = interrupt["checks"].values() if interrupt else []
+            messages = (state.values or {}).get("messages") or []
+            approved, rejected = _outcomes(messages)
+            lock = d.locks.get(t.thread_id)
+            row = {
                 "thread_id": t.thread_id,
                 "world_id": t.world_id,
                 "pending": count,
@@ -400,7 +403,11 @@ async def list_threads(
                 "rejected": rejected,
                 "running": lock is not None and lock.locked(),
             }
-        )
+        except Exception:
+            # One unreadable checkpoint must not take the whole list down.
+            log.exception("list_threads: unreadable checkpoint %s", t.thread_id)
+            continue
+        out.append(row)
     return out
 
 

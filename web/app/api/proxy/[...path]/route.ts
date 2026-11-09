@@ -1,5 +1,12 @@
 export const dynamic = "force-dynamic";
 
+function jsonError(status: number, detail: string): Response {
+  return new Response(JSON.stringify({ detail }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 type Ctx = { params: Promise<{ path: string[] }> };
 
 function decodeSafe(seg: string): string {
@@ -13,15 +20,17 @@ function decodeSafe(seg: string): string {
 async function forward(req: Request, ctx: Ctx): Promise<Response> {
   const { path } = await ctx.params;
   // A dot segment would let a request climb out of /api (the URL parser resolves it).
-  if (path.some((seg) => ["", ".", ".."].includes(decodeSafe(seg)) && seg !== "")) {
+  if (path.some((seg) => [".", ".."].includes(decodeSafe(seg)))) {
     return new Response("bad path", { status: 400 });
   }
+  const secret = process.env.API_SHARED_SECRET;
+  if (!secret) return jsonError(500, "API_SHARED_SECRET is not set on the web server");
   const base = process.env.API_URL ?? "http://localhost:8000";
   const search = new URL(req.url).search;
   const url = `${base}/api/${path.map(encodeURIComponent).join("/")}${search}`;
 
   const headers = new Headers();
-  headers.set("x-sagaloom-secret", process.env.API_SHARED_SECRET ?? "");
+  headers.set("x-sagaloom-secret", secret);
   const contentType = req.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
   // The API rate-limits per client: pass the caller's address along when the platform set one.
@@ -31,12 +40,17 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   if (accept) headers.set("accept", accept);
 
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  const upstream = await fetch(url, {
-    method: req.method,
-    headers,
-    body: hasBody ? await req.text() : undefined,
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, {
+      method: req.method,
+      headers,
+      body: hasBody ? await req.text() : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return jsonError(502, "The API is not reachable");
+  }
 
   const out = new Headers();
   const upstreamType = upstream.headers.get("content-type");

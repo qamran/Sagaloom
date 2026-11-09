@@ -163,6 +163,7 @@ graph TD;
 	check --> approval_gate;
 	commit -.-> __end__;
 	commit -.-> agent;
+	commit -.-> check;
 	guard -.-> __end__;
 	guard -.-> router;
 	remember -.-> agent;

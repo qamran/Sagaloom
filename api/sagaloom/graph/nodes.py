@@ -97,9 +97,18 @@ def route_entry(state: SagaState) -> Literal["guard", "check"]:
     return "check" if state.get("entry") == "import" else "guard"
 
 
-def route_after_commit(state: SagaState) -> Literal["agent", "__end__"]:
-    """An import thread ends after `commit` (no LLM call); a chat turn tells the agent."""
-    return END if state.get("entry") == "import" else "agent"
+def route_after_commit(state: SagaState) -> Literal["agent", "check", "__end__"]:
+    """A chat turn tells the agent (it reads the refused note itself). An import thread has no
+    agent: it ends once nothing is pending, but a proposal `commit` refused stays pending and
+    would be stranded, so it goes back through `check` and the gate asks again.
+
+    Cost: `check` skips a proposal that already has a check result, and `commit` keeps the check
+    of a refused one, so the re-check makes no new judge call; the gate interrupts again with the
+    kept check. A proposal refused for a world mismatch is refused again on every cycle, so each
+    cycle needs a human decision; it never loops on its own."""
+    if state.get("entry") != "import":
+        return "agent"
+    return "check" if state.get("pending_proposals") else END
 
 
 def route_after_agent(state: SagaState) -> Literal["tools", "__end__"]:

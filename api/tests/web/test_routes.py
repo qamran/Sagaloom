@@ -253,6 +253,24 @@ async def test_list_threads_reports_registry_kind_and_counts(make_env, store):
     assert [r["thread_id"] for r in pending] == [waiting]
 
 
+async def test_list_threads_skips_unreadable_checkpoint(make_env, caplog):
+    env = make_env()
+    ids = [await env.new_thread() for _ in range(3)]
+    real = env.deps.graph.aget_state
+
+    async def flaky(config, *a, **kw):
+        if config["configurable"]["thread_id"] == ids[1]:
+            raise RuntimeError("corrupt checkpoint")
+        return await real(config, *a, **kw)
+
+    env.deps.graph.aget_state = flaky
+    with caplog.at_level("ERROR"):
+        r = await env.client.get("/api/threads")
+    assert r.status_code == 200
+    assert [row["thread_id"] for row in r.json()] == [ids[2], ids[0]]
+    assert f"unreadable checkpoint {ids[1]}" in caplog.text
+
+
 async def test_list_threads_running_follows_the_turn_lock(make_env):
     env = make_env()
     tid = await env.new_thread()

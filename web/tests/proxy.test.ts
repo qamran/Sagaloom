@@ -100,6 +100,67 @@ describe("secret-injecting proxy", () => {
   });
 });
 
+describe("proxy failure modes", () => {
+  beforeEach(() => {
+    process.env.API_URL = "http://api.test";
+    process.env.API_SHARED_SECRET = "s3cret-for-test";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const ctx = () => ({ params: Promise.resolve({ path: ["worlds"] }) });
+
+  it("answers 500 JSON when the shared secret is empty", async () => {
+    for (const value of ["", undefined]) {
+      if (value === undefined) delete process.env.API_SHARED_SECRET;
+      else process.env.API_SHARED_SECRET = value;
+      const fetchMock = vi.fn(async () => new Response("{}"));
+      vi.stubGlobal("fetch", fetchMock);
+      const res = await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx());
+      expect(res.status).toBe(500);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      expect(await res.json()).toEqual({ detail: "API_SHARED_SECRET is not set on the web server" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("answers 502 JSON when the API is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    const res = await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx());
+    expect(res.status).toBe(502);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ detail: "The API is not reachable" });
+  });
+
+  it("passes a text/event-stream response through unbuffered", async () => {
+    const enc = new TextEncoder();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const body = new ReadableStream<Uint8Array>({
+      async start(c) {
+        c.enqueue(enc.encode('event: token\ndata: {"t":"a"}\n\n'));
+        await gate; // the second chunk exists only after the first was read downstream
+        c.enqueue(enc.encode("event: done\ndata: {}\n\n"));
+        c.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } })),
+    );
+    const res = await GET(new Request("http://localhost:3000/api/proxy/threads/t/stream"), ctx());
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    const first = await reader.read();
+    expect(dec.decode(first.value)).toBe('event: token\ndata: {"t":"a"}\n\n');
+    release();
+    const second = await reader.read();
+    expect(dec.decode(second.value)).toBe("event: done\ndata: {}\n\n");
+    expect((await reader.read()).done).toBe(true);
+  });
+});
+
 describe("proxy path hardening", () => {
   beforeEach(() => {
     process.env.API_URL = "http://api.test";
@@ -118,6 +179,16 @@ describe("proxy path hardening", () => {
       });
       expect(res.status).toBe(400);
     }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a dot segment", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await GET(new Request("http://localhost:3000/api/proxy/x"), {
+      params: Promise.resolve({ path: ["worlds", ".."] }),
+    });
+    expect(res.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

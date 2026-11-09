@@ -302,14 +302,14 @@ def test_graph_structure_only_gate_reaches_commit(store):
     into = lambda n: {e.source for e in edges if e.target == n}  # noqa: E731
     assert into("commit") == {"approval_gate"}
     assert into("approval_gate") == {"check"}
-    assert into("check") == {"tools", "approval_gate", "remember", "__start__"}
+    assert into("check") == {"tools", "approval_gate", "remember", "__start__", "commit"}
     assert into("tools") == {"agent"}
     assert into("remember") == {"tools"}
     assert into("agent") == {"router", "tools", "commit", "remember"}
     assert into("router") == {"guard"}
     assert {e.target for e in edges if e.source == "router"} == {"agent"}
     assert {e.target for e in edges if e.source == "remember"} == {"check", "agent"}
-    assert {e.target for e in edges if e.source == "commit"} == {"agent", "__end__"}
+    assert {e.target for e in edges if e.source == "commit"} == {"agent", "check", "__end__"}
     assert {e.target for e in edges if e.source == "__start__"} == {"guard", "check"}
     assert {e.target for e in edges if e.source == "guard"} == {"router", "__end__"}
 
@@ -396,6 +396,41 @@ def test_route_entry_defaults_to_chat():
     assert route_after_commit({}) == "agent"
     assert route_after_commit({"entry": "chat"}) == "agent"
     assert route_after_commit({"entry": "import"}) == "__end__"
+
+
+def test_route_after_commit_rechecks_stranded_import():
+    assert route_after_commit({"entry": "import", "pending_proposals": [P("p_1")]}) == "check"
+
+
+def test_route_after_commit_import_done():
+    assert route_after_commit({"entry": "import", "pending_proposals": []}) == "__end__"
+
+
+async def test_import_refused_proposal_is_asked_again(store):
+    """commit refuses a proposal it cannot write (here: another world's). On an import thread
+    there is no agent to tell, so it must come back to the gate instead of being stranded."""
+    graph, agent, judge = make(store, [])
+    cfg = run_config("t1", W)
+    stray = P("p_2", "Peak").model_copy(update={"world_id": "other"})
+    await run(graph, import_input(P("p_1", "Ostra"), stray), cfg)
+    both = resume(
+        {"proposal_id": "p_1", "action": "approve"}, {"proposal_id": "p_2", "action": "approve"}
+    )
+    calls = judge.calls
+    nodes = await run(graph, both, cfg)
+    assert nodes[-1] == "__interrupt__" and "check" in nodes
+    assert [e.title for e in store.list_entries(W)] == ["Ostra"]  # p_1 written, p_2 not
+    payload = await interrupt_payload(graph, cfg)
+    assert [p["proposal_id"] for p in payload["proposals"]] == ["p_2"]
+    assert list(payload["checks"]) == ["p_2"]
+    assert judge.calls == calls  # check skips a proposal that already has a check result
+    # The world mismatch repeats: the next approval is refused again and a human decides again.
+    await run(graph, resume({"proposal_id": "p_2", "action": "approve"}), cfg)
+    assert [p["proposal_id"] for p in (await interrupt_payload(graph, cfg))["proposals"]] == ["p_2"]
+    await run(graph, resume({"proposal_id": "p_2", "action": "reject"}), cfg)
+    state = await graph.aget_state(cfg)
+    assert state.next == () and not state.interrupts
+    assert agent.seen == []
 
 
 def review_notes(state_values) -> list[HumanMessage]:

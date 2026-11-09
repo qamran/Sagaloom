@@ -5,7 +5,7 @@ guard -> (safe / off) router -> agent | (blocked) END
 agent -> (tool calls) tools -> (queued preferences) remember -> check | agent
 tools -> (unchecked/undecided proposal) check -> approval_gate
 approval_gate -> check (edit / save as myth) | commit
-commit -> (chat) agent | (import) END   [route_after_commit];  agent -> END.
+commit -> (chat) agent | (import, refused proposal pending) check | (import) END   [route_after_commit];  agent -> END.
 """
 
 from collections.abc import AsyncIterator, Callable
@@ -83,7 +83,9 @@ def build_graph(
     )
     g.add_conditional_edges("remember", route_after_remember, {"check": "check", "agent": "agent"})
     g.add_edge("check", "approval_gate")
-    g.add_conditional_edges("commit", route_after_commit, {"agent": "agent", END: END})
+    g.add_conditional_edges(
+        "commit", route_after_commit, {"agent": "agent", "check": "check", END: END}
+    )
     return g.compile(checkpointer=checkpointer, store=memory_store)
 
 
