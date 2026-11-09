@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from sagaloom.models import Entry, World
-from sagaloom.store.canon import CanonStore, DuplicateTitleError
+from sagaloom.store.canon import CanonStore, norm
 from sagaloom.store.worlds import WorldRegistry
 
 VELMAR_ID = "velmar"
@@ -39,18 +39,25 @@ def ensure_first_run(store: CanonStore, worlds: WorldRegistry, seed_dir: Path) -
     return worlds.get(VELMAR_ID)
 
 
-def seed_missing(store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID) -> list[str]:
-    """Add only the seed entries absent from the world (for data created before a seed entry
-    was added); an entry the author edited or kept is never touched. An id or title that is
-    taken elsewhere (entry ids are global across worlds) is skipped. Returns the ids added."""
+def seed_missing(
+    store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID
+) -> list[tuple[str, Entry]]:
+    """Add the seed entries missing from the world, for data created before a seed entry was
+    added. A seed entry is present when the world holds an entry with its title (at its seed
+    id, or at the id an earlier run gave it); an existing entry is never overwritten. If the
+    seed id is taken by another entry in any world (ids are global, so Captain Sorn may hold
+    ent_0019), the seed entry is added under a fresh id; this is safe only for a seed entry
+    nothing links to, such as the Choir Ledger. Returns (seed id, stored entry) pairs."""
+    titles = {norm(e.title) for e in store.list_entries(world_id)}
     added = []
     for e in _seed_entries(seed_dir, world_id):
-        if store.get_entry(world_id, e.id) is not None:
+        if norm(e.title) in titles:
             continue
-        try:
-            store.upsert_entry(e)
-        except (DuplicateTitleError, ValueError) as exc:
-            log.warning("skipped seed entry %s: %s", e.id, exc)
-            continue
-        added.append(e.id)
+        seed_id = e.id
+        if store.has_id(seed_id):
+            e = e.model_copy(update={"id": store.next_entry_id()})
+        stored = store.upsert_entry(e)
+        titles.add(norm(stored.title))
+        log.info("added %s as %s (%s)", seed_id, stored.id, stored.title)
+        added.append((seed_id, stored))
     return added

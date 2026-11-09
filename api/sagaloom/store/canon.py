@@ -46,6 +46,10 @@ class CanonStore:
         nums = [int(i[4:]) for i in ids if re.fullmatch(r"ent_\d{4}", i)]
         return f"ent_{max(nums, default=0) + 1:04d}"
 
+    def has_id(self, entry_id: str) -> bool:
+        """Whether any world holds this id (ids are global, like next_entry_id)."""
+        return bool(self.col.get(ids=[entry_id], include=[])["ids"])
+
     def get_entry(self, world_id: str, entry_id: str) -> Entry | None:
         res = self.col.get(
             ids=[entry_id], where={"world_id": world_id}, include=["metadatas"]

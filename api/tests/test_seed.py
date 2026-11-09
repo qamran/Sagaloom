@@ -166,17 +166,37 @@ def test_seed_missing_adds_only_absent_entries(store, worlds):
     store.upsert_entry(city.model_copy(update={"body": "Edited by the author."}))
     store.delete_entry("velmar", "ent_0019")
     added = seed_missing(store, SEED)
-    assert added == ["ent_0019"]
+    assert [(seed_id, e.id) for seed_id, e in added] == [("ent_0019", "ent_0019")]
     assert store.get_entry("velmar", "ent_0001").body == "Edited by the author."
     assert store.get_entry("velmar", "ent_0019").title == "The Choir Ledger"
     assert len(store.list_entries("velmar")) == 19
     assert seed_missing(store, SEED) == []
 
 
-def test_seed_missing_skips_an_id_another_world_owns(store, worlds):
+def _velmar_with_sorn_at_0019(store, worlds, world_id="velmar"):
+    """18-entry data, then the demo's Captain Sorn takes the next id, ent_0019."""
     load_seed(store, worlds, SEED)
     store.delete_entry("velmar", "ent_0019")
-    store.upsert_entry(Entry(id="ent_0019", world_id="mine", title="Mine", type="item", body="b"))
-    assert seed_missing(store, SEED) == []
+    sorn = Entry(id="ent_0019", world_id=world_id, title="Captain Sorn", type="character",
+                 body="Harbourmaster of Lantern Quay.")
+    return store.upsert_entry(sorn)
+
+
+def test_seed_missing_re_ids_a_seed_entry_whose_id_is_taken_in_the_world(store, worlds):
+    sorn = _velmar_with_sorn_at_0019(store, worlds)
+    [(seed_id, ledger)] = seed_missing(store, SEED)
+    assert seed_id == "ent_0019" and ledger.id == "ent_0020"
+    assert store.get_entry("velmar", "ent_0020").title == "The Choir Ledger"
+    assert store.get_entry("velmar", "ent_0019") == sorn  # never overwritten
+    assert len(store.list_entries("velmar")) == 20
+    assert seed_missing(store, SEED) == []  # the title match finds the re-id'd ledger
+
+
+def test_seed_missing_re_ids_a_seed_entry_whose_id_another_world_owns(store, worlds):
+    mine = _velmar_with_sorn_at_0019(store, worlds, world_id="mine")
+    [(seed_id, ledger)] = seed_missing(store, SEED)
+    assert seed_id == "ent_0019" and ledger.id == "ent_0020"
+    assert store.get_entry("velmar", "ent_0020").title == "The Choir Ledger"
     assert store.get_entry("velmar", "ent_0019") is None
-    assert store.get_entry("mine", "ent_0019").title == "Mine"
+    assert store.get_entry("mine", "ent_0019") == mine
+    assert seed_missing(store, SEED) == []

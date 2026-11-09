@@ -4,7 +4,7 @@ Velmar is a fog-bound harbour city with one red moon, Ister. The seed in `entrie
 
 - Statuses: `ent_0015` (The Song of Three Moons) is a **myth**, `ent_0016` (The Drowning of Warden Vane) is a **rumour**, the Mayor's membership of the Ashen Choir (`ent_0003`) is a **secret** fact, and `ent_0019` (The Choir Ledger) is the one **secret** entry. The web app hides secret entries and facts until Show secrets is on, so the sidebar shows 18 of 19 entries.
 - Load it with `sagaloom.seed.load_seed` (idempotent: fixed IDs, world `velmar`). `ensure_first_run` loads it only when no world exists.
-- To add seed entries that are new since your `api/data` was created (such as `ent_0019`), stop the API and run `cd api && uv run python scripts/seed_missing.py`. It adds only the seed ids missing from `velmar` and never overwrites your edits.
+- To add seed entries that are new since your `api/data` was created (such as `ent_0019`), stop the API and run `cd api && uv run python scripts/seed_missing.py`. It adds only the seed entries whose title is missing from `velmar`, under a fresh id if the seed id is already taken, and never overwrites an existing entry.
 
 ## Scripted proposals (`scripted_proposals.json`)
 

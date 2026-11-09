@@ -33,7 +33,10 @@ def main() -> None:
     client = chromadb.PersistentClient(path=str(settings.data_dir / "chroma"))
     store = CanonStore(client, make_embeddings(settings))
     added = seed_missing(store, SEED_DIR)
-    print(f"added {', '.join(added)}" if added else "nothing missing")
+    for seed_id, entry in added:
+        print(f"added {seed_id} as {entry.id} ({entry.title})")
+    if not added:
+        print("nothing missing")
 
 
 if __name__ == "__main__":
