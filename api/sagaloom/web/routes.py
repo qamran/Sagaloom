@@ -355,7 +355,9 @@ async def delete_memory(
 ) -> dict:
     """Undo or delete: one list item when `item` is given, else the whole key. Idempotent."""
     d = _memory_world(request, world_id)
-    return _memory_payload(d, request.app.state.settings, world_id, await forget(d.memory, world_id, key, item))
+    async with d.memory_locks.hold(world_id):
+        prefs = await forget(d.memory, world_id, key, item)
+    return _memory_payload(d, request.app.state.settings, world_id, prefs)
 
 
 # ---------- threads ----------

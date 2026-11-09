@@ -10,12 +10,15 @@ reference summary or imported text never appears there, so it can never reach th
 from there every later system prompt.
 """
 
+import logging
 import re
 import unicodedata
 
 from langgraph.store.base import BaseStore
 
 from sagaloom.models import MemoryResult, MemoryUpdate, PreferenceKey
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     "CAP",
@@ -29,6 +32,7 @@ __all__ = [
     "near_verbatim",
     "read_preferences",
     "render_preferences",
+    "unavailable",
 ]
 
 KEY_ORDER: tuple[str, ...] = ("tone", "genre", "banned_tropes", "notes")
@@ -113,25 +117,51 @@ def _invalid(key: str) -> str:
     return f"Not remembered: preferences must be one line of at most {MAX_CHARS} characters ({key})"
 
 
+def unavailable(u: MemoryUpdate) -> MemoryResult:
+    """The result for an update the store could not take (key only in the note)."""
+    return MemoryResult(
+        key=u.key,
+        value=u.value[:MAX_CHARS],
+        stored=False,
+        note=unavailable_note(u.key),
+        reason="unavailable",
+    )
+
+
 async def apply_updates(
     store: BaseStore, world_id: str, updates: list[MemoryUpdate], author_text: str
 ) -> list[MemoryResult]:
     """Gate and write each update in order; one result per update. Checks, in order: one line
-    of 1-200 characters, the verbatim gate against `author_text`, then the cap."""
+    of 1-200 characters, the verbatim gate against `author_text`, then the cap.
+
+    A failing read raises (the caller reports every update unavailable). A failing write
+    reports that update and every later one unavailable; the earlier ones were stored."""
     prefs = await read_preferences(store, world_id)
     results: list[MemoryResult] = []
-    for u in updates:
+    for i, u in enumerate(updates):
         key, raw = u.key, u.value
         value = raw.strip()
         if not _one_line(raw) or not 1 <= len(value) <= MAX_CHARS:
             # Bounded, since the result is kept in the thread and streamed to the client.
             results.append(
-                MemoryResult(key=key, value=value[:MAX_CHARS], stored=False, note=_invalid(key))
+                MemoryResult(
+                    key=key,
+                    value=value[:MAX_CHARS],
+                    stored=False,
+                    note=_invalid(key),
+                    reason="invalid",
+                )
             )
             continue
         if not near_verbatim(value, author_text):
             results.append(
-                MemoryResult(key=key, value=value, stored=False, note=_gated(key, value))
+                MemoryResult(
+                    key=key,
+                    value=value,
+                    stored=False,
+                    note=_gated(key, value),
+                    reason="not_said",
+                )
             )
             continue
         if key in LIST_KEYS:
@@ -141,25 +171,39 @@ async def apply_updates(
                 # Already there: not added twice. Report the author's stored spelling, so an
                 # Undo of this result removes exactly that item.
                 results.append(
-                    MemoryResult(key=key, value=same, stored=True, note=_stored(key, same))
+                    MemoryResult(
+                        key=key, value=same, stored=True, note=_stored(key, same), reason="stored"
+                    )
                 )
                 continue
             if count_items(prefs) >= CAP:
                 results.append(
-                    MemoryResult(key=key, value=value, stored=False, note=_full(key, value))
+                    MemoryResult(
+                        key=key, value=value, stored=False, note=_full(key, value), reason="full"
+                    )
                 )
                 continue
             new: str | list[str] = [*items, value]
         else:
             if key not in prefs and count_items(prefs) >= CAP:
                 results.append(
-                    MemoryResult(key=key, value=value, stored=False, note=_full(key, value))
+                    MemoryResult(
+                        key=key, value=value, stored=False, note=_full(key, value), reason="full"
+                    )
                 )
                 continue
             new = value
-        await store.aput(namespace(world_id), key, {"value": new})
+        try:
+            await store.aput(namespace(world_id), key, {"value": new})
+        except Exception:
+            # Earlier writes did land: keep their results, report this one and the rest.
+            log.exception("remember: the memory store failed")
+            results += [unavailable(v) for v in updates[i:]]
+            break
         prefs[key] = new
-        results.append(MemoryResult(key=key, value=value, stored=True, note=_stored(key, value)))
+        results.append(
+            MemoryResult(key=key, value=value, stored=True, note=_stored(key, value), reason="stored")
+        )
     return results
 
 
@@ -189,15 +233,17 @@ def agent_note(r: MemoryResult) -> str:
     """The line the agent reads (the memory note goes back to it in the user role). A refused
     value never appears there: text the model took from an injection must not come back as a
     user message. The full note, with the value, stays in `MemoryResult.note` for the UI."""
-    if r.stored:
-        return r.note
-    if r.note == _gated(r.key, r.value):
-        return f"Not remembered: it wasn't something the author said ({r.key})"
-    if r.note == _full(r.key, r.value):
-        return f"Not remembered: memory is full ({CAP} preferences) ({r.key})"
-    if r.note == unavailable_note(r.key):
-        return r.note  # names the key only
-    return _invalid(r.key)  # every other refusal names the key only
+    match r.reason:
+        case "stored":
+            return r.note
+        case "not_said":
+            return f"Not remembered: it wasn't something the author said ({r.key})"
+        case "full":
+            return f"Not remembered: memory is full ({CAP} preferences) ({r.key})"
+        case "unavailable":
+            return unavailable_note(r.key)
+        case "invalid":
+            return _invalid(r.key)
 
 
 def render_preferences(prefs: dict) -> str:

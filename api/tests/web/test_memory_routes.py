@@ -3,7 +3,7 @@
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from sagaloom.memory import apply_updates
+from sagaloom.memory import apply_updates, read_preferences
 from sagaloom.models import MemoryUpdate
 from sagaloom.web.routes import message_dict
 
@@ -66,6 +66,30 @@ async def test_delete_item_then_key(make_env):
     assert r.status_code == 200
     assert r.json()["preferences"] == {"banned_tropes": ["chosen-one prophecies"]}
     assert r.json()["count"] == 1
+
+
+async def test_forget_waits_for_the_world_lock(make_env):
+    """DELETE /memory takes the world's memory lock, so it never interleaves with `remember`."""
+    import asyncio
+
+    env = make_env()
+    await seed_prefs(env)
+    held = env.deps.memory_locks.hold(W)
+    await held.__aenter__()
+    try:
+        req = asyncio.create_task(
+            env.client.delete(f"/api/worlds/{W}/memory", params={"key": "tone"})
+        )
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert not req.done()
+        assert (await read_preferences(env.deps.memory, W))["tone"] == "grim"
+    finally:
+        await held.__aexit__(None, None, None)
+    r = await asyncio.wait_for(req, timeout=5)
+    assert r.status_code == 200
+    assert "tone" not in r.json()["preferences"]
+    assert len(env.deps.memory_locks) == 0
 
 
 async def test_delete_is_idempotent_and_validated(make_env):
@@ -149,7 +173,13 @@ async def test_turn_streams_remember_result_and_history_shows_it(make_env):
             "name": "remember",
             "summary": "Remembered: tone → grim",
             "memory": [
-                {"key": "tone", "value": "grim", "stored": True, "note": "Remembered: tone → grim"}
+                {
+                    "key": "tone",
+                    "value": "grim",
+                    "stored": True,
+                    "note": "Remembered: tone → grim",
+                    "reason": "stored",
+                }
             ],
         }
     ]

@@ -171,6 +171,10 @@ class MemoryUpdate(BaseModel):
     value: str
 
 
+# Why a result is what it is; `agent_note` switches on it, never on the note text.
+MemoryReason = Literal["stored", "not_said", "full", "invalid", "unavailable"]
+
+
 class MemoryResult(BaseModel):
     """What the `remember` node did with one update; `note` is the exact chat copy."""
 
@@ -178,3 +182,4 @@ class MemoryResult(BaseModel):
     value: str
     stored: bool
     note: str
+    reason: MemoryReason

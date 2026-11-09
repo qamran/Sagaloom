@@ -1,7 +1,6 @@
 """Graph nodes (R18). Only `commit` writes to the store, and it refuses anything that has
 not been checked and approved (R18.3)."""
 
-import asyncio
 import logging
 import threading
 from collections.abc import Callable
@@ -30,20 +29,19 @@ from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
 from sagaloom.memory import (
-    MAX_CHARS,
     agent_note,
     apply_updates,
     read_preferences,
     render_preferences,
-    unavailable_note,
+    unavailable,
 )
+from sagaloom.locks import KeyedLocks
 from sagaloom.models import (
     PROVENANCE_FIELDS,
     CheckResult,
     Decision,
     Entry,
     Flag,
-    MemoryResult,
     Proposal,
 )
 from sagaloom.provenance import merge_provenance
@@ -329,34 +327,25 @@ def _author_text(msgs: list) -> str:
     return ""
 
 
-def make_remember_node(memory_store: BaseStore):
+def make_remember_node(memory_store: BaseStore, locks: KeyedLocks):
     """The only writer of preferences (R18.2). No approval gate: preferences are not canon, and
     every write is shown in chat and undoable. The verbatim gate in `apply_updates` is the
-    injection defence (R10.2)."""
-    # One lock per world: two threads of the same world must not interleave their
-    # read-modify-write (a lost update, or a way past the cap).
-    locks: dict[str, asyncio.Lock] = {}
+    injection defence (R10.2). `locks` is the app's per-world memory lock, shared with the
+    memory routes: two threads of the same world, or a remember and an Undo, must not
+    interleave their read-modify-write (a lost update, or a way past the cap)."""
 
     async def remember(state: SagaState) -> dict:
         world_id = state["world_id"]
         updates = list(state.get("memory_updates") or [])
         author = _author_text(state.get("messages") or [])
         try:
-            async with locks.setdefault(world_id, asyncio.Lock()):
+            async with locks.hold(world_id):
                 results = await apply_updates(memory_store, world_id, updates, author)
         except Exception:
             # Never raise, record the outcome: a raise would leave `memory_updates` queued in
             # the checkpoint and the next turn would gate stale values against its own message.
             log.exception("remember: the memory store failed")
-            results = [
-                MemoryResult(
-                    key=u.key,
-                    value=u.value[:MAX_CHARS],
-                    stored=False,
-                    note=unavailable_note(u.key),
-                )
-                for u in updates
-            ]
+            results = [unavailable(u) for u in updates]
         return {
             "memory_updates": None,
             "messages": [

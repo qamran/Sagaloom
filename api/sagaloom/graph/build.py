@@ -22,6 +22,7 @@ from langgraph.store.memory import InMemoryStore
 
 from sagaloom import models as sagaloom_models
 from sagaloom.config import Settings
+from sagaloom.locks import KeyedLocks
 from sagaloom.graph.nodes import (
     ModelFor,
     RoleModel,
@@ -56,11 +57,15 @@ def build_graph(
     dev: Callable[[], DevSettings] = DevSettings,
     wiki: WikiClient | None = None,
     memory_store: BaseStore | None = None,
+    memory_locks: KeyedLocks | None = None,
 ) -> CompiledStateGraph:
     """`memory_store` holds the author preferences (R10.2); the app passes its AsyncSqliteStore,
-    tests an InMemoryStore (the default)."""
+    tests an InMemoryStore (the default). `memory_locks` is the per-world lock the app's memory
+    routes share; a new one by default."""
     if memory_store is None:
         memory_store = InMemoryStore()
+    if memory_locks is None:
+        memory_locks = KeyedLocks()
     tools = make_tools(
         store, RoleModel(model_for, "extractor"), RoleModel(model_for, "judge"), wiki=wiki
     )
@@ -69,7 +74,7 @@ def build_graph(
     g.add_node("router", make_router_node(model_for))
     g.add_node("agent", make_agent_node(model_for, tools, dev, memory_store))
     g.add_node("tools", make_tools_node(tools, dev))
-    g.add_node("remember", make_remember_node(memory_store))
+    g.add_node("remember", make_remember_node(memory_store, memory_locks))
     g.add_node("check", make_check_node(store, model_for))
     g.add_node("approval_gate", approval_gate, destinations=("check", "commit"))
     g.add_node("commit", make_commit_node(store))

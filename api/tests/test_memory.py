@@ -11,7 +11,7 @@ from sagaloom.memory import (
     read_preferences,
     render_preferences,
 )
-from sagaloom.models import MemoryUpdate
+from sagaloom.models import MemoryResult, MemoryUpdate
 
 W = "w1"
 DEMO = "Remember: keep the tone grim, and I never want chosen-one prophecies."
@@ -202,3 +202,66 @@ async def test_agent_note_never_echoes_a_refused_value():
 
     [ok] = await apply_updates(store, "other", [U("tone", "grim")], "grim")
     assert agent_note(ok) == "Remembered: tone → grim"
+
+
+# ---------- per-update failure and `reason` ----------
+
+
+class FailOnSecondPut(InMemoryStore):
+    def __init__(self):
+        super().__init__()
+        self.puts = 0
+
+    async def aput(self, *args, **kwargs):
+        self.puts += 1
+        if self.puts == 2:
+            raise OSError("database is locked")
+        return await super().aput(*args, **kwargs)
+
+
+async def test_store_failure_mid_batch_keeps_earlier_results():
+    store = FailOnSecondPut()
+    results = await apply_updates(
+        store, W, [U("tone", "grim"), U("genre", "grim"), U("notes", "grim")], DEMO
+    )
+    assert [r.reason for r in results] == ["stored", "unavailable", "unavailable"]
+    assert [r.stored for r in results] == [True, False, False]
+    assert [r.note for r in results] == [
+        "Remembered: tone → grim",
+        "Not remembered: memory is unavailable right now (genre)",
+        "Not remembered: memory is unavailable right now (notes)",
+    ]
+    assert store.puts == 2  # no write after the failure
+    assert await read_preferences(store, W) == {"tone": "grim"}
+
+
+async def test_reason_set_for_each_outcome():
+    store = InMemoryStore()
+    msg = " ".join(f"item {i:02d}" for i in range(20))
+    await apply_updates(store, W, [U("notes", f"item {i:02d}") for i in range(19)], msg)
+    results = await apply_updates(
+        store,
+        W,
+        [
+            U("tone", "item 00"),  # stored: the 20th item
+            U("genre", "dragons"),  # not said
+            U("notes", "item 19"),  # full
+            U("banned_tropes", "a\nb"),  # invalid
+            U("notes", "item 00"),  # already there: stored
+        ],
+        msg,
+    )
+    assert [r.reason for r in results] == ["stored", "not_said", "full", "invalid", "stored"]
+
+
+def test_agent_note_reads_reason_not_note_text():
+    r = MemoryResult(key="tone", value="x", stored=False, note="anything", reason="not_said")
+    assert agent_note(r) == "Not remembered: it wasn't something the author said (tone)"
+    full = MemoryResult(key="tone", value="x", stored=False, note="anything", reason="full")
+    assert agent_note(full) == "Not remembered: memory is full (20 preferences) (tone)"
+    down = MemoryResult(key="tone", value="x", stored=False, note="anything", reason="unavailable")
+    assert agent_note(down) == "Not remembered: memory is unavailable right now (tone)"
+    bad = MemoryResult(key="tone", value="x", stored=False, note="anything", reason="invalid")
+    assert agent_note(bad) == (
+        "Not remembered: preferences must be one line of at most 200 characters (tone)"
+    )

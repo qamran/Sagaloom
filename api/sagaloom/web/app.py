@@ -13,6 +13,7 @@ from langgraph.store.base import BaseStore
 from pydantic import ValidationError
 
 from sagaloom.config import Settings, load_env_files
+from sagaloom.locks import KeyedLocks
 from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
 from sagaloom.seed import ensure_first_run
@@ -46,6 +47,8 @@ class AppDeps:
     memory: BaseStore | None = None  # long-term author preferences (R10.2)
     seed_dir: Path | None = SEED_DIR
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
+    # One preferences writer per world, shared by the graph's `remember` and the memory routes.
+    memory_locks: KeyedLocks = field(default_factory=KeyedLocks)
     # role -> chat model, the same factory the graph uses (the import extractor runs on it).
     model_for: Callable[[str], Any] | None = None
     # Running turns, shielded from client disconnects; cancelled at shutdown.
@@ -122,6 +125,7 @@ async def _open_runtime(app: FastAPI):
                 dev=deps.dev_settings.get,
                 wiki=deps.wiki,
                 memory_store=deps.memory,
+                memory_locks=deps.memory_locks,
             )
         if deps.seed_dir is not None:
             await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)

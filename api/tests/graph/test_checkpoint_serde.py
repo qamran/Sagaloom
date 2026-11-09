@@ -84,7 +84,9 @@ def test_memory_models_roundtrip_through_the_strict_serde(caplog):
     serde = checkpoint_serde()
     for obj in (
         [MemoryUpdate(key="tone", value="grim")],
-        MemoryResult(key="tone", value="grim", stored=True, note="Remembered: tone → grim"),
+        MemoryResult(
+            key="tone", value="grim", stored=True, note="Remembered: tone → grim", reason="stored"
+        ),
     ):
         assert serde.loads_typed(serde.dumps_typed(obj)) == obj
     assert "not in the allowed" not in caplog.text.lower() and "blocked" not in caplog.text.lower()

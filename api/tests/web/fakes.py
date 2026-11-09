@@ -21,6 +21,7 @@ from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
 from sagaloom.guard import GuardVerdict
 from sagaloom.importing.extract import ExtractionOutput
+from sagaloom.locks import KeyedLocks
 from sagaloom.models import Fact
 from sagaloom.promptlog import PromptLog
 from sagaloom.router import RouteDecision
@@ -221,11 +222,13 @@ def make_env(store, tmp_path):
             "router": router or StubLLM(RouteDecision(mode="edit")),
         }
         memory = InMemoryStore()  # one Store shared by the graph and the memory routes
+        memory_locks = KeyedLocks()  # and one per-world lock, as `_open_runtime` wires them
         graph = build_graph(
             store=store,
             model_for=lambda role: roles[role],
             checkpointer=InMemorySaver(),
             memory_store=memory,
+            memory_locks=memory_locks,
         )
         worlds = WorldRegistry(tmp_path / "worlds.json")
         worlds.create("World One", world_id=W)
@@ -237,6 +240,7 @@ def make_env(store, tmp_path):
             settings=settings,
             promptlog=PromptLog(tmp_path / "prompts.sqlite"),
             memory=memory,
+            memory_locks=memory_locks,
             model_for=lambda role: roles[role],
         )
         app = create_app(settings, deps)

@@ -1553,7 +1553,13 @@ async def test_remember_turn_returns_to_agent(store):
     [note] = memory_notes(values)
     assert note.content == "Remembered: tone → grim"
     assert note.additional_kwargs["memory"] == [
-        {"key": "tone", "value": "grim", "stored": True, "note": "Remembered: tone → grim"}
+        {
+            "key": "tone",
+            "value": "grim",
+            "stored": True,
+            "note": "Remembered: tone → grim",
+            "reason": "stored",
+        }
     ]
     tool_msgs = [m for m in values["messages"] if isinstance(m, ToolMessage)]
     assert tool_msgs[0].content == "Queued: tone → grim. It is stored only if the author said it."
@@ -1590,7 +1596,7 @@ async def test_remember_store_failure_is_recorded_not_raised(store):
     [msg] = memory_notes(values)
     assert msg.content == note  # key only, no value
     assert msg.additional_kwargs["memory"] == [
-        {"key": "tone", "value": "grim", "stored": False, "note": note}
+        {"key": "tone", "value": "grim", "stored": False, "note": note, "reason": "unavailable"}
     ]
     assert await mem.asearch(("preferences", W)) == []  # nothing stored
 
@@ -1732,6 +1738,7 @@ async def test_concurrent_remember_in_one_world_loses_nothing():
     import asyncio
 
     from sagaloom.graph.nodes import make_remember_node
+    from sagaloom.locks import KeyedLocks
 
     class SlowStore(InMemoryStore):
         async def aget(self, *a, **k):
@@ -1740,7 +1747,7 @@ async def test_concurrent_remember_in_one_world_loses_nothing():
             return item
 
     mem = SlowStore()
-    remember_node = make_remember_node(mem)
+    remember_node = make_remember_node(mem, KeyedLocks())
 
     def state(value: str) -> dict:
         return {
@@ -1751,6 +1758,33 @@ async def test_concurrent_remember_in_one_world_loses_nothing():
 
     await asyncio.gather(remember_node(state("alpha")), remember_node(state("beta")))
     assert sorted((await read_preferences(mem, W))["notes"]) == ["alpha", "beta"]
+
+
+async def test_remember_uses_the_shared_locks(store):
+    """The graph takes the app's KeyedLocks, the same map the memory routes hold."""
+    from sagaloom.locks import KeyedLocks
+
+    class SpyLocks(KeyedLocks):
+        def __init__(self):
+            super().__init__()
+            self.keys: list[str] = []
+
+        def hold(self, key):
+            self.keys.append(key)
+            return super().hold(key)
+
+    locks = SpyLocks()
+    mem = InMemoryStore()
+    graph, *_ = make(
+        store,
+        [calls(remember("tone", "grim")), AIMessage(content="Noted.")],
+        memory_store=mem,
+        memory_locks=locks,
+    )
+    nodes = await run(graph, start(DEMO), run_config("t-mem-locks", W))
+    assert "remember" in nodes
+    assert locks.keys == [W]
+    assert len(locks) == 0  # pruned once the turn is done
 
 
 # ---------- router (R6.5, spec §3.4) ----------

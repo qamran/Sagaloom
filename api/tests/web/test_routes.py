@@ -579,6 +579,7 @@ async def test_startup_builds_the_wiki_client_and_passes_it_to_the_graph(store, 
     from langgraph.store.sqlite.aio import AsyncSqliteStore
 
     assert isinstance(deps.memory, AsyncSqliteStore) and seen["memory_store"] is deps.memory
+    assert seen["memory_locks"] is deps.memory_locks  # remember and Undo share one lock
     assert (env.settings.data_dir / "store.sqlite").exists()
     assert "settings" not in seen
 
