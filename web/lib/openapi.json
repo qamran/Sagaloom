@@ -1,0 +1,2215 @@
+{
+  "components": {
+    "schemas": {
+      "Decision": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "edit",
+              "reject",
+              "save_as_myth"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "edited": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntryDraft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "told_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Told By"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "action"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DecisionBody": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            },
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "title": "DecisionBody",
+        "type": "object"
+      },
+      "DevSettingsPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_max_tokens": {
+            "anyOf": [
+              {
+                "maximum": 16000.0,
+                "minimum": 256.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Max Tokens"
+          },
+          "agent_system_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent System Prompt"
+          },
+          "agent_temperature": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Temperature"
+          },
+          "enabled_tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled Tools"
+          },
+          "guard_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard Enabled"
+          },
+          "reset_system_prompt": {
+            "default": false,
+            "title": "Reset System Prompt",
+            "type": "boolean"
+          }
+        },
+        "title": "DevSettingsPatch",
+        "type": "object"
+      },
+      "Entry": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "body": {
+            "maxLength": 4000,
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/Fact-Output"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "id": {
+            "pattern": "^ent_\\d{4}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "source": {
+            "default": "user",
+            "enum": [
+              "user",
+              "official",
+              "reference"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "default": "canon",
+            "enum": [
+              "canon",
+              "myth",
+              "rumour",
+              "secret"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "trusted": {
+            "default": true,
+            "title": "Trusted",
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "character",
+              "place",
+              "faction",
+              "item",
+              "rule",
+              "event"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
+          "world_id": {
+            "title": "World Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "world_id",
+          "title",
+          "type",
+          "body",
+          "status",
+          "source",
+          "source_url",
+          "licence",
+          "trusted",
+          "aliases",
+          "links",
+          "facts",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Entry",
+        "type": "object"
+      },
+      "EntryDraft": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "body": {
+            "maxLength": 4000,
+            "title": "Body",
+            "type": "string"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/Fact-Input"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence"
+          },
+          "source": {
+            "default": "user",
+            "enum": [
+              "user",
+              "official",
+              "reference"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "default": "canon",
+            "enum": [
+              "canon",
+              "myth",
+              "rumour",
+              "secret"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "trusted": {
+            "default": true,
+            "title": "Trusted",
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "character",
+              "place",
+              "faction",
+              "item",
+              "rule",
+              "event"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "type",
+          "body"
+        ],
+        "title": "EntryDraft",
+        "type": "object"
+      },
+      "Fact-Input": {
+        "properties": {
+          "key": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "status": {
+            "default": "canon",
+            "enum": [
+              "canon",
+              "myth",
+              "rumour",
+              "secret"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "told_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Told By"
+          },
+          "value": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "Fact",
+        "type": "object"
+      },
+      "Fact-Output": {
+        "properties": {
+          "key": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "status": {
+            "default": "canon",
+            "enum": [
+              "canon",
+              "myth",
+              "rumour",
+              "secret"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "told_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Told By"
+          },
+          "value": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "refs",
+          "status",
+          "told_by"
+        ],
+        "title": "Fact",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Link": {
+        "properties": {
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "relation"
+        ],
+        "title": "Link",
+        "type": "object"
+      },
+      "MentionRef": {
+        "description": "An entry that names another in its text (\"Mentioned in\"); the web masks a secret one.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "canon",
+              "myth",
+              "rumour",
+              "secret"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "character",
+              "place",
+              "faction",
+              "item",
+              "rule",
+              "event"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type",
+          "status"
+        ],
+        "title": "MentionRef",
+        "type": "object"
+      },
+      "ModelChoice": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "model"
+        ],
+        "title": "ModelChoice",
+        "type": "object"
+      },
+      "NewImport": {
+        "properties": {
+          "filename": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "pattern": "(?i)^[^/\\\\\\x00-\\x1f\\x7f]+\\.(md|txt)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "text": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "NewImport",
+        "type": "object"
+      },
+      "NewMessage": {
+        "properties": {
+          "content": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "NewMessage",
+        "type": "object"
+      },
+      "NewThread": {
+        "properties": {
+          "world_id": {
+            "title": "World Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "world_id"
+        ],
+        "title": "NewThread",
+        "type": "object"
+      },
+      "NewWorld": {
+        "properties": {
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "NewWorld",
+        "type": "object"
+      },
+      "PromptRecord": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "run_id",
+          "provider",
+          "model",
+          "request",
+          "started_at"
+        ],
+        "title": "PromptRecord",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "World": {
+        "properties": {
+          "divergent": {
+            "default": false,
+            "title": "Divergent",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_demo": {
+            "default": false,
+            "title": "Is Demo",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_demo",
+          "divergent"
+        ],
+        "title": "World",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Sagaloom",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/guard/log": {
+      "get": {
+        "description": "Recent input-guard verdicts, read from the prompt log (role `guard`).",
+        "operationId": "guard_log_api_guard_log_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Guard Log Api Guard Log Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guard Log"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "get_dev_settings_api_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Dev Settings Api Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dev Settings"
+      },
+      "put": {
+        "operationId": "put_dev_settings_api_settings_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Dev Settings Api Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Dev Settings"
+      }
+    },
+    "/api/settings/models": {
+      "get": {
+        "operationId": "get_models_api_settings_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Models Api Settings Models Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Models"
+      },
+      "put": {
+        "operationId": "put_models_api_settings_models_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Models Api Settings Models Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Models"
+      }
+    },
+    "/api/studio": {
+      "get": {
+        "operationId": "studio_api_studio_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Studio Api Studio Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Studio"
+      }
+    },
+    "/api/threads": {
+      "get": {
+        "description": "Newest first; `badge` is the worst badge among the pending checks, `running` whether the\nthread's turn lock is held.",
+        "operationId": "list_threads_api_threads_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pending",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Pending",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "world_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "World Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "chat",
+                    "import"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Threads Api Threads Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Threads"
+      },
+      "post": {
+        "operationId": "create_thread_api_threads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewThread"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Thread Api Threads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Thread"
+      }
+    },
+    "/api/threads/{thread_id}": {
+      "get": {
+        "operationId": "get_thread_api_threads__thread_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Thread Api Threads  Thread Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Thread"
+      }
+    },
+    "/api/threads/{thread_id}/decisions": {
+      "post": {
+        "operationId": "post_decisions_api_threads__thread_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Decisions"
+      }
+    },
+    "/api/threads/{thread_id}/llm-log": {
+      "get": {
+        "operationId": "llm_log_api_threads__thread_id__llm_log_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PromptRecord"
+                  },
+                  "title": "Response Llm Log Api Threads  Thread Id  Llm Log Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Llm Log"
+      }
+    },
+    "/api/threads/{thread_id}/messages": {
+      "post": {
+        "operationId": "post_message_api_threads__thread_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Message"
+      }
+    },
+    "/api/threads/{thread_id}/runs/last": {
+      "get": {
+        "operationId": "last_run_api_threads__thread_id__runs_last_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Last Run Api Threads  Thread Id  Runs Last Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Last Run"
+      }
+    },
+    "/api/tools": {
+      "get": {
+        "operationId": "list_tools_api_tools_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Tools Api Tools Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tools"
+      }
+    },
+    "/api/worlds": {
+      "get": {
+        "operationId": "list_worlds_api_worlds_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/World"
+                  },
+                  "title": "Response List Worlds Api Worlds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Worlds"
+      },
+      "post": {
+        "operationId": "create_world_api_worlds_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewWorld"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/World"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create World"
+      }
+    },
+    "/api/worlds/{world_id}/entries": {
+      "get": {
+        "operationId": "list_entries_api_worlds__world_id__entries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Entry"
+                  },
+                  "title": "Response List Entries Api Worlds  World Id  Entries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Entries"
+      }
+    },
+    "/api/worlds/{world_id}/entries/{entry_id}": {
+      "get": {
+        "operationId": "get_entry_api_worlds__world_id__entries__entry_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Entry"
+      }
+    },
+    "/api/worlds/{world_id}/entries/{entry_id}/mentions": {
+      "get": {
+        "description": "Entries whose body names this one (\"Mentioned in\", R12.11). Text only: a link alone\n(such as the Mayor's secret membership of the Choir) is not a mention here.",
+        "operationId": "entry_mentions_api_worlds__world_id__entries__entry_id__mentions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MentionRef"
+                  },
+                  "title": "Response Entry Mentions Api Worlds  World Id  Entries  Entry Id  Mentions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Entry Mentions"
+      }
+    },
+    "/api/worlds/{world_id}/export": {
+      "get": {
+        "operationId": "export_world_api_worlds__world_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "md",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude_secrets",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Exclude Secrets",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export World"
+      }
+    },
+    "/api/worlds/{world_id}/imports": {
+      "post": {
+        "description": "A new `import` thread: extraction, then the graph run from `check` (spec \u00a73.1).",
+        "operationId": "post_import_api_worlds__world_id__imports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Import"
+      }
+    },
+    "/api/worlds/{world_id}/memory": {
+      "delete": {
+        "description": "Undo or delete: one list item when `item` is given, else the whole key. Idempotent.",
+        "operationId": "delete_memory_api_worlds__world_id__memory_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "enum": [
+                "tone",
+                "genre",
+                "banned_tropes",
+                "notes"
+              ],
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "item",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Memory Api Worlds  World Id  Memory Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Memory"
+      },
+      "get": {
+        "operationId": "get_memory_api_worlds__world_id__memory_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "world_id",
+            "required": true,
+            "schema": {
+              "title": "World Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Memory Api Worlds  World Id  Memory Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Memory"
+      }
+    }
+  }
+}

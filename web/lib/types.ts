@@ -1,68 +1,32 @@
-// Mirrors api/sagaloom/models.py and the JSON shapes in api/sagaloom/web/routes.py.
+import type { components } from "./api-types.gen";
 
-export type EntryType = "character" | "place" | "faction" | "item" | "rule" | "event";
-export type Status = "canon" | "myth" | "rumour" | "secret";
-export type Source = "user" | "official" | "reference";
+// Types for the models the API publishes in its OpenAPI schema are generated: lib/api-types.gen.ts
+// (`pnpm types:gen`; `pnpm types:check` fails when it is stale) and re-exported here under their old
+// names. Everything else stays hand-written, mirroring api/sagaloom/web/routes.py: the SSE events,
+// `ThreadSummary`, `StudioData`, the settings payloads and every `-> dict` route, because those
+// routes declare no response model, so FastAPI puts no schema for them in the OpenAPI document.
 
-export interface Fact {
-  key: string;
-  value: string;
-  refs: string[];
-  status: Status;
-  told_by: string | null;
-}
+type Schemas = components["schemas"];
 
-export interface Link {
-  target_id: string;
-  relation: string;
-}
+export type Entry = Schemas["Entry"];
+export type Fact = Schemas["Fact-Output"];
+export type Link = Schemas["Link"];
+export type World = Schemas["World"];
+export type MentionRef = Schemas["MentionRef"];
+export type Decision = Schemas["Decision"];
 
-export interface Entry {
-  id: string;
-  world_id: string;
-  title: string;
-  type: EntryType;
-  body: string;
-  status: Status;
-  source: Source;
-  source_url: string | null;
-  licence: string | null;
-  trusted: boolean;
-  aliases: string[];
-  links: Link[]; // never rendered in M1: relations can reveal secrets
-  facts: Fact[];
-  version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MentionRef {
-  id: string;
-  title: string;
-  type: EntryType;
-  status: Status;
-}
-
-export interface EntryDraft {
-  title: string;
-  type: EntryType;
-  body: string;
-  status: Status;
+// EntryDraft only appears in the schema as a request body (Decision.edited), where defaulted fields
+// are optional. A draft inside a proposal always carries aliases, facts and status, so those stay
+// required; provenance stays optional (older payloads and hand-built drafts still type-check).
+export type EntryDraft = Omit<Schemas["EntryDraft"], "aliases" | "facts" | "status"> & {
   aliases: string[];
   facts: Fact[];
-  /** Provenance, set by the server (R2.S, R11.4.6). Optional so older payloads still parse. */
-  source?: Source;
-  source_url?: string | null;
-  licence?: string | null;
-  trusted?: boolean;
-}
+  status: Status;
+};
 
-export interface World {
-  id: string;
-  name: string;
-  is_demo: boolean;
-  divergent: boolean;
-}
+export type EntryType = Entry["type"];
+export type Status = Entry["status"];
+export type Source = Entry["source"];
 
 export interface Proposal {
   proposal_id: string;
@@ -105,13 +69,6 @@ export interface CheckResult {
   dependents: EntryRef[];
   /** Always sent by the API; optional only so hand-built results still type-check. */
   badge?: Badge;
-}
-
-export interface Decision {
-  proposal_id: string;
-  action: "approve" | "edit" | "reject" | "save_as_myth";
-  edited?: EntryDraft | null;
-  told_by?: string | null;
 }
 
 export interface Usage {
@@ -279,19 +236,12 @@ export interface LlmResponse {
   latency_ms: number;
 }
 
-/** One prompt-log record (api/sagaloom/promptlog.py PromptRecord). */
-export interface PromptRecord {
-  id: string;
-  thread_id: string;
-  run_id: string;
-  provider: string;
-  model: string;
-  role?: string | null;
+/** One prompt-log record (api/sagaloom/promptlog.py). The API types `request` and `response` as plain dicts, so their shape is narrowed here. */
+export type PromptRecord = Omit<Schemas["PromptRecord"], "params" | "request" | "response"> & {
   params: Record<string, unknown>;
   request: { messages: PromptMessage[]; tools: unknown[] };
   response: LlmResponse | null;
-  started_at: string;
-}
+};
 
 // ---------- Developer settings and the input guard (R12.4, R13.1) ----------
 

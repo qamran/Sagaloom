@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 EntryType = Literal["character", "place", "faction", "item", "rule", "event"]
 Status = Literal["canon", "myth", "rumour", "secret"]
@@ -13,6 +13,8 @@ def _now() -> str:
 
 
 class Fact(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     key: str = Field(min_length=1, max_length=40)
     value: str = Field(min_length=1, max_length=200)
     refs: list[str] = Field(default_factory=list)
@@ -26,6 +28,8 @@ class Link(BaseModel):
 
 
 class Entry(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     id: str = Field(pattern=r"^ent_\d{4}$")
     world_id: str
     title: str = Field(min_length=1, max_length=120)
@@ -62,6 +66,8 @@ PROVENANCE_FIELDS = ("source", "source_url", "licence", "trusted")
 
 
 class World(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     id: str
     name: str
     is_demo: bool = False
