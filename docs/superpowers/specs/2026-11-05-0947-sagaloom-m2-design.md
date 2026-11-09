@@ -168,7 +168,7 @@ Sizes: S = 1–2 tasks, M = 3–4 tasks, L = 5+ tasks (M1 was 13 tasks). Each ta
 2. Full entry page: section cards from Markdown `##` headings (a body without headings is one "Description" card), Facts panel, "Mentioned in" chips from `GET /api/worlds/{id}/entries/{entry_id}/mentions` (`find_mentions` exists), version and source/licence line, "untrusted source" marker.
 3. Hidden secrets: secret entries and secret facts hidden in the sidebar and entry views behind a world-level "Show secrets" toggle (header, `sessionStorage`); server side `search_canon` rejects `status="secret"` and returns no snippet for secret entries; Under the hood drawer masks `[secret]` lines and secret entries' blocks on display with its own "Show secrets" control, records unchanged.
 
-**Demo step:** sidebar shows 18 of 19 entries (the secret entry `ent_0019` was added on 2026-11-09, see §5); "Show secrets" reveals the secret one. Open the drawer on the three-moons turn with secrets hidden: the judge's prompt shows the Ister entry but `[secret]` lines of ent_0003 are masked.
+**Demo step:** sidebar shows 18 of 19 entries (the secret entry `ent_0019` was added on 2026-11-09, see §5); "Show secrets" reveals the secret one. Send "Mayor Elsbeth Varr is sixty years old." and open the drawer with secrets hidden: the judge's prompt for the change to ent_0003 shows `[secret fact hidden]` in place of her secret fact until the drawer's Show secrets is on (exit demo step 33c; the Mayor's own update is the turn whose check always retrieves her secret fact, which the three-moons turn need not).
 
 **Size:** M.
 

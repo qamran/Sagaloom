@@ -35,12 +35,13 @@ is offered.
 The Wave 7 step (33) checks hidden secrets, all in the demo's one page, because Show secrets is kept per tab:
 - **33a, in step 1.** The Canon list shows 18 entry links and no `The Choir Ledger`; the header's **Show secrets**
   makes it 19, and a second click hides it again. It runs at the start because later steps commit entries (Captain Sorn
-  is `ent_0020` in this fresh data, then Mira Hale and the imported entries), so the seed counts only hold then.
+  takes the next free id, then Mira Hale and the imported entries follow), so the seed counts only hold then.
 - **33b.** On `/canon/ent_0003` the Mayor's secret fact is masked (`Secret fact`, a **Show secret fact** button, no
   "Yes, at every full Ister"), and **Mentioned in** holds a `Secret entry` chip, not The Choir Ledger.
 - **33c.** A new thread sends "Mayor Elsbeth Varr is sixty years old." If the agent proposes nothing, the step fails
   and prints its reply (the Wave 4 pattern). It opens Under the hood and searches the turns' Contradiction judge
-  call cards for the one whose request shows `[secret fact hidden]` (as step 7 finds the judge turn). That request lacks
+  call cards for the Mayor's own check (its request names `a change to entry ent_0003`) whose request shows
+  `[secret fact hidden]` (as step 7 finds the judge turn). That request lacks
   "Yes, at every full Ister" until the drawer's **Show secrets** is clicked, and hides it again on a second click. The
   model sometimes drafts more than one change, so the step rejects every card.
 - **33d.** Typing `@Ister` in the composer and picking the `Ister, the red moon` option leaves `Ister, the red moon `

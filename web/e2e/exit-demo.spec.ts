@@ -511,20 +511,26 @@ test("M1 exit demo", async ({ page }) => {
   // The turn picker only appears once a thread has more than one turn; this new thread has one.
   const turnOptions = await hoodTurns.locator("option").count();
   for (let i = Math.max(turnOptions, 1) - 1; i >= 0 && !maskedRequest; i--) {
-    if (turnOptions > 0) await hoodTurns.selectOption({ index: i });
-    if (!(await judgeCalls.first().waitFor({ timeout: 5_000 }).then(() => true, () => false))) continue;
+    if (turnOptions > 0) {
+      await hoodTurns.selectOption({ index: i });
+      if (!(await judgeCalls.first().waitFor({ timeout: 5_000 }).then(() => true, () => false))) continue;
+    } else {
+      await expect(judgeCalls.first()).toBeVisible();
+    }
     for (let j = 0; j < (await judgeCalls.count()); j++) {
       const call = judgeCalls.nth(j);
       if ((await call.getAttribute("aria-expanded")) !== "true") await call.click();
       const request = call.locator("xpath=..").getByRole("region", { name: "Request" });
       await expect(request).toBeVisible();
-      if (((await request.textContent()) ?? "").includes("[secret fact hidden]")) {
+      // The Mayor's own check (not a second change's call that masks only the Ledger).
+      const text = (await request.textContent()) ?? "";
+      if (text.includes("a change to entry ent_0003") && text.includes("[secret fact hidden]")) {
         maskedRequest = request;
         break;
       }
     }
   }
-  if (!maskedRequest) throw new Error("no Contradiction judge call in this thread has a masked request");
+  if (!maskedRequest) throw new Error("no Contradiction judge call for ent_0003 in this thread has a masked request");
   await expect(maskedRequest).not.toContainText(SECRET_VALUE);
   await hoodSecrets.click();
   await expect(hoodSecrets).toHaveAttribute("aria-pressed", "true");
