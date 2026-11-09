@@ -205,8 +205,17 @@ def shielded(
     the turn (Review Focus 5): the run still reaches its interrupt and is picked up from
     `GET /threads/{id}`. The task starts now (not on the first read), `on_finish` runs once when
     it ends however it ends, and it sits in `tasks` until then (the app cancels those at shutdown).
-    The returned generator only reads the queue, so closing it leaves the task running."""
+    The returned generator only reads the queue, so closing it leaves the task running.
+    A task cancelled before its first step never runs `pump`, so the done callback also finishes
+    (idempotently) and ends the reader."""
     queue: asyncio.Queue = asyncio.Queue()
+    finished = False
+
+    def finish() -> None:
+        nonlocal finished
+        if not finished:
+            finished = True
+            on_finish()
 
     async def pump() -> None:
         try:
@@ -219,14 +228,18 @@ def shielded(
             log.exception("turn stream failed")
             queue.put_nowait(_error_event(exc))
         finally:
-            try:
-                on_finish()
-            finally:
-                queue.put_nowait(_END)
+            finish()
+
+    def done(_: asyncio.Task) -> None:
+        try:
+            finish()
+        finally:
+            queue.put_nowait(_END)
 
     task = asyncio.get_running_loop().create_task(pump())
     tasks.add(task)
     task.add_done_callback(tasks.discard)
+    task.add_done_callback(done)
 
     async def read() -> AsyncIterator[Event]:
         while (ev := await queue.get()) is not _END:

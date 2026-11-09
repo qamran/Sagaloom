@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import logging
 from collections.abc import Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
@@ -21,6 +22,8 @@ from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
 from sagaloom.web.routes import router
 from sagaloom.wiki.client import WikiClient
+
+log = logging.getLogger(__name__)
 
 # api/sagaloom/web/app.py -> repo root
 SEED_DIR = Path(__file__).resolve().parents[3] / "seed" / "velmar"
@@ -128,11 +131,17 @@ async def _open_runtime(app: FastAPI):
             await _cancel_turns(deps.tasks)  # while the checkpointer is still open
 
 
-async def _cancel_turns(tasks: set[asyncio.Task]) -> None:
+async def _cancel_turns(tasks: set[asyncio.Task], timeout: float = 5.0) -> None:
+    """Cancel the running turns and wait up to `timeout` for them; one that ignores the
+    cancellation is logged and left behind rather than blocking shutdown."""
     pending = list(tasks)
     for t in pending:
         t.cancel()
-    await asyncio.gather(*pending, return_exceptions=True)
+    if not pending:
+        return
+    _, still_running = await asyncio.wait(pending, timeout=timeout)
+    if still_running:
+        log.warning("%d turn(s) still running after %.1fs at shutdown", len(still_running), timeout)
 
 
 def make_require_secret(secret: str):

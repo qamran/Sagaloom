@@ -305,3 +305,71 @@ async def test_shutdown_cancels_running_turns_and_runs_on_finish():
     await asyncio.wait_for(_cancel_turns(tasks), 5)
     assert finishes == [1] and tasks == set()
     assert [ev async for ev in gen] == []  # the reader ends too
+
+
+async def test_shielded_releases_when_cancelled_before_start():
+    """A task cancelled before its first step never runs pump's `finally`: the done callback
+    still runs `on_finish` (once) and ends the reader."""
+    from sagaloom.web.sse import shielded
+
+    finishes: list[int] = []
+    tasks: set[asyncio.Task] = set()
+    started: list[bool] = []
+
+    async def source():
+        started.append(True)
+        yield {"event": "node", "data": {}}
+
+    gen = shielded(source(), on_finish=lambda: finishes.append(1), tasks=tasks)
+    [task] = tasks
+    task.cancel()  # before the loop yields, so pump never starts
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert started == [] and finishes == [1] and tasks == set()
+    assert await asyncio.wait_for(_collect(gen), 5) == []  # the reader ends (it got _END)
+    assert finishes == [1]
+
+
+async def _collect(gen):
+    return [ev async for ev in gen]
+
+
+async def test_shielded_on_finish_runs_once_when_the_run_ends_normally():
+    from sagaloom.web.sse import shielded
+
+    finishes: list[int] = []
+    tasks: set[asyncio.Task] = set()
+
+    async def source():
+        yield {"event": "done", "data": {}}
+
+    gen = shielded(source(), on_finish=lambda: finishes.append(1), tasks=tasks)
+    [task] = tasks
+    assert await asyncio.wait_for(_collect(gen), 5) == [{"event": "done", "data": {}}]
+    await task
+    await asyncio.sleep(0)  # let the done callback run too
+    assert finishes == [1]
+
+
+async def test_cancel_turns_times_out(caplog):
+    from sagaloom.web.app import _cancel_turns
+
+    stop = asyncio.Event()
+
+    async def stubborn():
+        while not stop.is_set():
+            try:
+                await stop.wait()
+            except asyncio.CancelledError:
+                pass  # ignores cancellation
+
+    task = asyncio.get_running_loop().create_task(stubborn())
+    await asyncio.sleep(0)
+    try:
+        with caplog.at_level("WARNING", logger="sagaloom.web.app"):
+            await asyncio.wait_for(_cancel_turns({task}, timeout=0.1), 2)
+        assert not task.done()
+        assert any("1 turn" in r.getMessage() for r in caplog.records)
+    finally:
+        stop.set()  # a failure here must not leave a task the loop cannot cancel
+        await asyncio.wait_for(task, 5)

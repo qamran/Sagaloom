@@ -765,3 +765,19 @@ async def test_turn_lock_pruned_after_release(make_env):
     assert tid not in env.deps.locks
     listed = (await env.client.get("/api/threads")).json()
     assert [t["running"] for t in listed if t["thread_id"] == tid] == [False]
+
+
+async def test_message_route_uses_shielded(make_env, monkeypatch):
+    import sagaloom.web.routes as routes_mod
+
+    real, calls = routes_mod.shielded, []
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs.get("on_finish"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(routes_mod, "shielded", spy)
+    env = make_env([AIMessage(content="Three moons.")])
+    tid = await env.new_thread()
+    r, _ = await env.send(tid, "How many moons?")
+    assert r.status_code == 200 and len(calls) == 1 and callable(calls[0])
