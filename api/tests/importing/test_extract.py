@@ -1,9 +1,12 @@
 """Import extraction (R3.1, R3.2, R3.5, R13.6, R13.7). No real LLM calls."""
 
+import json
 import re
+import threading
 from datetime import date
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from pydantic import ValidationError
 from langgraph.checkpoint.memory import InMemorySaver
 
 from sagaloom.check.contradiction import JudgeOutput
@@ -12,6 +15,7 @@ from sagaloom.graph.build import build_graph, run_config
 from sagaloom.importing.extract import (
     CHUNK_CHARS,
     ENTRY_FULL,
+    INVALID,
     MIN_FIT,
     NOT_LOCATED,
     OVER_CAP,
@@ -41,12 +45,14 @@ class StubLLM:
         self.schemas: list = []
         self.prompts: list = []
         self.configs: list = []
+        self.kwargs: list = []
 
     def bind_tools(self, *a, **kw):
         raise AssertionError("bind_tools must never be called on the extractor")
 
     def with_structured_output(self, schema, **kwargs):
         self.schemas.append(schema)
+        self.kwargs.append(kwargs)
         return self
 
     async def ainvoke(self, messages, config=None):
@@ -55,7 +61,20 @@ class StubLLM:
         reply = self.reply(messages) if callable(self.reply) else self.reply
         if isinstance(reply, Exception):
             raise reply
-        return reply
+        if not self.kwargs[-1].get("include_raw") or (isinstance(reply, dict) and "raw" in reply):
+            return reply
+        return as_raw(reply)
+
+
+def as_raw(reply) -> dict:
+    """`reply` as LangChain's `include_raw=True` answer: the raw message, then the parse."""
+    if isinstance(reply, ExtractionOutput):
+        return {"raw": AIMessage(content=reply.model_dump_json()), "parsed": reply, "parsing_error": None}
+    try:
+        return {"raw": AIMessage(content=json.dumps(reply)), "parsed": ExtractionOutput.model_validate(reply),
+                "parsing_error": None}
+    except ValidationError as exc:
+        return {"raw": AIMessage(content=json.dumps(reply)), "parsed": None, "parsing_error": exc}
 
 
 def cand(title, excerpt, type="place", facts=(), aliases=()) -> Candidate:
@@ -355,6 +374,7 @@ async def test_extraction_has_no_tools_bound(store):
     cfg = {"callbacks": [], "metadata": {"x": 1}}
     await build_import(store, llm, W, "Some text.", LABEL, config=cfg, today=TODAY)
     assert llm.schemas == [ExtractionOutput]
+    assert llm.kwargs == [{"include_raw": True}]  # a bad candidate is skipped alone (Wave 5 M8)
     assert llm.configs == [cfg]  # the turn's callbacks see the extractor call
 
 
@@ -372,3 +392,109 @@ async def test_extraction_wraps_and_escapes_injected_close_tag(store):
     assert human.content.count("</untrusted_data>") == 1
     assert human.content.endswith("</untrusted_data>")
     assert "&lt;/untrusted_data>" in human.content
+
+
+# ---------- one canon read, off the event loop (Wave 5 M12) ----------
+
+
+def spy_list_entries(store) -> list[int]:
+    """Replace `store.list_entries` with a wrapper that records the calling thread of each call."""
+    calls: list[int] = []
+    real = store.list_entries
+
+    def spy(world_id):
+        calls.append(threading.get_ident())
+        return real(world_id)
+
+    store.list_entries = spy
+    return calls
+
+
+async def test_build_import_reads_canon_once(store):
+    seed(store)  # ent_0001 "Sky of Velmar"
+    seed(store, id="ent_0002", title="Ister", body="A moon.", aliases=["Pale Moon"])
+    part1 = "The sky of Velmar is grey. Ostra is a port. " + ("alpha " * 1300).strip()
+    part2 = "The pale moon rises late. " + ("beta " * 1300).strip()
+    text = part1 + "\n\n" + part2
+    assert len(chunk_text(text)) == 2
+
+    def reply(messages):
+        if "alpha" in messages[-1].content:
+            return out(
+                cand("sky of velmar", "The sky of Velmar is grey."),  # title match
+                cand("Ostra", "Ostra is a port."),  # new
+            )
+        return out(cand("The Pale One", "The pale moon rises late.", aliases=["pale moon"]))  # alias match
+
+    calls = spy_list_entries(store)
+    plan = await build_import(store, StubLLM(reply), W, text, LABEL, today=TODAY)
+    assert len(calls) == 1
+    assert [(p.action, p.entry_id, p.after.title) for p in plan.proposals] == [
+        ("update", "ent_0001", "Sky of Velmar"),
+        ("create", None, "Ostra"),
+        ("update", "ent_0002", "Ister"),
+    ]
+
+
+async def test_name_index_runs_off_the_event_loop(store):
+    seed(store)
+    calls = spy_list_entries(store)
+    await plan_for(store, "The sky of Velmar is grey.", cand("Sky of Velmar", "The sky of Velmar is grey."))
+    assert calls and threading.get_ident() not in calls
+
+
+# ---------- one invalid candidate is skipped alone (Wave 5 M8) ----------
+
+GULL = "Gull Market sells fish at dawn."
+
+
+def gull() -> dict:
+    return cand("Gull Market", GULL).model_dump()
+
+
+def parse_error(content: str) -> ValidationError:
+    try:
+        ExtractionOutput.model_validate_json(content)
+    except ValidationError as exc:
+        return exc
+    raise AssertionError("expected a parse error")
+
+
+def raw_reply(raw: AIMessage) -> dict:
+    content = raw.content if isinstance(raw.content, str) else ""
+    return {"raw": raw, "parsed": None, "parsing_error": parse_error(content or "{}")}
+
+
+async def test_one_invalid_candidate_is_skipped_alone(store):
+    content = json.dumps(
+        {"candidates": [gull(), {"title": "Wyrm", "type": "dragon", "excerpt": "Gull Market sells fish"}]}
+    )
+    llm = StubLLM(raw_reply(AIMessage(content=content)))
+    plan = await build_import(store, llm, W, GULL, LABEL, today=TODAY)
+    assert [p.after.title for p in plan.proposals] == ["Gull Market"]
+    assert [(s.title, s.reason) for s in plan.skipped] == [("Wyrm", INVALID)]
+    assert plan.failed_parts == 0 and len(llm.prompts) == 1
+
+
+async def test_invalid_candidates_from_tool_call_args_are_skipped_alone(store):
+    """With no JSON in the content, the first tool call's args are read; an item without a usable
+    title is listed under a neutral one."""
+    args = {"candidates": [gull(), 42, {"title": ["x"], "type": "place"}, {"title": "T" * 130}]}
+    raw = AIMessage(content="", tool_calls=[{"name": "ExtractionOutput", "args": args, "id": "c1"}])
+    plan = await build_import(store, StubLLM(raw_reply(raw)), W, GULL, LABEL, today=TODAY)
+    assert [p.after.title for p in plan.proposals] == ["Gull Market"]
+    assert [(s.title, s.reason) for s in plan.skipped] == [
+        ("An extracted entry", INVALID),
+        ("An extracted entry", INVALID),
+        ("T" * 120, INVALID),
+    ]
+    assert plan.failed_parts == 0
+
+
+async def test_unreadable_raw_reply_is_a_failed_attempt(store):
+    llm = StubLLM(raw_reply(AIMessage(content="not json")))
+    plan = await build_import(store, llm, W, GULL, LABEL, today=TODAY)
+    assert len(llm.prompts) == 2
+    assert plan.proposals == []
+    assert [(s.title, s.reason) for s in plan.skipped] == [("Part 1 of the text", PART_FAILED)]
+    assert (plan.failed_parts, plan.parts) == (1, 1)

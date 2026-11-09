@@ -3,19 +3,24 @@
 Extraction reports through the existing event set (`node` and `tool_result`, both named
 `extract`), and the extractor's prompt records arrive as `llm_request`/`llm_response` while it
 runs. The graph run then streams as any turn does, and its `done` carries the new `thread_id`.
+
+When the extraction fails entirely, the graph never runs: the stream ends with `usage` (the
+extractor's spend, which the PromptLog has counted), then `error`, and no `done`. This is the one
+place a failed stream still sends `usage`; a failed graph run ends with `error` alone, as R19.2 says.
 """
 
 import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
+from contextlib import aclosing
 from typing import Any
 
 from langchain_core.messages import HumanMessage
 
 from sagaloom.importing.extract import ImportPlan, build_import
 from sagaloom.models import Usage
-from sagaloom.web.sse import Event, _drain, _ev, run_turn_events
+from sagaloom.web.sse import Event, drain, event, run_turn_events
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +59,7 @@ async def _extraction(
                 getter.cancel()
         if getter in done:
             yield getter.result()
-    for ev in _drain(queue):
+    for ev in drain(queue):
         yield ev
 
 
@@ -71,13 +76,15 @@ async def import_events(
     usage_fn: Callable[[], tuple[Usage, Usage]],
     registry: Any,
 ) -> AsyncIterator[Event]:
-    yield _ev("node", {"name": "extract", "phase": "start"})
+    yield event("node", {"name": "extract", "phase": "start"})
     t0 = time.monotonic()
     # The turn's config, so the extractor call is logged under this turn (usage, drawer).
     job = asyncio.ensure_future(build_import(store, extractor, world_id, text, label, cfg))
     try:
-        async for ev in _extraction(job, queue):
-            yield ev
+        # Closed as soon as this stream is, not whenever the loop finalises it (Wave 5 M12).
+        async with aclosing(_extraction(job, queue)) as stream:
+            async for ev in stream:
+                yield ev
     except asyncio.CancelledError:
         # Shut down before any plan existed: the graph never ran, so no row stays behind (R-W5-5).
         registry.delete(thread_id)
@@ -91,7 +98,7 @@ async def import_events(
     except Exception:
         log.exception("import extraction failed")
     candidates, skipped = (len(plan.proposals), len(plan.skipped)) if plan else (0, 0)
-    yield _ev(
+    yield event(
         "tool_result",
         {
             "name": "extract",
@@ -100,12 +107,15 @@ async def import_events(
             "skipped": skipped,
         },
     )
-    yield _ev("node", {"name": "extract", "phase": "end", "ms": int((time.monotonic() - t0) * 1000)})
+    yield event("node", {"name": "extract", "phase": "end", "ms": int((time.monotonic() - t0) * 1000)})
 
     if plan is None or plan.failed_parts == plan.parts:
-        # Nothing was imported and the graph never ran, so no checkpoint exists (R-W5-5).
+        # Nothing was imported and the graph never ran, so no checkpoint exists (R-W5-5). The
+        # extractor's calls were still paid for, so `usage` comes before the `error`.
         registry.delete(thread_id)
-        yield _ev("error", {"message": EXTRACTION_FAILED, "retryable": True})
+        turn, total = usage_fn()
+        yield event("usage", {"turn": turn.model_dump(), "total": total.model_dump()})
+        yield event("error", {"message": EXTRACTION_FAILED, "retryable": True})
         return
 
     run_input = {
@@ -115,4 +125,4 @@ async def import_events(
         "messages": [import_note(plan, label)],
     }
     async for ev in run_turn_events(graph, run_input, cfg, extra=queue, usage_fn=usage_fn):
-        yield _ev("done", {"thread_id": thread_id}) if ev["event"] == "done" else ev
+        yield event("done", {"thread_id": thread_id}) if ev["event"] == "done" else ev

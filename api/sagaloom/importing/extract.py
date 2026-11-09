@@ -6,13 +6,15 @@ proposal is a slice of the source text found by `locate`, never the model's own 
 proposal goes through the check and the approval gate like any other.
 """
 
+import asyncio
+import json
 import logging
 import re
 import uuid
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
@@ -20,6 +22,7 @@ from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal
 from sagaloom.provenance import IMPORTED_HEADING, merge_provenance
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
+from sagaloom.text import first_line, message_text
 
 if TYPE_CHECKING:
     from sagaloom.graph.nodes import ChatModelLike
@@ -40,6 +43,7 @@ ENTRY_FULL = "the entry is full"
 OVER_CAP = "over the 25-proposal limit for one import"
 INVALID = "the extracted entry was not valid"
 PART_FAILED = "this part of the text could not be read"
+UNTITLED = "An extracted entry"  # an invalid candidate with no usable title
 
 EXTRACT_SYSTEM = (
     "You find the worldbuilding entities in an author's notes. "
@@ -189,22 +193,59 @@ def merge_facts(existing: list[Fact], imported: list[Fact]) -> list[Fact]:
 # ---------- extraction ----------
 
 
+def _raw_candidates(raw: Any) -> list | None:
+    """The `candidates` list of a raw reply whose parse failed: from a JSON object in the message
+    content, else from the first tool call's args. None when neither holds one."""
+    if not isinstance(raw, AIMessage):
+        return None
+    try:
+        payload = json.loads(message_text(raw.content))
+    except ValueError:
+        payload = None
+    if not (isinstance(payload, dict) and isinstance(payload.get("candidates"), list)) and raw.tool_calls:
+        payload = raw.tool_calls[0].get("args")
+    if isinstance(payload, dict) and isinstance(payload.get("candidates"), list):
+        return payload["candidates"]
+    return None
+
+
+def _one_by_one(items: list) -> tuple[list[Candidate], list[Skipped]]:
+    """Each item validated alone, so one bad candidate is listed as INVALID and the rest still
+    import (Wave 5 M8)."""
+    candidates: list[Candidate] = []
+    skipped: list[Skipped] = []
+    for item in items:
+        try:
+            candidates.append(Candidate.model_validate(item))
+        except ValidationError:
+            title = item.get("title") if isinstance(item, dict) else None
+            ok = isinstance(title, str) and title.strip()
+            skipped.append(Skipped(title=title[:TITLE_CHARS] if ok else UNTITLED, reason=INVALID))
+    return candidates, skipped
+
+
 async def _extract(
     llm: "ChatModelLike", chunk: str, label: str, config: RunnableConfig | None
-) -> ExtractionOutput | None:
-    """Two attempts; any exception or an invalid reply is a failed attempt. No tools (R13.6)."""
+) -> tuple[list[Candidate], list[Skipped]] | None:
+    """(candidates, invalid ones skipped), or None after MAX_ATTEMPTS failed attempts. A valid
+    parse gives every candidate; a failed parse whose raw reply still holds a `candidates` list is
+    validated item by item; anything else (an exception included) is a failed attempt. No tools
+    (R13.6)."""
     messages = [
         SystemMessage(content=EXTRACT_SYSTEM),
         HumanMessage(content=wrap_untrusted(chunk, f"import:{label}")),
     ]
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            reply = await llm.with_structured_output(ExtractionOutput).ainvoke(messages, config)
-            if isinstance(reply, ExtractionOutput):
-                return reply
-            if isinstance(reply, dict):
-                return ExtractionOutput.model_validate(reply)
-            log.warning("extraction attempt %d returned %s", attempt, type(reply).__name__)
+            structured = llm.with_structured_output(ExtractionOutput, include_raw=True)
+            reply = await structured.ainvoke(messages, config)
+            parsed = reply.get("parsed") if isinstance(reply, dict) else None
+            if isinstance(parsed, ExtractionOutput):
+                return parsed.candidates, []
+            items = _raw_candidates(reply.get("raw")) if isinstance(reply, dict) else None
+            if items is not None:
+                return _one_by_one(items)
+            log.warning("extraction attempt %d returned no readable candidates", attempt)
         except Exception:
             log.warning("extraction attempt %d failed", attempt, exc_info=True)
     return None
@@ -230,13 +271,12 @@ class _Group:
             self.facts[key_norm(f.key)] = f  # a later same-key fact replaces the earlier one
 
 
-def _resolve(store, world_id: str, cand: Candidate) -> Entry | None:
-    found = store.find_by_name(world_id, cand.title)
-    for alias in cand.aliases:
-        if found is not None:
-            break
-        found = store.find_by_name(world_id, alias)
-    return found
+def _resolve(index: dict[str, Entry], cand: Candidate) -> Entry | None:
+    """The entry `cand` names: by its title, else by each alias in turn."""
+    for name in [cand.title, *cand.aliases]:
+        if (found := index.get(norm(name))) is not None:
+            return found
+    return None
 
 
 def _valid_facts(facts: list[CandidateFact]) -> list[Fact]:
@@ -247,11 +287,6 @@ def _valid_facts(facts: list[CandidateFact]) -> list[Fact]:
         except ValidationError:
             pass  # one bad fact is dropped on its own
     return out
-
-
-def _first_line(text: str) -> str:
-    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-    return line[:TITLE_CHARS]
 
 
 def _proposal(world_id: str, g: _Group, label: str, today: date) -> tuple[Proposal, str] | str:
@@ -321,18 +356,22 @@ async def build_import(
     skipped: list[Skipped] = []
     failed = 0
     groups: dict[str, _Group] = {}  # insertion order is source order
+    # One read of canon for the whole import, off the event loop (Chroma is synchronous).
+    index = await asyncio.to_thread(store.name_index, world_id)
     for i, chunk in enumerate(chunks, start=1):
         result = await _extract(llm, chunk, label, config)
         if result is None:
             failed += 1
             skipped.append(Skipped(title=f"Part {i} of the text", reason=PART_FAILED))
             continue
-        for cand in result.candidates:
+        cands, invalid = result
+        skipped += invalid
+        for cand in cands:
             excerpt = locate(cand.excerpt, chunk)
             if excerpt is None:
                 skipped.append(Skipped(title=cand.title[:TITLE_CHARS], reason=NOT_LOCATED))
                 continue
-            before = _resolve(store, world_id, cand)
+            before = _resolve(index, cand)
             key = before.id if before is not None else "new:" + norm(cand.title)
             if key not in groups:
                 groups[key] = _Group(cand, before)
@@ -351,7 +390,7 @@ async def build_import(
             continue
         proposal, body = made
         proposals.append(proposal)
-        first_lines[proposal.proposal_id] = _first_line(body)
+        first_lines[proposal.proposal_id] = first_line(body)[:TITLE_CHARS]
     return ImportPlan(
         proposals=proposals, skipped=skipped, first_lines=first_lines, failed_parts=failed, parts=len(chunks)
     )

@@ -118,10 +118,12 @@ class FakeExtractor(BaseChatModel):
             return self | RunnableLambda(self._extraction_reply)
         return self | RunnableLambda(lambda _: FactList(facts=[Fact(key="harbour", value="deep")]))
 
-    def _extraction_reply(self, _):
+    def _extraction_reply(self, raw):
+        """LangChain's `include_raw=True` shape: the generated message, then the parse."""
         if isinstance(self.extraction, Exception):
             raise self.extraction
-        return self.extraction if self.extraction is not None else ExtractionOutput(candidates=[])
+        parsed = self.extraction if self.extraction is not None else ExtractionOutput(candidates=[])
+        return {"raw": raw, "parsed": parsed, "parsing_error": None}
 
 
 class StubLLM:

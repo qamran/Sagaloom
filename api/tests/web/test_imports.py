@@ -27,6 +27,26 @@ async def post_import(env, text: str, filename: str | None = "session-12-notes.m
     return r, parse_sse(r.text) if r.status_code == 200 else []
 
 
+class StubLLM:
+    """An extractor stub: `reply` is an ExtractionOutput to return, or an exception to raise. With
+    `include_raw=True` it answers as LangChain does: {"raw", "parsed", "parsing_error"}."""
+
+    def __init__(self, reply) -> None:
+        self.reply = reply
+        self.include_raw = False
+
+    def with_structured_output(self, schema, **kwargs):
+        self.include_raw = kwargs.get("include_raw", False)
+        return self
+
+    async def ainvoke(self, messages, config=None):
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        if not self.include_raw:
+            return self.reply
+        return {"raw": AIMessage(content=self.reply.model_dump_json()), "parsed": self.reply, "parsing_error": None}
+
+
 def interrupt(events) -> dict:
     return next(d for e, d in events if e == "interrupt")
 
@@ -95,7 +115,10 @@ async def test_import_rejects_blank_text_without_creating_a_thread(make_env):
 
 async def test_import_rejects_bad_filename(make_env):
     env = make_env(extraction=found())
-    for bad in ["notes.pdf", "../a.md", "a\\b.txt", "x" * 118 + ".md", "a\n.md", "a\x01b.txt", "a\x7f.md"]:
+    for bad in [
+        "notes.pdf", "../a.md", "a\\b.txt", "x" * 118 + ".md", "a\n.md", "a\x01b.txt", "a\x7f.md",
+        "a .md", "a .txt", "a\x85.md",
+    ]:
         r, _ = await post_import(env, OSTRA, filename=bad)
         assert r.status_code == 422, bad
     r, _ = await post_import(env, OSTRA, filename="Notes.MD")
@@ -158,6 +181,84 @@ async def test_total_extraction_failure_is_error_and_removes_thread(make_env):
     assert [e for e, d in events if e == "node" and d["name"] != "extract"] == []  # graph never ran
     assert env.deps.threads.list() == []
     assert env.deps.store.list_entries(W) == []
+
+
+async def test_total_extraction_failure_reports_usage_then_error(make_env):
+    """The extractor's spend is reported even though nothing was imported (M12): `usage`, then
+    `error`, and no `done`."""
+    from sagaloom.graph.build import run_config
+    from sagaloom.models import Usage
+    from sagaloom.web.imports import import_events
+
+    env = make_env(extraction=found())
+    tid = env.deps.threads.create(W, kind="import", title="notes.md")
+    turn, total = Usage(prompt_tokens=7, completion_tokens=2), Usage(prompt_tokens=90)
+    events = [
+        ev
+        async for ev in import_events(
+            env.deps.graph, env.deps.store, StubLLM(RuntimeError("model down")), W, tid, OSTRA,
+            "notes.md", run_config(tid, W), asyncio.Queue(), lambda: (turn, total), env.deps.threads,
+        )
+    ]
+    n = [ev["event"] for ev in events]
+    assert n[-4:] == ["tool_result", "node", "usage", "error"]
+    assert "done" not in n
+    assert events[-2]["data"] == {"turn": turn.model_dump(), "total": total.model_dump()}
+    assert events[-1]["data"] == {"message": EXTRACTION_FAILED, "retryable": True}
+    assert env.deps.threads.get(tid) is None
+
+
+async def test_import_closes_extraction_stream_when_closed(make_env, monkeypatch):
+    """`import_events` closes the `_extraction` stream it iterates as soon as it is closed itself,
+    not whenever the event loop's async-generator finaliser gets round to it (M12)."""
+    from sagaloom.graph.build import run_config
+    from sagaloom.models import Usage
+    from sagaloom.web import imports
+
+    sentinel = {"event": "node", "data": {"name": "sentinel", "phase": "start"}}
+    closed = False
+
+    async def fake_extraction(job, queue):
+        nonlocal closed
+        try:
+            yield sentinel
+            await asyncio.Event().wait()
+        finally:
+            closed = True
+
+    monkeypatch.setattr(imports, "_extraction", fake_extraction)
+    env = make_env(extraction=found())
+    tid = env.deps.threads.create(W, kind="import", title="notes.md")
+    gen = imports.import_events(
+        env.deps.graph, env.deps.store, BlockingExtractor(), W, tid, OSTRA, "notes.md",
+        run_config(tid, W), asyncio.Queue(), lambda: (Usage(), Usage()), env.deps.threads,
+    )
+    async for ev in gen:  # `node start` comes first, before `_extraction` is entered
+        if ev == sentinel:
+            break
+    await gen.aclose()
+    assert closed
+
+
+async def test_import_note_payload_is_exact(store):
+    """The whole note payload, not one key of it (Wave 5 M13)."""
+    from sagaloom.importing.extract import build_import
+    from sagaloom.web.imports import import_note
+
+    gull = "Gull Market sells fish at dawn."
+    text = OSTRA + "\n\n" + gull
+    llm = StubLLM(found(cand("Ostra", OSTRA), cand("Gull Market", gull), cand("Ghost Isle", "Never said.")))
+    plan = await build_import(store, llm, W, text, "notes.md")
+    ostra, market = plan.proposals
+    note = import_note(plan, "notes.md")
+    assert note.content == "Imported text: 2 proposals for review, 1 not imported."
+    assert note.additional_kwargs == {
+        "import": {
+            "source": "notes.md",
+            "first_lines": {ostra.proposal_id: OSTRA, market.proposal_id: gull},
+            "skipped": [{"title": "Ghost Isle", "reason": NOT_LOCATED}],
+        }
+    }
 
 
 async def test_import_while_chat_pending_is_not_blocked(make_env):

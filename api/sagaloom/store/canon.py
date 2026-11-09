@@ -167,12 +167,17 @@ class CanonStore:
             )
         return sorted(hits, key=lambda h: h.score, reverse=True)
 
+    def name_index(self, world_id: str) -> dict[str, Entry]:
+        """`norm(name)` to its entry, for every title and alias, from one read of canon. Entries
+        are visited in id order and the first claim on a name wins, as `find_by_name` finds."""
+        index: dict[str, Entry] = {}
+        for e in self.list_entries(world_id):  # sorted by id
+            for name in [e.title, *e.aliases]:
+                index.setdefault(norm(name), e)
+        return index
+
     def find_by_name(self, world_id: str, name: str) -> Entry | None:
-        n = norm(name)
-        for e in self.list_entries(world_id):
-            if norm(e.title) == n or any(norm(a) == n for a in e.aliases):
-                return e
-        return None
+        return self.name_index(world_id).get(norm(name))
 
     def mentioned_in(self, world_id: str, text: str) -> list[Entry]:
         t = norm(text)

@@ -26,7 +26,7 @@ from sagaloom.studio import build_feature_map, providers_status
 from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
-from sagaloom.text import message_text
+from sagaloom.text import first_line, message_text
 from sagaloom.tools.canon_tools import TOOL_SPECS
 from sagaloom.web.imports import import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
@@ -54,7 +54,11 @@ class DecisionBody(BaseModel):
 
 class NewImport(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_CHARS)
-    filename: str | None = Field(default=None, max_length=120, pattern=r"(?i)^[^/\\\x00-\x1f\x7f]+\.(md|txt)$")
+    # The name part refuses path separators and every control, line and paragraph separator
+    # (Cc, Zl, Zp: the classes `memory._one_line` refuses), so the label stays one line.
+    filename: str | None = Field(
+        default=None, max_length=120, pattern=r"(?i)^[^/\\\p{Cc}\p{Zl}\p{Zp}]+\.(md|txt)$"
+    )
 
 
 def _deps(request: Request):
@@ -275,10 +279,6 @@ BLANK_IMPORT = "Paste or upload some text first."
 PASTE_TITLE_CHARS = 60
 
 
-def _first_line(text: str) -> str:
-    return next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-
-
 @router.post("/worlds/{world_id}/imports")
 async def post_import(world_id: str, body: NewImport, request: Request):
     """A new `import` thread: extraction, then the graph run from `check` (spec §3.1)."""
@@ -290,7 +290,7 @@ async def post_import(world_id: str, body: NewImport, request: Request):
     if d.model_for is None:
         raise HTTPException(status_code=503, detail="import is not available")
     label = body.filename or "paste"
-    title = body.filename or "Pasted text: " + _first_line(body.text)[:PASTE_TITLE_CHARS]
+    title = body.filename or "Pasted text: " + first_line(body.text)[:PASTE_TITLE_CHARS]
     thread_id = d.threads.create(world_id, kind="import", title=title)
     try:
         release = await _take_turn(request, thread_id)

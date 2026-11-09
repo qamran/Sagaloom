@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from sagaloom.models import Entry, Fact, Link
-from sagaloom.store.canon import DuplicateTitleError, VersionConflictError
+from sagaloom.store.canon import DuplicateTitleError, VersionConflictError, norm
 
 
 def mk(id="ent_0001", world="w1", title="Ister", type="place", body="A moon.", **kw):
@@ -79,6 +79,20 @@ def test_find_by_name_ignores_case_and_curly_quotes(store):
     store.upsert_entry(mk(title="The old king's drowning", type="event", aliases=["Grey Tide"]))
     assert store.find_by_name("w1", "the Old King’s Drowning").id == "ent_0001"
     assert store.find_by_name("w1", "  grey   TIDE").id == "ent_0001"
+    assert store.find_by_name("w1", "nope") is None
+
+
+def test_name_index_matches_find_by_name(store):
+    """One canon read gives every title and alias; the first entry by id wins a shared name."""
+    store.upsert_entry(mk(id="ent_0001", title="Ister", aliases=["Pale Moon"]))
+    store.upsert_entry(mk(id="ent_0002", title="Second Moon", aliases=["Ister"]))
+    index = store.name_index("w1")
+    assert index["ister"].id == "ent_0001"
+    assert index["pale moon"].id == "ent_0001"
+    assert index["second moon"].id == "ent_0002"
+    for name in ["ISTER", "pale  moon", "nope"]:
+        assert store.find_by_name("w1", name) == index.get(norm(name))
+    assert store.find_by_name("w1", "ISTER").id == "ent_0001"
     assert store.find_by_name("w1", "nope") is None
 
 

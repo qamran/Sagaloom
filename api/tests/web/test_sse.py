@@ -44,6 +44,21 @@ async def test_sse_events_frames_each_event_as_name_plus_json():
     ]
 
 
+async def test_sse_response_has_no_background_task():
+    """Both callers pass a `shielded` stream, which releases the lock itself (Wave 5 M12)."""
+    import inspect
+
+    from sagaloom.web.sse import sse_response
+
+    async def events():
+        yield {"event": "done", "data": {}}
+
+    gen = events()
+    assert sse_response(gen).background is None
+    assert list(inspect.signature(sse_response).parameters) == ["events"]
+    await gen.aclose()
+
+
 async def test_usage_comes_from_usage_fn_only(make_env):
     env = make_env()
     tid = await env.new_thread()

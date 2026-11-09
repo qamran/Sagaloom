@@ -14,3 +14,8 @@ def message_text(content: Any) -> str:
             for b in content
         )
     return ""
+
+
+def first_line(text: str) -> str:
+    """The first non-blank line of `text`, stripped and uncut ("" when there is none)."""
+    return next((ln.strip() for ln in text.splitlines() if ln.strip()), "")

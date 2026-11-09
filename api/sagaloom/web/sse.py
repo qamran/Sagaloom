@@ -2,7 +2,9 @@
 
 Order inside a turn: `node`/`llm_request`/`token`/`tool_call`/`tool_result`/`llm_response` as they
 happen, then (if the run paused) `interrupt`, then `usage`, then `done`. A failed run ends with
-`error` instead of `usage` and `done`.
+`error` instead of `usage` and `done`. One narrow exception: an import whose extraction failed
+entirely (the graph never ran) ends with `usage` (the extractor's spend), then `error`, and no
+`done` (`web/imports.py`).
 """
 
 import asyncio
@@ -17,7 +19,6 @@ import openai
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from sse_starlette import EventSourceResponse
-from starlette.background import BackgroundTask
 
 from sagaloom.check.badge import with_badges
 from sagaloom.models import Usage
@@ -33,11 +34,11 @@ SUMMARY_CHARS = 300
 Event = dict[str, Any]  # {"event": name, "data": dict}
 
 
-def _ev(name: str, data: dict | None = None) -> Event:
+def event(name: str, data: dict | None = None) -> Event:
     return {"event": name, "data": data or {}}
 
 
-def _drain(queue: asyncio.Queue | None) -> list[Event]:
+def drain(queue: asyncio.Queue | None) -> list[Event]:
     out: list[Event] = []
     while queue is not None and not queue.empty():
         out.append(queue.get_nowait())
@@ -68,12 +69,12 @@ def gemini_error_event(exc: Exception) -> dict | None:
 
 def _error_event(exc: Exception) -> Event:
     if isinstance(exc, GraphRecursionError):
-        return _ev("error", {"message": TOO_MANY_STEPS, "retryable": False})
+        return event("error", {"message": TOO_MANY_STEPS, "retryable": False})
     if (gemini := gemini_error_event(exc)) is not None:
-        return _ev("error", gemini)
+        return event("error", gemini)
     if isinstance(exc, openai.APIError):  # connection, timeout, status and rate-limit errors
-        return _ev("error", {"message": MODEL_UNAVAILABLE, "retryable": True})
-    return _ev("error", {"message": UNEXPECTED, "retryable": True})
+        return event("error", {"message": MODEL_UNAVAILABLE, "retryable": True})
+    return event("error", {"message": UNEXPECTED, "retryable": True})
 
 
 def _update_events(node: str, upd: Any) -> list[Event]:
@@ -89,10 +90,10 @@ def _update_events(node: str, upd: Any) -> list[Event]:
         for m in msgs if isinstance(msgs, list) else [msgs]:
             if node == "guard" and isinstance(m, AIMessage) and m.name == "guard":
                 if text := message_text(m.content):
-                    events.append(_ev("token", {"text": text}))
+                    events.append(event("token", {"text": text}))
             elif node == "remember" and isinstance(m, HumanMessage) and m.name == "memory":
                 events.append(
-                    _ev(
+                    event(
                         "tool_result",
                         {
                             "name": "remember",
@@ -102,10 +103,10 @@ def _update_events(node: str, upd: Any) -> list[Event]:
                     )
                 )
             elif isinstance(m, AIMessage) and m.tool_calls:
-                events += [_ev("tool_call", {"name": c["name"], "args": c["args"]}) for c in m.tool_calls]
+                events += [event("tool_call", {"name": c["name"], "args": c["args"]}) for c in m.tool_calls]
             elif isinstance(m, ToolMessage):
                 events.append(
-                    _ev(
+                    event(
                         "tool_result",
                         {"name": m.name or "", "summary": message_text(m.content)[:SUMMARY_CHARS]},
                     )
@@ -129,7 +130,7 @@ async def run_turn_events(
         async for mode, payload in graph.astream(
             input_or_command, config, stream_mode=["messages", "updates", "debug"]
         ):
-            for ev in _drain(extra):
+            for ev in drain(extra):
                 yield ev
             if mode == "messages":
                 chunk, meta = payload
@@ -138,12 +139,12 @@ async def run_turn_events(
                     and meta.get("langgraph_node") == "agent"
                     and (text := message_text(chunk.content))
                 ):
-                    yield _ev("token", {"text": text})
+                    yield event("token", {"text": text})
             elif mode == "updates":
                 for node, upd in payload.items():
                     if node == "__interrupt__":
                         for it in upd:
-                            yield _ev("interrupt", with_badges(dict(it.value)))
+                            yield event("interrupt", with_badges(dict(it.value)))
                         continue
                     for ev in _update_events(node, upd):
                         yield ev
@@ -151,22 +152,22 @@ async def run_turn_events(
                 kind, body = payload.get("type"), payload.get("payload") or {}
                 if kind == "task":
                     started[body["id"]] = time.monotonic()
-                    yield _ev("node", {"name": body["name"], "phase": "start"})
+                    yield event("node", {"name": body["name"], "phase": "start"})
                 elif kind == "task_result":
                     t0 = started.pop(body["id"], None)
                     ms = int((time.monotonic() - t0) * 1000) if t0 is not None else 0
-                    yield _ev("node", {"name": body["name"], "phase": "end", "ms": ms})
-        for ev in _drain(extra):
+                    yield event("node", {"name": body["name"], "phase": "end", "ms": ms})
+        for ev in drain(extra):
             yield ev
         turn, total = usage_fn()
-        yield _ev("usage", {"turn": turn.model_dump(), "total": total.model_dump()})
-        yield _ev("done")
+        yield event("usage", {"turn": turn.model_dump(), "total": total.model_dump()})
+        yield event("done")
     except asyncio.CancelledError:
         raise
     except Exception as exc:
         if not isinstance(exc, (GraphRecursionError, openai.APIError)):
             log.exception("turn failed")
-        for ev in _drain(extra):
+        for ev in drain(extra):
             yield ev
         yield _error_event(exc)
 
@@ -176,23 +177,16 @@ async def sse_events(events: AsyncIterator[Event]) -> AsyncIterator[dict[str, st
         yield {"event": ev["event"], "data": json.dumps(ev["data"], ensure_ascii=False)}
 
 
-def sse_response(
-    events: AsyncIterator[Event], on_close: Callable[[], None] | None = None
-) -> EventSourceResponse:
-    """`on_close` always runs once the stream ends, fails, or the client goes away."""
+def sse_response(events: AsyncIterator[Event]) -> EventSourceResponse:
+    """`events` as an SSE response, closed when the response ends. Both callers pass a `shielded`
+    stream, which releases the turn lock itself when the run ends."""
 
-    async def guarded() -> AsyncIterator[dict[str, str]]:
-        try:
-            async with aclosing(sse_events(events)) as stream:
-                async for item in stream:
-                    yield item
-        finally:
-            if on_close:
-                on_close()
+    async def closing() -> AsyncIterator[dict[str, str]]:
+        async with aclosing(sse_events(events)) as stream:
+            async for item in stream:
+                yield item
 
-    return EventSourceResponse(
-        guarded(), background=BackgroundTask(on_close) if on_close else None
-    )
+    return EventSourceResponse(closing())
 
 
 _END = object()
