@@ -151,7 +151,8 @@ def _turn_config(
 async def _take_turn(request: Request, thread_id: str) -> Callable[[], None]:
     """One running turn per thread. Returns an idempotent release; 409 if a turn is running.
     Taken before any state check, so two racing POSTs cannot both pass them."""
-    lock = _deps(request).locks.setdefault(thread_id, asyncio.Lock())
+    locks = _deps(request).locks
+    lock = locks.setdefault(thread_id, asyncio.Lock())
     if lock.locked():
         raise HTTPException(status_code=409, detail="turn in progress")
     await lock.acquire()  # uncontended here, so it does not yield between check and acquire
@@ -162,6 +163,10 @@ async def _take_turn(request: Request, thread_id: str) -> Callable[[], None]:
         if not released:
             released = True
             lock.release()
+            # Prune, so `locks` does not grow with every thread ever used. Nobody waits on a
+            # turn lock (a second request 409s), and a missing lock reads as "not running".
+            if locks.get(thread_id) is lock:
+                del locks[thread_id]
 
     return release
 

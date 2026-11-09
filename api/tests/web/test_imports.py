@@ -64,7 +64,7 @@ async def test_import_streams_extraction_then_check_and_returns_thread_id(make_e
     log = (await env.client.get(f"/api/threads/{tid}/llm-log")).json()
     assert [rec["role"] for rec in log] == ["extractor"]
     # The lock is released once the run ends.
-    assert not env.deps.locks[tid].locked()
+    assert tid not in env.deps.locks  # released and pruned
 
 
 async def test_paste_title_uses_first_line(make_env):

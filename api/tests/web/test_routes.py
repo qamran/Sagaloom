@@ -750,3 +750,18 @@ async def test_runs_last_edge_cases(make_env):
     body = (await env.client.get(f"/api/threads/{tid}/runs/last")).json()
     assert body["paused"] is False
     assert body["nodes"][0] == "guard" and "commit" in body["nodes"]
+
+
+# ---------- Wave 8 hardening (#63) ----------
+
+
+async def test_turn_lock_pruned_after_release(make_env):
+    env = make_env([AIMessage(content="One."), AIMessage(content="Two.")])
+    tid = await env.new_thread()
+    r, _ = await env.send(tid, "How many moons?")
+    assert r.status_code == 200 and tid not in env.deps.locks
+    (r1, _), (r2, _) = await asyncio.gather(env.send(tid, "a"), env.send(tid, "b"))
+    assert sorted([r1.status_code, r2.status_code]) == [200, 409]
+    assert tid not in env.deps.locks
+    listed = (await env.client.get("/api/threads")).json()
+    assert [t["running"] for t in listed if t["thread_id"] == tid] == [False]
