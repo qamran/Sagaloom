@@ -1,0 +1,30 @@
+{
+  "licence": {
+    "text": "Creative Commons Attribution-Share Alike 4.0",
+    "url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en",
+    "nc": false
+  },
+  "pages": [
+    {
+      "in": "https://en.wikipedia.org/wiki/Rivendell",
+      "title": "Rivendell",
+      "url": "https://en.wikipedia.org/wiki/Rivendell",
+      "revid": null,
+      "parse_request": "https://en.wikipedia.org/w/api.php?action=parse&format=json&formatversion=2&page=Rivendell&prop=wikitext%7Ccategories&redirects=1"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/Gandalf",
+      "title": "Gandalf",
+      "url": "https://en.wikipedia.org/wiki/Gandalf",
+      "revid": null,
+      "parse_request": "https://en.wikipedia.org/w/api.php?action=parse&format=json&formatversion=2&page=Gandalf&prop=wikitext%7Ccategories&redirects=1"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/Shire_(Middle-earth)",
+      "title": "The Shire",
+      "url": "https://en.wikipedia.org/wiki/The_Shire",
+      "revid": null,
+      "parse_request": "https://en.wikipedia.org/w/api.php?action=parse&format=json&formatversion=2&page=Shire+%28Middle-earth%29&prop=wikitext%7Ccategories&redirects=1"
+    }
+  ]
+}
