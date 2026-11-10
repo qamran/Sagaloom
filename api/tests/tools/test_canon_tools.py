@@ -8,7 +8,8 @@ from langgraph.types import Command
 from pydantic import ValidationError
 
 from sagaloom.check.contradiction import JudgeOutput
-from sagaloom.models import Entry, Fact
+from sagaloom.models import Entry, EntrySource, Fact
+from sagaloom.security import wrap_untrusted
 from sagaloom.tools.canon_tools import CreateOrUpdateArgs, make_tools
 from sagaloom.tools.facts import FactList
 
@@ -479,3 +480,54 @@ def test_tool_args_have_no_sources_field():
     """Sources are set by the server, never by the agent (R-W3-1)."""
     props = CreateOrUpdateArgs.model_json_schema()["properties"]
     assert "sources" not in props and "trusted" not in props and "licence" not in props
+
+
+# ---------- reference provenance records the licence (R-W3-1, R11.4.6) ----------
+
+REF_URL = "https://en.wikipedia.org/wiki/Venice"
+LICENCE = {
+    "text": "Creative Commons Attribution-Share Alike 4.0",
+    "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "nc": False,
+}
+
+
+def _ref_turn(licence):
+    payload = {"label": "reference", "results": [{"title": "Venice", "summary": "s", "url": REF_URL}]}
+    if licence != "absent":
+        payload["licence"] = licence
+    content = wrap_untrusted(json.dumps(payload), "real_world_reference (reference, not canon)")
+    return [AIMessage(content=""), ToolMessage(content=content, tool_call_id="r1", name="real_world_reference")]
+
+
+async def _create_with(store, messages):
+    ts, *_ = tools_for(store)
+    cmd = await call(
+        ts["create_or_update_entry"],
+        {"action": "create", "title": "Ostra", "type": "place", "body": "A port.", "world_id": W,
+         "messages": messages},
+    )
+    [p] = cmd.update["pending_proposals"]
+    return p.after
+
+
+async def test_reference_proposal_records_licensed_source(store):
+    after = await _create_with(store, _ref_turn(LICENCE))
+    [s] = after.sources
+    assert s == EntrySource(
+        kind="reference", url=REF_URL, licence=LICENCE["text"], licence_url=LICENCE["url"], nc=False,
+        added_at=s.added_at,
+    )
+    assert (after.source, after.source_url, after.licence, after.trusted) == (
+        "reference", REF_URL, LICENCE["text"], False
+    )
+
+
+@pytest.mark.parametrize("licence", [None, "absent", "not a dict"])
+async def test_reference_proposal_without_licence_says_not_reported(store, licence):
+    """No licence in the payload (unreadable, or a payload from before licences were recorded):
+    the source is still recorded, with no licence."""
+    after = await _create_with(store, _ref_turn(licence))
+    [s] = after.sources
+    assert (s.kind, s.url, s.licence, s.licence_url, s.nc) == ("reference", REF_URL, None, None, False)
+    assert (after.source, after.licence, after.trusted) == ("reference", None, False)

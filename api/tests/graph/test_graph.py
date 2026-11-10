@@ -1216,8 +1216,17 @@ async def test_tool_args_validated_before_tool_runs(store):
 REF_URLS = ["https://en.wikipedia.org/wiki/Silk_Road", "https://en.wikipedia.org/wiki/Venice"]
 
 
-def fake_wiki(tmp_path) -> WikiClient:
+REF_LICENCE = {"text": "Creative Commons Attribution-Share Alike 4.0", "url": "https://creativecommons.org/licenses/by-sa/4.0/"}
+
+
+def fake_wiki(tmp_path, licence: dict | None = None) -> WikiClient:
+    """Answers search and summaries; `rightsinfo` gives `licence`, or 503 (unreadable) without one."""
+
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("meta") == "siteinfo":
+            if licence is None:
+                return httpx.Response(503)
+            return httpx.Response(200, json={"query": {"rightsinfo": licence}})
         if request.url.path == "/w/api.php":
             return httpx.Response(
                 200, json={"query": {"search": [{"title": "Silk Road"}, {"title": "Venice"}]}}
@@ -1260,6 +1269,25 @@ async def test_reference_proposal_is_tainted(store, tmp_path):
     await run(graph, resume({"proposal_id": await only_pid(graph, cfg), "action": "approve"}), cfg)
     e = store.get_entry(W, "ent_0001")
     assert (e.source, e.trusted, e.source_url, e.licence) == ("reference", False, after.source_url, None)
+
+
+async def test_reference_proposal_stores_the_licence(store, tmp_path):
+    graph, *_ = make(
+        store,
+        [ref_call(), create_call(), AIMessage(content="ok")],
+        wiki=fake_wiki(tmp_path, licence=REF_LICENCE),
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start("Make a port like Venice"), cfg)
+    await run(graph, resume({"proposal_id": await only_pid(graph, cfg), "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert (e.source, e.trusted, e.source_url, e.licence) == (
+        "reference", False, REF_URLS[0], REF_LICENCE["text"]
+    )
+    [s] = e.sources
+    assert (s.kind, s.url, s.licence, s.licence_url, s.nc) == (
+        "reference", REF_URLS[0], REF_LICENCE["text"], REF_LICENCE["url"], False
+    )
 
 
 async def test_plain_proposal_is_user_trusted(store, tmp_path):

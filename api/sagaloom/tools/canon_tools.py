@@ -132,11 +132,11 @@ def _keep_secret_facts(before: Entry, proposed: list[Fact]) -> list[Fact]:
     return [*proposed, *kept]
 
 
-def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
+def _reference_turn(messages: list | None) -> tuple[bool, list[str], dict | None]:
     """(whether `real_world_reference` returned a successful, non-empty reference payload in this turn, the
-    URLs it returned). The turn is everything after the author's last message (an unnamed
-    HumanMessage; review notes are named). An error result, a validation error or an unparseable
-    message brings no reference text in, so it does not count."""
+    URLs it returned, the licence of the first such payload or None). The turn is everything after
+    the author's last message (an unnamed HumanMessage; review notes are named). An error result, a
+    validation error or an unparseable message brings no reference text in, so it does not count."""
     turn: list = []
     for m in reversed(messages or []):
         if isinstance(m, HumanMessage) and not m.name:
@@ -144,6 +144,7 @@ def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
         turn.append(m)
     called = False
     urls: list[str] = []
+    licence: dict | None = None
     for m in reversed(turn):
         if not (isinstance(m, ToolMessage) and m.name == REFERENCE_TOOL):
             continue
@@ -161,12 +162,15 @@ def _reference_turn(messages: list | None) -> tuple[bool, list[str]]:
         results = payload.get("results")
         if not isinstance(results, list) or not results:
             continue  # an empty lookup brought no reference text in, so it does not taint
+        if not called:  # a payload from before licences were recorded has none
+            lic = payload.get("licence")
+            licence = lic if isinstance(lic, dict) else None
         called = True
         for r in results:
             url = r.get("url") if isinstance(r, dict) else None
             if isinstance(url, str) and url not in urls:
                 urls.append(url)
-    return called, urls
+    return called, urls, licence
 
 
 def reference_urls_this_turn(messages: list) -> list[str]:
@@ -177,8 +181,9 @@ def reference_urls_this_turn(messages: list) -> list[str]:
 def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]:
     """Server-set provenance for a chat proposal (R11.4.6). A successful `real_world_reference`
     payload in this turn taints it. The agent may pick which of the turn's URLs it used; anything
-    else it names is ignored, and the first of the turn's URLs is stored instead."""
-    called, urls = _reference_turn(messages)
+    else it names is ignored, and the first of the turn's URLs is stored instead. The source
+    carries the wiki's licence as the lookup reported it, or none ("licence not reported")."""
+    called, urls, lic = _reference_turn(messages)
     if not called:
         return provenance_fields([], trusted=True)
     url = source_url if source_url in urls else (urls[0] if urls else None)
@@ -186,7 +191,16 @@ def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]
         # Results without a URL: the reference text still came in, so the proposal stays an
         # untrusted `reference` one, with no source to cite (the one primary without a source).
         return {**provenance_fields([], trusted=False), "source": "reference"}
-    return provenance_fields([EntrySource(kind="reference", url=url)], trusted=False)
+    lic = lic or {}
+    text, licence_url = lic.get("text"), lic.get("url")
+    source = EntrySource(
+        kind="reference",
+        url=url,
+        licence=text if isinstance(text, str) else None,
+        licence_url=licence_url if isinstance(licence_url, str) else None,
+        nc=lic.get("nc") is True,
+    )
+    return provenance_fields([source], trusted=False)
 
 
 def make_tools(

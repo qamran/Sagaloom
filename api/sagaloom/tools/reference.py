@@ -1,7 +1,9 @@
 """`real_world_reference` (R11.4): Wikipedia as inspiration, never as canon. Read-only."""
 
+import asyncio
 import json
 import logging
+from typing import Any
 
 import httpx
 from langchain_core.tools import BaseTool, tool
@@ -15,6 +17,7 @@ from sagaloom.wiki.client import WikiClient, search_and_summarise
 log = logging.getLogger(__name__)
 
 WRAP_SOURCE = "real_world_reference (reference, not canon)"
+LICENCE_HOST = "en.wikipedia.org"
 
 
 class ReferenceArgs(BaseModel):
@@ -36,15 +39,33 @@ def _reason(e: Exception) -> str:
     return type(e).__name__
 
 
+async def _licence(client: WikiClient) -> dict[str, Any] | None:
+    """Wikipedia's licence as `rightsinfo` reports it (`{text, url, nc}`), or None when it can't
+    be read: the lookup still succeeds, and its sources say "licence not reported" (R-W3-1)."""
+    try:
+        return (await client.site_licence(LICENCE_HOST)).model_dump()
+    except Exception as e:
+        log.warning("real_world_reference: licence unreadable: %s", type(e).__name__, exc_info=True)
+        return None
+
+
 def make_reference_tool(client: WikiClient) -> BaseTool:
     @tool(NAME, args_schema=ReferenceArgs, description=DESCRIPTION)
     async def real_world_reference(query: str, max_results: int = 3) -> str:
-        try:
-            results = await search_and_summarise(client, query, max_results)
-        except Exception as e:  # R11.4.7: the agent carries on without it
-            log.warning("real_world_reference failed: %s", type(e).__name__, exc_info=True)
-            return json.dumps({"error": f"Wikipedia lookup unavailable: {_reason(e)}"})
-        payload = {"label": "reference", "results": [r.model_dump() for r in results]}
+        # Both run to completion, so a failed search never leaves the licence lookup pending.
+        found, licence = await asyncio.gather(
+            search_and_summarise(client, query, max_results), _licence(client), return_exceptions=True
+        )
+        if isinstance(found, BaseException) and not isinstance(found, Exception):
+            raise found  # cancellation is not a failed lookup
+        if isinstance(found, Exception):  # R11.4.7: the agent carries on without it
+            log.warning("real_world_reference failed: %s", type(found).__name__, exc_info=found)
+            return json.dumps({"error": f"Wikipedia lookup unavailable: {_reason(found)}"})
+        payload = {
+            "label": "reference",
+            "results": [r.model_dump() for r in found],
+            "licence": licence if isinstance(licence, dict) else None,
+        }
         return wrap_untrusted(json.dumps(payload, ensure_ascii=False), WRAP_SOURCE)
 
     return real_world_reference

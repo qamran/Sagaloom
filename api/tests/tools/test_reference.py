@@ -12,16 +12,30 @@ from sagaloom.wiki.pages import parse_page_url
 
 WRAP = '<untrusted_data source="real_world_reference (reference, not canon)">'
 LONG = ("word " * 400).strip()  # 1999 characters
+LICENCE_TEXT = "Creative Commons Attribution-Share Alike 4.0"
+LICENCE_URL = "https://creativecommons.org/licenses/by-sa/4.0/"
 
 
-def wiki(tmp_path, summaries: dict[str, str]):
+def is_rightsinfo(request: httpx.Request) -> bool:
+    return request.url.path == "/w/api.php" and request.url.params.get("meta") == "siteinfo"
+
+
+def rightsinfo() -> httpx.Response:
+    return httpx.Response(200, json={"query": {"rightsinfo": {"text": LICENCE_TEXT, "url": LICENCE_URL}}})
+
+
+def wiki(tmp_path, summaries: dict[str, str], requests: list | None = None, licence_status: int = 200):
     def handler(request: httpx.Request) -> httpx.Response:
+        if requests is not None:
+            requests.append(request)
+        if is_rightsinfo(request):
+            return rightsinfo() if licence_status == 200 else httpx.Response(licence_status)
         if request.url.path == "/w/api.php":
             return httpx.Response(200, json={"query": {"search": [{"title": t} for t in summaries]}})
         title = request.url.path.rsplit("/", 1)[1].replace("_", " ")
         return httpx.Response(200, json={"title": title, "extract": summaries[title]})
 
-    return WikiClient(tmp_path, transport=httpx.MockTransport(handler))
+    return WikiClient(tmp_path, transport=httpx.MockTransport(handler), min_interval=0)
 
 
 def unwrap(out: str) -> dict:
@@ -35,6 +49,7 @@ async def test_reference_output_shape(tmp_path):
     out = await tool.ainvoke({"query": "trade routes", "max_results": 2})
     payload = unwrap(out)
     assert payload["label"] == "reference"
+    assert set(payload) == {"label", "results", "licence"}
     silk, venice = payload["results"]
     assert set(silk) == {"title", "summary", "url"}
     assert len(silk["summary"]) <= 1000 and silk["summary"].endswith("…")
@@ -54,6 +69,27 @@ async def test_reference_url_matches_an_imported_page_url(tmp_path):
     assert shire["url"] == "https://en.wikipedia.org/wiki/Shire_(Middle-earth)"
 
 
+async def test_reference_payload_carries_licence(tmp_path):
+    out = await make_reference_tool(wiki(tmp_path, {"Venice": "A city."})).ainvoke({"query": "venice"})
+    assert unwrap(out)["licence"] == {"text": LICENCE_TEXT, "url": LICENCE_URL, "nc": False}
+
+
+async def test_reference_works_when_licence_unreadable(tmp_path):
+    client = wiki(tmp_path, {"Venice": "A city."}, licence_status=503)
+    payload = unwrap(await make_reference_tool(client).ainvoke({"query": "venice"}))
+    assert [r["title"] for r in payload["results"]] == ["Venice"]
+    assert payload["licence"] is None
+
+
+async def test_licence_lookup_is_cached_per_host(tmp_path):
+    requests: list = []
+    tool = make_reference_tool(wiki(tmp_path, {"Venice": "A city."}, requests))
+    first = unwrap(await tool.ainvoke({"query": "venice"}))
+    second = unwrap(await tool.ainvoke({"query": "canals"}))
+    assert first["licence"] == second["licence"] is not None
+    assert len([r for r in requests if is_rightsinfo(r)]) == 1
+
+
 async def test_reference_schema_limits(tmp_path):
     tool = make_reference_tool(wiki(tmp_path, {}))
     props = tool.tool_call_schema.model_json_schema()["properties"]
@@ -67,7 +103,7 @@ async def test_reference_failure_is_soft(tmp_path):
     def boom(request):
         raise httpx.ReadTimeout("slow", request=request)
 
-    tool = make_reference_tool(WikiClient(tmp_path, transport=httpx.MockTransport(boom)))
+    tool = make_reference_tool(WikiClient(tmp_path, transport=httpx.MockTransport(boom), min_interval=0))
     out = await tool.ainvoke({"query": "Byzantine trade routes"})
     assert not out.startswith("<untrusted_data")
     err = json.loads(out)["error"]
@@ -76,7 +112,7 @@ async def test_reference_failure_is_soft(tmp_path):
 
 async def test_reference_bad_json_is_soft(tmp_path):
     transport = httpx.MockTransport(lambda r: httpx.Response(200, text="<html>not json"))
-    out = await make_reference_tool(WikiClient(tmp_path, transport=transport)).ainvoke({"query": "x"})
+    out = await make_reference_tool(WikiClient(tmp_path, transport=transport, min_interval=0)).ainvoke({"query": "x"})
     assert json.loads(out)["error"].startswith("Wikipedia lookup unavailable: ")
 
 
