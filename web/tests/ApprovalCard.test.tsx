@@ -983,9 +983,12 @@ describe("ApprovalCard one Show per secret entry (M3 Wave 2)", () => {
     expect(screen.getByText("Harbour Council", { selector: ".line-through" })).toBeInTheDocument();
     expect(document.querySelector("ins")).toHaveTextContent("Five");
     expect(screen.getByText("Keep seven seats and mark two as vacant.")).toBeInTheDocument();
-    // The fact that is secret in its own right keeps its own Show.
+    // The fact that is secret in its own right keeps its own Show: exactly one on its value.
     expect(screen.queryByText("The seats are empty")).toBeNull();
-    expect(screen.getAllByRole("button", { name: /show secret fact/i }).length).toBeGreaterThan(0);
+    const proposedCell = within(within(table).getByText("New").closest("tr") as HTMLElement).getAllByRole("cell")[2];
+    expect(within(proposedCell).getAllByRole("button", { name: /show secret fact/i })).toHaveLength(1);
+    await userEvent.click(within(proposedCell).getByRole("button", { name: /show secret fact/i }));
+    expect(within(proposedCell).getByText("The seats are empty")).toBeInTheDocument();
   });
 
   it("the card's one Show lifts a secret entry's own retcon, which the server marks existing_secret", async () => {

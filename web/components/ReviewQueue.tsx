@@ -1,6 +1,6 @@
 import { CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
 import { TYPE_DOT } from "@/lib/entity";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, entryIsSecret, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, judgeSecrets, proposalSummary } from "@/lib/review";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Decision, Entry, PendingInterrupt, Proposal } from "@/lib/types";
 
@@ -32,7 +32,10 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
         if (!check) return null;
         const draft = p.after ?? p.before;
         // Stored-aware like the card: the entry may have turned secret after the proposal was drafted.
-        const titleHidden = entryIsSecret(p, canon) && !worldShown;
+        // While it is hidden, the summary judges every side of it as secret ("closed"): the row has
+        // no Show, so none of the entry's own values may show.
+        const judged = judgeSecrets(p, canon, "closed");
+        const titleHidden = judged.entrySecret && !worldShown;
         const badge = badgeOf(check);
         const selected = p.proposal_id === selectedId;
         const decision = chosen[p.proposal_id];
@@ -74,7 +77,7 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
                   ? CHECK_FAILED_TEXT
                   : worldShown
                     ? proposalSummary(p, check, nothingHidden, nothingHidden, true)
-                    : proposalSummary(p, check, existingSecretOf(p, canon), proseSecretOf(p, canon))}
+                    : proposalSummary(judged.proposal, check, judged.existing, judged.prose)}
               </span>
             </button>
           </li>

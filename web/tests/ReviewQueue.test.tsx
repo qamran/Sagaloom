@@ -96,6 +96,37 @@ describe("ReviewQueue", () => {
     expect(screen.getByText("The Choir Ledger")).toBeInTheDocument();
   });
 
+  it("masks a stored-secret entry's own values in the summary while the world hides secrets", () => {
+    const council = {
+      id: "ent_0002", title: "Harbour Council", type: "faction", status: "canon",
+      facts: [{ key: "Seats", value: "Seven", refs: [], status: "canon", told_by: null }],
+    } as unknown as Entry;
+    const update: Proposal = {
+      proposal_id: "p_s", action: "update", world_id: "w1", entry_id: "ent_0002", before: council,
+      after: {
+        title: "Harbour Council", type: "faction", body: "", status: "canon", aliases: [],
+        facts: [{ key: "Seats", value: "Five", refs: [], status: "canon", told_by: null }],
+      },
+    };
+    const seats: Flag = {
+      ...flag, kind: "retcon", severity: null, entry_id: "ent_0002", title: "Harbour Council", fact_key: "Seats",
+      existing_fact: "Seven", new_fact: "Five", existing_secret: false, explanation: "Changes established canon: Seven → Five",
+    };
+    const one: PendingInterrupt = { proposals: [update], checks: { p_s: check("p_s", [seats]) } };
+    const view = () => (
+      <SecretsWorldProvider worldId="w1">
+        <ReviewQueue pending={one} canon={[{ ...council, status: "secret" }]} selectedId="p_s" chosen={{}} onSelect={vi.fn()} />
+      </SecretsWorldProvider>
+    );
+    const { container, unmount } = render(view());
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/Seven|Five|Seats|Harbour/);
+    unmount();
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(view());
+    expect(screen.getByText("Seats: Seven → Five")).toBeInTheDocument();
+  });
+
   it("follows the provider's world, not the active one", () => {
     sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
     render(

@@ -218,3 +218,41 @@ export function proseSecretOf(proposal: Proposal, canon: Entry[] | undefined): (
   const draft = draftHoldsSecret(proposal);
   return (f) => text(f) || draft;
 }
+
+/**
+ * Secrecy predicates for a proposal with its own entry's secrecy settled one way, so every surface
+ * reads the same stored-aware rule (`entryIsSecret`):
+ * - `"open"` judges the entry as if it were not secret: what is left is secret in its own right.
+ *   The card uses it under its one Show, which covers the entry's own secrecy (`entryHidden`).
+ * - `"closed"` judges every side of the entry as secret, stored entry included, so all of its own
+ *   values are masked. The queue summary, which has no Show, uses it while the world hides secrets.
+ * When the entry is not secret, both are the plain predicates. `proposal` is the proposal as
+ * judged, for summaries and fact checks that read its statuses.
+ */
+export function judgeSecrets(proposal: Proposal, canon: Entry[] | undefined, entry: "open" | "closed") {
+  const entrySecret = entryIsSecret(proposal, canon);
+  const own = (id: string) => !!id && id === proposal.entry_id;
+  const settle = <T extends { status: EntryDraft["status"] }>(e: T): T => {
+    if (entry === "open") return e.status === "secret" ? { ...e, status: "canon" } : e;
+    return e.status === "secret" ? e : { ...e, status: "secret" };
+  };
+  const judged: Proposal = entrySecret
+    ? { ...proposal, before: proposal.before && settle(proposal.before), after: proposal.after && settle(proposal.after) }
+    : proposal;
+  const judgedCanon = entrySecret ? canon?.map((e) => (own(e.id) ? settle(e) : e)) : canon;
+  // The server marks an own retcon `existing_secret` whenever the entry is secret (retcon.py), so
+  // when the entry is judged open, a flag citing it is judged by its facts instead.
+  const flagOf = (f: Flag): Flag =>
+    entrySecret && entry === "open" && own(f.entry_id) ? { ...f, existing_secret: false } : f;
+  const existing = existingSecretOf(judged, judgedCanon);
+  const text = textSecretOf(judged, judgedCanon);
+  const prose = proseSecretOf(judged, judgedCanon);
+  return {
+    entrySecret,
+    proposal: judged,
+    existing: (f: Flag) => existing(flagOf(f)),
+    text: (f: Flag) => text(flagOf(f)),
+    prose: (f: Flag) => prose(flagOf(f)),
+    draft: draftHoldsSecret(judged),
+  };
+}
