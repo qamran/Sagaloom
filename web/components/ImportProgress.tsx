@@ -27,19 +27,21 @@ export function ImportProgress({
       aria-label="Import progress"
       className="flex max-w-3xl flex-col gap-3 rounded-xl border border-border bg-panel-2 px-5 py-[18px]"
     >
-      <ul role="status" className="m-0 flex list-none flex-col gap-1.5 p-0 text-[15px]">
-        <li>Extracting entries…</li>
-        {candidates !== null && (
-          <li>
-            Found {candidates} {candidates === 1 ? "candidate" : "candidates"} ({skipped ?? 0} not imported)
-          </li>
-        )}
-        {phase === "checking" && candidates !== null && (
-          <li>
-            Checking {candidates} {candidates === 1 ? "proposal" : "proposals"} against canon…
-          </li>
-        )}
-      </ul>
+      <div role="status" aria-live="polite">
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-[15px]">
+          <li>Extracting entries…</li>
+          {candidates !== null && (
+            <li>
+              Found {candidates} {candidates === 1 ? "candidate" : "candidates"} ({skipped ?? 0} not imported)
+            </li>
+          )}
+          {phase === "checking" && candidates !== null && (
+            <li>
+              Checking {candidates} {candidates === 1 ? "proposal" : "proposals"} against canon…
+            </li>
+          )}
+        </ul>
+      </div>
       <div>
         <button
           type="button"

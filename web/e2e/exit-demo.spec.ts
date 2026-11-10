@@ -422,7 +422,7 @@ test("M1 exit demo", async ({ page }) => {
   };
   for (let i = 0; i < (await importRows.count()); i++) {
     await pick(i);
-    await expect(page.getByText(/^From paste: “/)).toBeVisible();
+    await expect(page.getByRole("main").getByText(/^From paste: “/)).toBeVisible();
     const title = ((await shownCard.getAttribute("aria-label")) ?? "").replace(/^Review proposal: /, "");
     imported.push({
       title,
@@ -478,6 +478,8 @@ test("M1 exit demo", async ({ page }) => {
   if (skyEntry) {
     await page.goto(`/canon/${skyEntry}`);
     await expect(page.getByText("Contains imported text")).toBeVisible();
+  } else {
+    console.log("demo step 32: skipped (the sky card was a create)");
   }
 
   // ---- Wave 7: canon secrets (step 33a, the Entries count, runs in step 1 on fresh data) ----

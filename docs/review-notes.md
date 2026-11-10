@@ -163,3 +163,15 @@ The full eval suite on the same day (after Wave 5 changed the judge prompt):
 **Tests and the demo.** Vitest is fixed at `testTimeout` 15 s and `maxWorkers` 2, because the full suite failed under load without them. Demo step 33c resends once if the model drafts the Mayor change as a create, and step 34 asks "Delete the Ashen Choir." and checks the card's count with secrets hidden and shown. The canary fixture is now one paragraph, so the extractor's excerpt keeps the canary sentence between its defining sentences; the canary eval then committed it in 10 of 10 runs, in two runs.
 
 **Evals after Wave 8.** The full suite ran once on 2026-11-09 (18 minutes): all 15 passed. cite-existing-id 10/10, not-in-canon 9/10, seed-entry injection 10/10, declarative-proposed 10/10, statement-only-that-change 10/10, fetched-summary injection 10/10, reference-unavailable 10/10, planted-remember 10/10, three-moons flagged against `ent_0012` in 10 of 10 runs, founding date against `ent_0005` in 10 of 10, Captain Sorn clean, consistent proposals 0 hard flags, guard 5/5 blocked and 0/11 false blocks, router 15/15, canary 10/10 (committed and shown to the chat agent in 10/10 runs each). The exit demo passed twice in a row (8.2 and 6.9 minutes).
+
+## 12. M3 Wave 2: web clean-up
+
+**One Show per secret entry.** A secret entry's approval card has a single Show in its header. It lifts the title, body, line and body diffs, fact table values, flag prose and own citations. A fact that is secret in its own right keeps its own Show. Stored-aware secrecy decides which cards this covers: an entry counts as secret if its draft (`before` or `after`) or its stored copy in canon says so, so a proposal drafted before an entry turned secret is still hidden.
+
+**Hidden rows are unbound.** On the Edit form a hidden fact row has no value in the page: its key and value are empty, disabled fields, its status select is locked, and an unrevealed row is submitted exactly as drafted. Nothing a viewer can inspect holds the secret.
+
+**Pill polling.** The header pill, the Review list and Recent imports poll every 5 s while a listed thread is running and every 60 s otherwise. A decision or an import in this tab invalidates `["review"]` at once, so the pill does not wait for the interval.
+
+**Proxy errors.** The Next proxy answers JSON for every failure: 400 when the browser's body cannot be read, 500 for a missing `API_SHARED_SECRET`, 502 when the API is unreachable (the cause is logged once, without the secret). It drops a browser-sent `X-Forwarded-For` unless the web server's env sets `TRUST_FORWARDED_FOR=true`; a deployment behind an edge that overwrites or appends the caller's address must set it, or every caller shares one rate-limit bucket. It fails safe, but it is easy to forget.
+
+**Matching and the Import page.** Names and aliases under 4 characters chip case-sensitively. The Import page announces progress in one status region, says so when a finished import names no thread, and lets the same file be chosen again after a rejection.

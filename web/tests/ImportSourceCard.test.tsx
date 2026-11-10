@@ -65,6 +65,22 @@ describe("ImportSourceCard upload", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Extract entries" })).toBeDisabled();
   });
+
+  it("an empty file says so", async () => {
+    render(<ImportSourceCard kind="upload" onExtract={vi.fn()} />);
+    await userEvent.upload(screen.getByLabelText("Choose a file"), new File(["  \n"], "empty.txt", { type: "text/plain" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("That file has no text to import.");
+  });
+
+  it("the same file can be chosen again after a rejection", async () => {
+    render(<ImportSourceCard kind="upload" onExtract={vi.fn()} />);
+    const input = screen.getByLabelText("Choose a file") as HTMLInputElement;
+    const user = userEvent.setup({ applyAccept: false });
+    await user.upload(input, new File(["x"], "notes.pdf", { type: "application/pdf" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    // The browser fires no change event when the same file is picked again unless the value was cleared.
+    expect(input.value).toBe("");
+  });
 });
 
 describe("ImportSourceCard wiki", () => {

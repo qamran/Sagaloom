@@ -101,7 +101,13 @@ function Upload({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) 
         id={id}
         type="file"
         accept=".md,.txt"
-        onChange={(e) => void pick(e.target.files?.[0])}
+        onChange={(e) => {
+          const input = e.currentTarget;
+          const file = input.files?.[0];
+          // Clear the value so the same file can be chosen again (the browser fires no change event otherwise).
+          input.value = "";
+          void pick(file);
+        }}
         className="min-h-11 text-sm"
       />
       {staged && (

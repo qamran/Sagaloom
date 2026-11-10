@@ -24,14 +24,16 @@ The Wave 4 step adds a new character, Mira Hale (Captain Sorn is already committ
 question instead of proposing, the step fails and prints the agent's reply.
 
 The Wave 5 step pastes three paragraphs (Brother Aldo, the Gull Market, and the three moons over the harbour) on the
-Import page and clicks **Extract entries** in the Paste text card. The extractor's output varies, so the step asserts outcomes,
-not exact titles: at least two cards, each with a `From paste:` line; one sky card (an update of Sky of Velmar or a
-new entry) flagged against Sky of Velmar (`ent_0007`) or Ister (`ent_0012`). The extractor names that card as it
-likes ("Sky of Velmar", but also "Festival night" or "Velmar"), so the step prefers a sky title and otherwise takes a
-card citing those entries that offers Save as myth. Extra judge flags are fine (Ruling R17). It saves the sky card as myth, approves one new entry, rejects the rest, then approves
-the re-checked myth card. If the sky card was an update, the entry page must show **Contains imported text**. The
-step prints the imported cards (`demo step 28: ...`), and fails with the card text if no sky card or no Save as myth
-is offered.
+Import page and clicks **Extract entries** in the Paste text card. The extractor's output varies, so the step
+asserts outcomes, not exact titles: at least two cards, each with a `From paste:` line; one sky card (an update of
+Sky of Velmar or a new entry) flagged against Sky of Velmar (`ent_0007`) or Ister (`ent_0012`). The extractor names
+that card as it likes ("Sky of Velmar", but also "Festival night" or "Velmar"), so the step prefers a sky title and
+otherwise takes a card citing those entries that offers Save as myth. Extra judge flags are fine (Ruling R17). It
+saves the sky card as myth, approves one new entry, rejects the rest, then approves the re-checked myth card. If the
+sky card was an update, the entry page must show **Contains imported text**; if it was a create, step 32 logs
+`demo step 32: skipped (the sky card was a create)`. Step 28 reads each `From paste:` line inside `main`, so a line
+elsewhere on the page cannot satisfy it. The step prints the imported cards (`demo step 28: ...`), and fails with the
+card text if no sky card or no Save as myth is offered.
 
 The Wave 7 step (33) checks hidden secrets, all in the demo's one page, because Show secrets is kept per tab:
 - **33a, in step 1.** The Canon list shows 18 entry links and no `The Choir Ledger`; the header's **Show secrets**
@@ -51,9 +53,9 @@ The Wave 7 step (33) checks hidden secrets, all in the demo's one page, because 
 With the drawer open there are two buttons named **Show secrets**, so the step scopes each: the header's through
 `getByRole("banner")`, the drawer's through `getByRole("complementary", { name: "Under the hood" })`.
 
-The Wave 8 step (34) asks in a new thread "Delete the Ashen Choir." If the agent proposes no delete, the step fails and
-prints its reply. On the seed the Mayor (`ent_0003`) is the only entry tied to the Choir by a link alone, and her link
-is secret, so with secrets hidden the delete card must contain `and 1 linked entry` and must contain `Secret entry` (The Choir Ledger) but not `Elsbeth`.
-Entries that name the Choir in their text are listed (The Choir Ledger as a `Secret entry` chip). The header's
-**Show secrets** makes the card name `Mayor Elsbeth Varr`; the step hides secrets again and clicks **Reject**. It
-asserts text, not layout.
+The Wave 8 step (34) asks in a new thread "Delete the Ashen Choir." If the agent proposes no delete, the step fails
+and prints its reply. On the seed the Mayor (`ent_0003`) is the only entry tied to the Choir by a link alone, and
+her link is secret, so with secrets hidden the delete card must contain `and 1 linked entry` and must contain
+`Secret entry` (The Choir Ledger) but not `Elsbeth`. Entries that name the Choir in their text are listed (The Choir
+Ledger as a `Secret entry` chip). The header's **Show secrets** makes the card name `Mayor Elsbeth Varr`; the step
+hides secrets again and clicks **Reject**. It asserts text, not layout.

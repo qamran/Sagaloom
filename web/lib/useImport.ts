@@ -24,6 +24,7 @@ export interface ImportRun {
 
 const UNREACHABLE = "Could not reach Sagaloom. Please try again.";
 const LOST = "Lost the connection. The import may still finish: check Recent imports below.";
+const NO_THREAD = "The import finished, but Sagaloom did not say which review to open. Find it under Recent imports below.";
 
 /** Starts an import and follows its stream; on `done` it opens the new thread in Review. */
 export function useImport(): ImportRun {
@@ -75,7 +76,6 @@ export function useImport(): ImportRun {
           if (res.status === 413) fail("That text is too large.");
           else if (res.status === 429) fail("Too many requests. Wait a moment and try again.");
           else if (res.status === 422) fail(detail || "That text was not accepted.");
-          else if (res.status === 409 && detail === "turn in progress") fail("An import is still running. Wait for it to finish.");
           else fail(UNREACHABLE);
           return;
         }
@@ -112,7 +112,7 @@ export function useImport(): ImportRun {
           void qc.invalidateQueries({ queryKey: ["review"] });
           void qc.invalidateQueries({ queryKey: ["imports"] });
           if (threadId) router.push(`/review/${encodeURIComponent(threadId)}`);
-          else fail(LOST);
+          else fail(NO_THREAD);
         }
       } finally {
         busyRef.current = false;

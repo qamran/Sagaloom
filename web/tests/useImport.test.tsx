@@ -108,6 +108,30 @@ describe("useImport", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it("a dropped stream says the import may still finish", async () => {
+    fetchMock.mockResolvedValue(streamResponse([sse("node", { name: "extract", phase: "start" })]));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(result.current.phase).toBe("error");
+    expect(result.current.error).toBe("Lost the connection. The import may still finish: check Recent imports below.");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("done without a thread id says where to look", async () => {
+    fetchMock.mockResolvedValue(streamResponse([sse("done", {})]));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(result.current.phase).toBe("error");
+    expect(result.current.error).toBe(
+      "The import finished, but Sagaloom did not say which review to open. Find it under Recent imports below.",
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it.each([
     [413, undefined, "That text is too large."],
     [429, undefined, "Too many requests. Wait a moment and try again."],
