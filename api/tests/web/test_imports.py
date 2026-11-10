@@ -491,3 +491,11 @@ async def test_wiki_import_of_pages_without_text_finishes_with_note(make_env, tm
     assert body["messages"][0]["import"]["skipped"] == [
         {"title": "Mercury", "reason": "the page has no article text", "paste": False}
     ]
+
+
+async def test_wiki_thread_title_counts_pages_not_blank_lines(make_env, tmp_path, aclose_later):
+    env, _ = wiki_env(make_env, tmp_path, aclose_later)
+    r, events = await post_wiki(env, [FIXTURE_URLS[1], "", "  "])
+    assert r.status_code == 200 and names(events)[-1] == "done"
+    [t] = import_threads(env)
+    assert t.title == "Fan wiki: en.wikipedia.org (1 pages)"

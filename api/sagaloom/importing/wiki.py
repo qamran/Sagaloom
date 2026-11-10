@@ -10,7 +10,6 @@ through the check and the approval gate like any other.
 
 import asyncio
 import logging
-import re
 import uuid
 from datetime import date
 from typing import TYPE_CHECKING
@@ -39,10 +38,10 @@ from sagaloom.importing.extract import (
 )
 from sagaloom.importing.wikitext import StrippedPage, strip_wikitext, type_from_infobox
 from sagaloom.models import Entry, EntryDraft, EntrySource, EntryType, Proposal
-from sagaloom.provenance import IMPORTED_HEADING, merge_provenance, provenance_fields
+from sagaloom.provenance import IMPORTED_HEADING, merge_provenance, provenance_fields, section_span
 from sagaloom.store.canon import norm
 from sagaloom.text import first_line
-from sagaloom.wiki.client import FetchedPage, SiteLicence, WikiApiError, WikiClient
+from sagaloom.wiki.client import FetchedPage, HostNotAllowed, SiteLicence, WikiApiError, WikiClient
 from sagaloom.wiki.pages import WikiPage, is_article_title, page_key
 
 if TYPE_CHECKING:
@@ -123,7 +122,13 @@ async def fetch_wiki(client: WikiClient, pages: list[WikiPage]) -> WikiFetch:
             got = await client.fetch_page(page)
         except Exception as exc:
             reason = _failure_reason(exc)
-            log.info("wiki page %r not fetched: %s", page.url, reason)
+            # An HTTP or MediaWiki failure is the wiki's; anything else may be a bug here, so it
+            # keeps its traceback (still listed as unreachable).
+            expected = isinstance(exc, (httpx.HTTPError, WikiApiError, HostNotAllowed))
+            log.log(
+                logging.INFO if expected else logging.WARNING,
+                "wiki page %r not fetched: %s", page.url, reason, exc_info=not expected,
+            )
             blocked = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in _BLOCK_STATUSES
             skipped.append(Skipped(title=title, reason=reason, paste=True))
             continue
@@ -148,13 +153,15 @@ def extraction_text(stripped: StrippedPage) -> str:
     return stripped.text[: stripped.lead_end]
 
 
-def _has_prose(s: StrippedPage) -> bool:
-    """True when the text holds more than the infobox lines. Each infobox value is one line, and
-    the infobox block is set off from the prose by a blank line."""
-    if not s.text.strip():
+def _lead_has_prose(s: StrippedPage) -> bool:
+    """True when the extracted text, the lead, holds more than the infobox lines, so a body can
+    never be infobox lines alone. Each infobox value is one line, and the infobox block is set
+    off from the prose by a blank line."""
+    lead = extraction_text(s).strip()
+    if not lead:
         return False
     if any(v for v in s.infobox.values()):
-        return "\n\n" in s.text
+        return "\n\n" in lead
     return True
 
 
@@ -167,22 +174,12 @@ def _pick(cands: list[Candidate], title: str) -> Candidate | None:
     return cands[0] if cands else None
 
 
-def _section_span(body: str, url: str) -> tuple[int, int] | None:
-    """Where the `## Imported from <url> (<date>)` section of `body` runs: from its heading to
-    the next level-1 or level-2 heading, or the end. None when there is no such section."""
-    head = re.search(rf"(?m)^{re.escape(IMPORTED_HEADING + url)} \(\d{{4}}-\d{{2}}-\d{{2}}\)[ \t]*$", body)
-    if head is None:
-        return None
-    nxt = re.search(r"(?m)^#{1,2} ", body[head.end() :])
-    return head.start(), head.end() + nxt.start() if nxt else len(body)
-
-
 def _merged_body(before: Entry, url: str, excerpt: str, today: date) -> tuple[str, str] | None:
     """(body, fitted excerpt) for a merge: the passage under its heading, appended, or in place of
     this page's earlier section when the page is already a source (Open question 1 (c)). None
     when it doesn't fit."""
     heading = f"{IMPORTED_HEADING}{url} ({today:%Y-%m-%d})"
-    span = _section_span(before.body, url) if any(s.url == url for s in before.sources) else None
+    span = section_span(before.body, url) if any(s.url == url for s in before.sources) else None
     if span is None:
         prefix, suffix = before.body.rstrip() + f"\n\n{heading}\n\n", ""
     else:
@@ -269,7 +266,7 @@ async def build_wiki_import(
     for p in fetched.pages:
         title = p.title[:TITLE_CHARS]
         s = strip_wikitext(p.wikitext)
-        if not _has_prose(s):
+        if not _lead_has_prose(s):
             skipped.append(Skipped(title=title, reason=NO_TEXT))
             continue
         text = extraction_text(s)

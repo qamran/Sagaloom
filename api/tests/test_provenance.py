@@ -4,7 +4,7 @@
 import json
 
 from sagaloom.models import Entry, EntryDraft, EntrySource
-from sagaloom.provenance import entry_is_nc, merge_provenance, primary_source, union_sources
+from sagaloom.provenance import entry_is_nc, is_import_merge, merge_provenance, primary_source, union_sources
 
 U1 = "https://en.wikipedia.org/wiki/Gandalf"
 U2 = "https://lotr.fandom.com/wiki/Gandalf"
@@ -89,3 +89,35 @@ def test_legacy_entry_reads_one_source():
     user = entry().model_dump()
     user.pop("sources")
     assert Entry.model_validate_json(json.dumps(user)).sources == []
+
+
+URL = "https://en.wikipedia.org/wiki/Gandalf"
+REIMPORT_BEFORE = (
+    f"Grey pilgrim.\n\n## Imported from {URL} (2026-01-01)\n\nAn older lead.\n\n"
+    "## Imported from notes.md (2026-01-02)\n\nThe author's own notes."
+)
+
+
+def test_import_merge_accepts_an_appended_section():
+    assert is_import_merge("Old body.\n", f"Old body.\n\n## Imported from {URL} (2026-11-09)\n\nNew.")
+    assert not is_import_merge("Old body.", "Rewritten body.")
+
+
+def test_import_merge_accepts_one_section_replaced_in_place():
+    """A re-import (Q1 (c)) replaces its own earlier section; the text around it is unchanged."""
+    after = REIMPORT_BEFORE.replace(
+        f"## Imported from {URL} (2026-01-01)\n\nAn older lead.", f"## Imported from {URL} (2026-11-09)\n\nA fresh lead."
+    )
+    assert is_import_merge(REIMPORT_BEFORE, after)
+
+
+def test_import_merge_refuses_a_change_outside_the_replaced_section():
+    fresh = f"## Imported from {URL} (2026-11-09)\n\nA fresh lead."
+    old = f"## Imported from {URL} (2026-01-01)\n\nAn older lead."
+    edited_head = REIMPORT_BEFORE.replace(old, fresh).replace("Grey pilgrim.", "White rider.")
+    edited_tail = REIMPORT_BEFORE.replace(old, fresh).replace("own notes", "rewritten notes")
+    assert not is_import_merge(REIMPORT_BEFORE, edited_head)
+    assert not is_import_merge(REIMPORT_BEFORE, edited_tail)
+    # A section for another label is not a replacement of this one.
+    other = REIMPORT_BEFORE.replace(old, "## Imported from https://x.org/wiki/Y (2026-11-09)\n\nA fresh lead.")
+    assert not is_import_merge(REIMPORT_BEFORE, other)

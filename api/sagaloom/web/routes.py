@@ -319,7 +319,7 @@ async def _post_wiki_import(world_id: str, body: WikiImport, request: Request):
     return await _stream_import(
         request,
         world_id,
-        f"Fan wiki: {pages[0].host} ({len(body.urls)} pages)",
+        f"Fan wiki: {pages[0].host} ({len(pages)} pages)",
         lambda thread_id, cfg, queue, usage_fn: wiki_import_events(
             d.graph,
             d.store,

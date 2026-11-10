@@ -1,6 +1,8 @@
 """Entry provenance rules (R2.S). Shared by the proposal tool (so the card shows what will be
 stored) and the commit (the guard)."""
 
+import re
+
 from sagaloom.models import Entry, EntryDraft, EntrySource
 
 # The heading an import merge puts before the appended passage: `## Imported from <label> (<date>)`
@@ -65,8 +67,36 @@ def entry_is_nc(e: Entry | EntryDraft) -> bool:
     return any(s.nc for s in e.sources)
 
 
+_DATED = r" \(\d{4}-\d{2}-\d{2}\)[ \t]*$"
+_ANY_SECTION = re.compile(rf"(?m)^{re.escape(IMPORTED_HEADING)}(?P<label>.+?){_DATED}")
+
+
+def section_span(body: str, label: str) -> tuple[int, int] | None:
+    """Where the first `## Imported from <label> (<date>)` section of `body` runs: from its
+    heading to the next level-1 or level-2 heading, or the end. None when there is none."""
+    head = re.search(rf"(?m)^{re.escape(IMPORTED_HEADING + label)}{_DATED}", body)
+    if head is None:
+        return None
+    nxt = re.search(r"(?m)^#{1,2} ", body[head.end() :])
+    return head.start(), head.end() + nxt.start() if nxt else len(body)
+
+
 def is_import_merge(before_body: str, after_body: str) -> bool:
-    """True when `after_body` is `before_body` with an imported section appended, as an import
-    merge builds it: the stored body unchanged, then a blank line and the heading."""
+    """True when `after_body` is `before_body` with an imported section added, as an import merge
+    builds it: either appended (the stored body unchanged, then a blank line and the heading), or,
+    for a page imported again (R-W3 Q1 (c)), one dated section replaced in place by a section for
+    the same label, with the text before and after it unchanged."""
     head = before_body.rstrip()
-    return after_body.startswith(head) and after_body[len(head) :].startswith("\n\n" + IMPORTED_HEADING)
+    if after_body.startswith(head) and after_body[len(head) :].startswith("\n\n" + IMPORTED_HEADING):
+        return True
+    for m in _ANY_SECTION.finditer(after_body):
+        old = section_span(before_body, m["label"])
+        new = section_span(after_body, m["label"])
+        if old is None or new is None or new[0] != m.start():
+            continue
+        if (
+            before_body[: old[0]].rstrip() == after_body[: new[0]].rstrip()
+            and before_body[old[1] :].strip() == after_body[new[1] :].strip()
+        ):
+            return True
+    return False

@@ -472,3 +472,47 @@ async def test_nc_licence_marks_every_source(store, wiki):
         assert p.after.sources[0].nc is True
         assert (p.after.sources[0].licence, p.after.sources[0].licence_url) == (nc_text, nc_url)
     assert plan.licence == {"text": nc_text, "url": nc_url, "nc": True}
+
+
+async def test_reimport_replace_survives_save_as_myth(store, wiki):
+    """R-W5-11 on the Q1 (c) shape: Save as myth keeps the freshly replaced section."""
+    url = URL_OF["Gandalf"]
+    official = EntrySource(kind="official", url=url, licence=LICENCE["text"], licence_url=LICENCE["url"])
+    before = seed(
+        store, "Gandalf",
+        f"Grey pilgrim.\n\n## Imported from {url} (2026-01-01)\n\nAn older lead.\n\n"
+        "## Imported from notes.md (2026-01-02)\n\nThe author's own notes.",
+        sources=[official],
+    )
+    plan, _, _ = await fixture_plan(store, wiki, urls=[URLS[1]])
+    [p] = plan.proposals
+    assert is_import_merge(before.body, p.after.body)
+    kept = apply_save_as_myth(p, CheckResult(proposal_id=p.proposal_id, verdict="none"), None, imported=True)
+    assert kept.body == p.after.body
+    assert LEAD["Gandalf"] in kept.body and "An older lead." not in kept.body
+
+
+async def test_infobox_without_lead_prose_is_no_text(store, wiki):
+    """Only the lead is extracted (Q2 (a)): a page whose lead is the infobox alone is listed,
+    so a body can never be just infobox lines."""
+    wikitext = "{{Infobox character|name=Quiet One|race=Synthetic}}\n== History ==\nA later synthetic section."
+    client, _ = wiki(WikiServer({"Quiet One": parse_body("Quiet One", wikitext)}))
+    fetched = await fetch_wiki(client, parse_page_urls(["https://en.wikipedia.org/wiki/Quiet_One"]))
+    llm = by_page({"Quiet One": cand("Quiet One", "Name: Quiet One")})
+    plan = await build_wiki_import(store, llm, W, fetched, today=TODAY)
+    assert plan.proposals == [] and llm.prompts == []
+    assert [(s.title, s.reason) for s in plan.skipped] == [("Quiet One", NO_TEXT)]
+
+
+async def test_unexpected_fetch_error_is_unreachable_with_traceback(wiki, monkeypatch, caplog):
+    client, _ = wiki()
+
+    async def broken(page):
+        raise RuntimeError("a bug in the client")
+
+    monkeypatch.setattr(client, "fetch_page", broken)
+    with caplog.at_level("INFO", logger="sagaloom.importing.wiki"):
+        fetched = await fetch_wiki(client, parse_page_urls(["https://en.wikipedia.org/wiki/Gandalf"]))
+    assert fetched.skipped == [Skipped(title="Gandalf", reason=UNREACHABLE, paste=True)]
+    [rec] = [r for r in caplog.records if r.name == "sagaloom.importing.wiki"]
+    assert rec.exc_info is not None and isinstance(rec.exc_info[1], RuntimeError)
