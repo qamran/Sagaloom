@@ -22,9 +22,10 @@ export function ToolsPanel() {
     setSaving(true);
     try {
       await putSettings({ enabled_tools: next });
-      for (const key of ["tools", "settings", "studio"]) {
-        void qc.invalidateQueries({ queryKey: [key] });
-      }
+      void qc.invalidateQueries({ queryKey: ["tools"] });
+      // Exact: ["settings", "models"] shares the prefix and a toggle must not refetch it.
+      void qc.invalidateQueries({ queryKey: ["settings"], exact: true });
+      void qc.invalidateQueries({ queryKey: ["studio"] });
     } catch {
       setError("The tool setting was not saved. Try again.");
     } finally {

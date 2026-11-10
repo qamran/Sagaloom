@@ -71,15 +71,13 @@ function Studio() {
               </p>
               <AgentGraph mermaid={studio.data.mermaid} />
             </section>
-            <div>
-              {models.data ? (
-                <ProvidersPanel providers={studio.data.providers} models={models.data} />
-              ) : (
-                <p className="m-0 text-muted-foreground">
-                  {models.isError ? "Could not load the model list." : "Loading models…"}
-                </p>
-              )}
-            </div>
+            {models.data ? (
+              <ProvidersPanel providers={studio.data.providers} models={models.data} />
+            ) : (
+              <p className="m-0 text-muted-foreground">
+                {models.isError ? "Could not load the model list." : "Loading models…"}
+              </p>
+            )}
             <ToolsPanel />
             <MemoryPanel />
             {dev.data ? (
@@ -89,6 +87,7 @@ function Studio() {
               </>
             ) : (
               <p id="guardrails" className="m-0 text-muted-foreground">
+                <span id="settings" />
                 {dev.isError ? "Could not load the guardrails and settings." : "Loading settings…"}
               </p>
             )}

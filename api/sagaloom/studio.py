@@ -200,7 +200,8 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             status="live",
             detail="Wikipedia reference tool; fan-wiki import arrives in Wave 6.",
             try_href=prompt_href(
-                "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that."
+                "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that. "
+                "Lantern Quay's harbour runs a customs house, like Byzantine ports."
             ),
         ),
         FeatureCard(

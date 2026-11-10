@@ -9,7 +9,7 @@ import type { MemoryResult } from "@/lib/types";
  * text. Both read the item's `note`, never the agent-facing message content. */
 export function RememberedChip({ worldId, result }: { worldId?: string; result: MemoryResult }) {
   const qc = useQueryClient();
-  const [state, setState] = useState<"idle" | "busy" | "forgotten" | "failed">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "forgotten" | "stale" | "failed">("idle");
 
   if (!result.stored) return <span className="text-xs text-muted-foreground">{result.note}</span>;
 
@@ -18,18 +18,19 @@ export function RememberedChip({ worldId, result }: { worldId?: string; result: 
     setState("busy");
     try {
       // Always name the value: a stale Undo must not remove a newer tone or genre.
-      await forgetMemory(worldId, result.key, result.value);
-      setState("forgotten");
+      const after = await forgetMemory(worldId, result.key, result.value);
+      // A string key still stored means the value changed since: the delete matched nothing.
+      setState(typeof after.preferences[result.key] === "string" ? "stale" : "forgotten");
       void qc.invalidateQueries({ queryKey: ["memory", worldId] });
     } catch {
       setState("failed");
     }
   }
 
-  if (state === "forgotten") {
+  if (state === "forgotten" || state === "stale") {
     return (
       <span role="status" className="text-xs text-muted-foreground">
-        Forgotten
+        {state === "forgotten" ? "Forgotten" : "Already changed"}
       </span>
     );
   }

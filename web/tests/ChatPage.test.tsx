@@ -192,7 +192,7 @@ describe("/chat/[threadId]", () => {
     expect(screen.queryByRole("link", { name: /Memory/ })).toBeNull();
   });
   it("renders a memory message as a Remembered chip with Undo, a muted refusal and the course chip", async () => {
-    vi.mocked(forgetMemory).mockReset().mockResolvedValue({} as never);
+    vi.mocked(forgetMemory).mockReset().mockResolvedValue({ preferences: {} } as never);
     renderThread([
       { role: "user", content: "Remember: keep the tone grim." },
       {
@@ -229,7 +229,7 @@ describe("/chat/[threadId]", () => {
   });
 
   it("undoes in the thread's own world, not the selected one", async () => {
-    vi.mocked(forgetMemory).mockReset().mockResolvedValue({} as never);
+    vi.mocked(forgetMemory).mockReset().mockResolvedValue({ preferences: {} } as never);
     vi.mocked(getThread).mockResolvedValue({
       thread_id: "t1",
       kind: "chat",

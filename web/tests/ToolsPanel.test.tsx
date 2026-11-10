@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +74,24 @@ describe("ToolsPanel", () => {
       const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
       expect(keys).toEqual(expect.arrayContaining(['["tools"]', '["settings"]', '["studio"]']));
     });
+  });
+
+  it("a tool toggle does not refetch the model list", async () => {
+    setup();
+    const settings = vi.fn().mockResolvedValue(payload);
+    const models = vi.fn().mockResolvedValue([]);
+    await qc.fetchQuery({ queryKey: ["settings"], queryFn: settings });
+    await qc.fetchQuery({ queryKey: ["settings", "models"], queryFn: models });
+    const observe = (queryKey: string[], queryFn: () => Promise<unknown>) =>
+      new QueryObserver(qc, { queryKey, queryFn, staleTime: Infinity }).subscribe(() => {});
+    const off = [observe(["settings"], settings), observe(["settings", "models"], models)];
+    try {
+      await userEvent.click(await screen.findByRole("switch", { name: /export_world/ }));
+      await waitFor(() => expect(settings).toHaveBeenCalledTimes(2));
+      expect(models).toHaveBeenCalledTimes(1);
+    } finally {
+      off.forEach((f) => f());
+    }
   });
 
   it("shows an error when the save fails", async () => {

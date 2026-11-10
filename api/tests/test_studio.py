@@ -84,7 +84,8 @@ def test_try_it_links_are_url_encoded(tmp_path):
     ext = card(cards, "external_tools").try_href
     assert "%27" in ext and "'" not in ext
     assert parse_qs(urlsplit(ext).query)["prompt"][0] == (
-        "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that."
+        "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that. "
+        "Lantern Quay's harbour runs a customs house, like Byzantine ports."
     )
     hitl = card(cards, "human_in_the_loop")
     assert parse_qs(urlsplit(hitl.try_href).query)["prompt"][0] == (

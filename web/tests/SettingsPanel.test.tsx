@@ -25,10 +25,15 @@ const payload: SettingsPayload = {
   guard_policy: "policy text",
 };
 
-function setup(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+const custom: SettingsPayload = {
+  ...payload,
+  settings: { ...payload.settings, agent_system_prompt: "My own prompt." },
+};
+
+function setup(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }), given = payload) {
   render(
     <QueryClientProvider client={qc}>
-      <SettingsPanel payload={payload} />
+      <SettingsPanel payload={given} />
     </QueryClientProvider>,
   );
 }
@@ -80,10 +85,40 @@ describe("SettingsPanel", () => {
     await waitFor(() => expect(putSettings).toHaveBeenCalledWith({ agent_max_tokens: null }));
   });
 
-  it("Reset to default sends reset_system_prompt", async () => {
+  it("Reset is disabled on the built-in prompt", () => {
     setup();
+    expect(screen.getByRole("button", { name: "Reset to default" })).toBeDisabled();
+  });
+
+  it("Reset to default sends reset_system_prompt", async () => {
+    setup(undefined, custom);
     await userEvent.click(screen.getByRole("button", { name: "Reset to default" }));
     await waitFor(() => expect(putSettings).toHaveBeenCalledWith({ reset_system_prompt: true }));
+  });
+
+  it("Reset keeps unsaved temperature", async () => {
+    setup(undefined, custom);
+    const t = screen.getByLabelText("Agent temperature");
+    await userEvent.clear(t);
+    await userEvent.type(t, "0.9");
+    await userEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    await waitFor(() => expect(screen.getByLabelText("Agent system prompt")).toHaveValue("You are the Sagaloom agent."));
+    expect(screen.getByLabelText("Agent temperature")).toHaveValue(0.9);
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("a disabled Save says why", async () => {
+    setup();
+    expect(screen.getByText("No changes to save")).toBeInTheDocument();
+    const t = screen.getByLabelText("Agent temperature");
+    await userEvent.clear(t);
+    await userEvent.type(t, "2.5");
+    expect(screen.getByText("Fix the highlighted value")).toBeInTheDocument();
+    expect(screen.queryByText("No changes to save")).toBeNull();
+    await userEvent.clear(t);
+    await userEvent.type(t, "0.7");
+    expect(screen.queryByText("Fix the highlighted value")).toBeNull();
+    expect(screen.queryByText("No changes to save")).toBeNull();
   });
 
   it("shows the server detail on a 422", async () => {

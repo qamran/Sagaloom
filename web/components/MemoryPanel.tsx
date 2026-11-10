@@ -7,9 +7,9 @@ import { useWorld } from "@/lib/world";
 
 /** Studio Memory section (R10.1, R10.2): short-term checkpointer stats and the world's
  * long-term author preferences, each with a Delete. */
-export function MemoryPanel({ worldId: given }: { worldId?: string } = {}) {
+export function MemoryPanel() {
   const { world } = useWorld();
-  const worldId = given ?? world?.id;
+  const worldId = world?.id;
   const qc = useQueryClient();
   const memory = useQuery({
     queryKey: ["memory", worldId],
@@ -17,15 +17,19 @@ export function MemoryPanel({ worldId: given }: { worldId?: string } = {}) {
     enabled: !!worldId,
   });
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function del(key: string, item?: string) {
     if (!worldId) return;
     setError(null);
+    setBusy(`${key}:${item}`);
     try {
       await forgetMemory(worldId, key, item);
       void qc.invalidateQueries({ queryKey: ["memory", worldId] });
     } catch {
       setError("The preference was not deleted. Try again.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -77,7 +81,9 @@ export function MemoryPanel({ worldId: given }: { worldId?: string } = {}) {
                     type="button"
                     aria-label={`Delete ${r.key}: ${r.value}`}
                     onClick={() => void del(r.key, r.value)}
-                    className="rounded-md border border-border-strong px-2 py-1 text-muted-foreground"
+                    disabled={busy === `${r.key}:${r.value}`}
+                    aria-busy={busy === `${r.key}:${r.value}`}
+                    className="rounded-md border border-border-strong px-2 py-1 text-muted-foreground disabled:opacity-50"
                   >
                     Delete
                   </button>

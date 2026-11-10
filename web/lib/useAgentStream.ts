@@ -94,13 +94,13 @@ function applyToMessages(msgs: ChatMessage[], ev: SseEvent, tokenRole: TokenRole
       return [...msgs, { role: "assistant", content: "", tool_calls: [call] }];
     }
     case "tool_result": {
-      // Tool output can quote secret facts, so only the tool name is kept for display.
-      const tool: ChatMessage = { role: "tool", name: ev.data.name, content: "" };
-      // `remember` also yields a memory message; its chips read the items, never the summary.
+      // `remember` yields only a memory message (as a reload shows); its chips read the items,
+      // never the summary.
       if (ev.data.name === "remember" && ev.data.memory?.length) {
-        return [...msgs, tool, { role: "memory", content: ev.data.summary, memory: ev.data.memory }];
+        return [...msgs, { role: "memory", content: ev.data.summary, memory: ev.data.memory }];
       }
-      return [...msgs, tool];
+      // Tool output can quote secret facts, so only the tool name is kept for display.
+      return [...msgs, { role: "tool", name: ev.data.name, content: "" }];
     }
     default:
       return msgs;

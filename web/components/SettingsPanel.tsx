@@ -33,21 +33,25 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
   if (promptOk && prompt !== promptOf(base)) patch.agent_system_prompt = prompt;
   const valid = tempOk && tokensOk && promptOk;
   const dirty = Object.keys(patch).length > 0;
+  const saveable = valid && dirty;
 
-  function adopt(next: SettingsPayload) {
+  /** `promptOnly` keeps unsaved temperature and token edits in their inputs. */
+  function adopt(next: SettingsPayload, promptOnly = false) {
     setBase(next);
-    setTemp(String(next.settings.agent_temperature));
-    setTokens(next.settings.agent_max_tokens?.toString() ?? "");
+    if (!promptOnly) {
+      setTemp(String(next.settings.agent_temperature));
+      setTokens(next.settings.agent_max_tokens?.toString() ?? "");
+    }
     setPrompt(promptOf(next));
     void qc.invalidateQueries({ queryKey: ["settings"], exact: true });
     void qc.invalidateQueries({ queryKey: ["studio"] });
   }
 
-  async function send(body: SettingsPatch) {
+  async function send(body: SettingsPatch, promptOnly = false) {
     setError(null);
     setSaving(true);
     try {
-      adopt(await putSettings(body));
+      adopt(await putSettings(body), promptOnly);
     } catch (e) {
       setError(
         e instanceof ApiError && e.detail ? e.detail : "Settings were not saved. Check the values and try again.",
@@ -120,13 +124,21 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={BTN} disabled={!valid || !dirty || saving} onClick={() => void send(patch)}>
+        <button type="button" className={BTN} disabled={!saveable || saving} onClick={() => void send(patch)}>
           Save
         </button>
-        <button type="button" className={BTN} disabled={saving} onClick={() => void send({ reset_system_prompt: true })}>
+        <button
+          type="button"
+          className={BTN}
+          disabled={base.settings.agent_system_prompt === null || saving}
+          onClick={() => void send({ reset_system_prompt: true }, true)}
+        >
           Reset to default
         </button>
       </div>
+      {!saveable && (
+        <p className="m-0 text-xs text-muted-foreground">{valid ? "No changes to save" : "Fix the highlighted value"}</p>
+      )}
     </section>
   );
 }

@@ -1,6 +1,7 @@
 """Studio and model switching over HTTP (R11.G10, R20.1, R20.7)."""
 
 import itertools
+from urllib.parse import parse_qs, urlsplit
 
 from fakes import HEADERS, KEY, SECRET, W, Env, FakeJudge, ScriptedChat, StubLLM, create_call
 from httpx import ASGITransport, AsyncClient
@@ -128,6 +129,14 @@ async def test_studio_returns_features_providers_mermaid_and_no_keys(make_env):
     assert isinstance(body["usage"]["by_model"], list)
     for secret in ("AIza-GEMINI-SECRET-123", KEY, SECRET):
         assert secret not in r.text
+
+
+async def test_reference_try_it_states_a_fact(make_env):
+    env = make_env()
+    body = (await env.client.get("/api/studio")).json()
+    card = next(f for f in body["features"] if f["id"] == "external_tools")
+    prompt = parse_qs(urlsplit(card["try_href"]).query)["prompt"][0]
+    assert "customs house" in prompt
 
 
 async def test_gemini_never_in_model_for(make_env):
