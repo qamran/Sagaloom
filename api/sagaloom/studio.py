@@ -198,11 +198,22 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             brief_ref="Medium 3, Hard 5",
             req_ids=["R11.4", "R11.6"],
             status="live",
-            detail="Wikipedia reference tool; fan-wiki import arrives in Wave 6.",
+            detail="Wikipedia reference tool and fan-wiki import (Wikipedia and Fandom pages, licence read from the wiki).",
             try_href=prompt_href(
                 "What did Byzantine trade routes look like? I want Velmar's harbour to feel like that. "
                 "Lantern Quay's harbour runs a customs house, like Byzantine ports."
             ),
+        ),
+        FeatureCard(
+            id="official_canon_licence",
+            title="Official canon and licences",
+            brief_ref="Hard 5, Medium 3",
+            req_ids=["R11.6", "R11.6.12", "R11.6.13", "R11.5.5"],
+            status="live",
+            detail="Wiki pages are read through the MediaWiki API with an honest User-Agent. Each wiki's "
+            "licence is read from the wiki, never assumed; NC content is flagged, and exports carry "
+            "ATTRIBUTION.md.",
+            try_href="/import",
         ),
         FeatureCard(
             id="injection_safe_extraction",

@@ -39,7 +39,7 @@ from sagaloom.provenance import is_import_merge, provenance_fields
 from sagaloom.wiki.client import LicenceUnreadable
 from sagaloom.wiki.pages import parse_page_urls
 from stubs import StubLLM
-from wikifakes import FIXTURE_PAGES, FIXTURES, LICENCE, WikiServer, api_error, parse_body, rightsinfo_body, wiki_client
+from wikifakes import FIXTURE_PAGES, FIXTURES, LEAD, LICENCE, WikiServer, api_error, parse_body, rightsinfo_body, wiki_client
 
 W = "w1"
 TODAY = date(2026, 11, 9)
@@ -47,14 +47,6 @@ URLS = [p["in"] for p in FIXTURE_PAGES]
 TITLES = [p["title"] for p in FIXTURE_PAGES]  # Rivendell, Gandalf, The Shire
 URL_OF = {p["title"]: p["url"] for p in FIXTURE_PAGES}
 
-# One sentence from each fixture page's lead, as the stub's excerpt.
-LEAD = {
-    "Gandalf": "He is a wizard, one of the Istari order, and the leader of the Company of the Ring.",
-    "Rivendell": "It is an important location in The Hobbit and The Lord of the Rings, "
-    "being the place where the quest to destroy the One Ring begins.",
-    "The Shire": "The Shire is an inland area settled exclusively by hobbits, the Shire-folk, "
-    "largely sheltered from the goings-on in the rest of Middle-earth.",
-}
 
 ELROND = "https://en.wikipedia.org/wiki/Elrond_(character)"
 ELROND_TEXT = (

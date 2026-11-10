@@ -8,7 +8,9 @@ from pathlib import Path
 
 import httpx
 
+from sagaloom.importing.extract import Candidate, ExtractionOutput
 from sagaloom.wiki.client import WikiClient
+from stubs import StubLLM
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "wiki"
 MANIFEST = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
@@ -78,3 +80,33 @@ def wiki_client(cache_dir: Path, server: WikiServer | None = None, seed: bool = 
     if seed:
         seed_cache(cache_dir)
     return WikiClient(cache_dir, transport=httpx.MockTransport(server), min_interval=0), server
+
+
+# One sentence from each fixture page's lead, quoted exactly as the stripped text has it.
+LEAD = {
+    "Gandalf": "He is a wizard, one of the Istari order, and the leader of the Company of the Ring.",
+    "Rivendell": "It is an important location in The Hobbit and The Lord of the Rings, "
+    "being the place where the quest to destroy the One Ring begins.",
+    "The Shire": "The Shire is an inland area settled exclusively by hobbits, the Shire-folk, "
+    "largely sheltered from the goings-on in the rest of Middle-earth.",
+}
+
+
+def page_extractor(excerpts: dict | None = None, other=None):
+    """The shared `StubLLM` as the extractor role: a wiki extraction prompt (`Page title: …`) gets
+    one candidate for that page quoting `excerpts[title]`, else its fixture lead sentence (an
+    exception value is raised instead). Any other prompt gets `other` (the fact drafter's reply)."""
+    excerpts = {**LEAD, **(excerpts or {})}
+
+    def reply(messages):
+        body = messages[-1].content
+        if "Page title: " not in body:
+            return other
+        start = body.index("Page title: ") + len("Page title: ")
+        title = body[start : body.index("\n", start)]
+        found = excerpts[title]
+        if isinstance(found, Exception):
+            return found
+        return ExtractionOutput(candidates=[Candidate(title=title, type="item", excerpt=found)])
+
+    return StubLLM(reply)

@@ -14,6 +14,7 @@ export type FeatureCardId =
   | "multi_provider"
   | "security_guard"
   | "external_tools"
+  | "official_canon_licence"
   | "injection_safe_extraction";
 
 const listeners = new Set<() => void>();

@@ -73,6 +73,12 @@ def test_enabled_tools_persists_and_null_means_all(tmp_path):
     assert DevSettingsStore(path).get().enabled_tools is None
 
 
+def test_import_wiki_is_a_known_tool(tmp_path):
+    store = DevSettingsStore(tmp_path / "settings.json")
+    store.update(DevSettingsPatch(enabled_tools=["import_wiki"]))
+    assert store.get().enabled_tools == ["import_wiki"]
+
+
 def test_unknown_tool_is_a_validation_error():
     with pytest.raises(ValidationError):
         DevSettingsPatch(enabled_tools=["rm_rf"])
@@ -82,7 +88,10 @@ def test_core_tools_are_enabled_even_when_omitted():
     core = {"search_canon", "create_or_update_entry", "check_contradiction"}
     assert enabled_tool_names(DevSettings(enabled_tools=[])) == core
     assert enabled_tool_names(DevSettings(enabled_tools=["export_world"])) == core | {"export_world"}
-    assert enabled_tool_names(DevSettings()) == core | {"export_world", "real_world_reference", "remember_preference"}
+    assert enabled_tool_names(DevSettings()) == core | {
+        "export_world", "real_world_reference", "remember_preference", "import_wiki"
+    }
+    assert enabled_tool_names(DevSettings(enabled_tools=["import_wiki"])) == core | {"import_wiki"}
 
 
 def test_tool_specs_match_the_built_tools():

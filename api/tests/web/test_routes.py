@@ -458,8 +458,9 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
     tools = (await env.client.get("/api/tools")).json()
     assert {t["name"] for t in tools} == {
         "search_canon", "create_or_update_entry", "check_contradiction",
-        "export_world", "real_world_reference", "remember_preference",
+        "export_world", "real_world_reference", "remember_preference", "import_wiki",
     }
+    assert len(tools) == 7
     assert all(t["description"] for t in tools)
     assert all(t["enabled"] for t in tools)
     assert {t["name"] for t in tools if t["core"]} == {
@@ -467,13 +468,13 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
     }
     await env.client.put("/api/settings", json={"enabled_tools": []})
     off = {t["name"] for t in (await env.client.get("/api/tools")).json() if not t["enabled"]}
-    assert off == {"export_world", "real_world_reference", "remember_preference"}
+    assert off == {"export_world", "real_world_reference", "remember_preference", "import_wiki"}
 
 
 async def test_studio_endpoint_shape(make_env):
     env = make_env()
     body = (await env.client.get("/api/studio")).json()
-    assert len(body["features"]) == 12 and len(body["providers"]) == 2
+    assert len(body["features"]) == 13 and len(body["providers"]) == 2
     assert set(body["usage"]) >= {"prompt_tokens", "completion_tokens", "cost_usd"}
 
 

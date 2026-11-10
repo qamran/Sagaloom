@@ -52,13 +52,14 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     assert [c.id for c in cards] == [
         "agent_purpose", "agentic_rag", "human_in_the_loop", "router", "memory", "token_cost",
         "langsmith", "multi_provider", "security_guard", "tools", "external_tools",
-        "injection_safe_extraction",
+        "official_canon_licence", "injection_safe_extraction",
     ]
     assert all(c.req_ids and c.title and c.brief_ref and c.detail for c in cards)
     live = {c.id for c in cards if c.status == "live"}
     assert live == {
         "agent_purpose", "agentic_rag", "human_in_the_loop", "router", "memory", "token_cost",
         "security_guard", "tools", "external_tools", "multi_provider", "injection_safe_extraction",
+        "official_canon_licence",
     }
     router = card(cards, "router")
     assert (router.brief_ref, router.req_ids, router.status) == ("Sprint topic", ["R6.5"], "live")
@@ -67,7 +68,7 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
     assert card(cards, "tools").req_ids == ["R11.G1", "R11.G3"]
     assert card(cards, "external_tools").status == "live"
     assert card(cards, "external_tools").detail == (
-        "Wikipedia reference tool; fan-wiki import arrives in Wave 6."
+        "Wikipedia reference tool and fan-wiki import (Wikipedia and Fandom pages, licence read from the wiki)."
     )
     assert card(cards, "external_tools").try_href.startswith("/chat?prompt=")
     assert card(cards, "agentic_rag").try_href.startswith("/chat?prompt=")
@@ -99,6 +100,16 @@ def test_studio_lists_injection_safe_extraction_card(tmp_path):
     assert c.req_ids == ["R13.6", "R13.7", "R3.5"]
     assert c.status == "live" and c.try_href == "/import"
     for words in ("structured output", "no tools", "untrusted data", "verbatim", "approval"):
+        assert words in c.detail
+
+
+def test_studio_lists_official_canon_licence_card(tmp_path):
+    c = card(build_feature_map(make_settings(tmp_path), AppDeps()), "official_canon_licence")
+    assert c.title == "Official canon and licences"
+    assert c.brief_ref == "Hard 5, Medium 3"
+    assert c.req_ids == ["R11.6", "R11.6.12", "R11.6.13", "R11.5.5"]
+    assert c.status == "live" and c.try_href == "/import"
+    for words in ("MediaWiki API", "User-Agent", "never assumed", "NC", "ATTRIBUTION.md"):
         assert words in c.detail
 
 

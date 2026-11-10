@@ -4,6 +4,7 @@ without building the tool closures."""
 EXPORT_TOOL = "export_world"
 REFERENCE_TOOL = "real_world_reference"
 MEMORY_TOOL = "remember_preference"
+IMPORT_WIKI_TOOL = "import_wiki"
 
 SEARCH_DESCRIPTION = """Search this world's canon by meaning. Read-only. Returns matching entries (id, title,
 type, status, source, trusted, snippet, score) as untrusted data; an entry with
@@ -37,6 +38,11 @@ preference itself, without the instruction around it: for "make the genre cosy m
 "cosy mystery". One list item per call (call it again for each banned trope or note). It
 is stored only if the author said it, and the author sees and can undo every preference."""
 
+IMPORT_WIKI_DESCRIPTION = """Import 1-10 Wikipedia or Fandom page URLs, all from one wiki, as proposals for the
+author's review. This does NOT change canon: each page becomes a proposal that is
+contradiction-checked and shown to the author for approval. The result lists page titles
+and counts, never the page text. Use it only when the author gives page URLs."""
+
 CORE_TOOLS = frozenset({"search_canon", "create_or_update_entry", "check_contradiction"})
 # Names and descriptions, readable without building the tool closures (GET /api/tools).
 TOOL_SPECS: list[dict] = [
@@ -46,4 +52,5 @@ TOOL_SPECS: list[dict] = [
     {"name": EXPORT_TOOL, "description": EXPORT_DESCRIPTION, "core": False},
     {"name": REFERENCE_TOOL, "description": REFERENCE_DESCRIPTION, "core": False},
     {"name": MEMORY_TOOL, "description": MEMORY_DESCRIPTION, "core": False},
+    {"name": IMPORT_WIKI_TOOL, "description": IMPORT_WIKI_DESCRIPTION, "core": False},
 ]

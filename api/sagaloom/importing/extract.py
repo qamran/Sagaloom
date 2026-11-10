@@ -44,6 +44,9 @@ OVER_CAP = "over the 25-proposal limit for one import"
 INVALID = "the extracted entry was not valid"
 PART_FAILED = "this part of the text could not be read"
 UNTITLED = "An extracted entry"  # an invalid candidate with no usable title
+# Every part's extraction failed (`ImportPlan.extraction_failed`): the import's `error` event and
+# the `import_wiki` tool's error result.
+EXTRACTION_FAILED = "The extraction could not run, so nothing was imported. Try again."
 
 EXTRACT_SYSTEM = (
     "You find the worldbuilding entities in an author's notes. "
@@ -91,6 +94,12 @@ class ImportPlan(BaseModel):
     failed_parts: int
     parts: int
     licence: dict | None = None  # a wiki import's {"text", "url", "nc"}, as the wiki reported it
+
+    @property
+    def extraction_failed(self) -> bool:
+        """Every part's extraction failed, so nothing was imported. A plan with no parts (wiki
+        pages with no article text) has not failed."""
+        return self.parts > 0 and self.failed_parts == self.parts
 
 
 # ---------- text helpers ----------

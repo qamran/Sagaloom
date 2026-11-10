@@ -32,6 +32,7 @@ from sagaloom.tools.specs import (  # noqa: F401  (TOOL_SPECS and CORE_TOOLS are
     SECRET_SEARCH_REFUSAL,
     TOOL_SPECS,
 )
+from sagaloom.tools.wiki import make_import_wiki_tool
 from sagaloom.wiki.client import WikiClient
 
 if TYPE_CHECKING:
@@ -365,4 +366,5 @@ def make_tools(
     tools.append(make_memory_tool())
     if wiki is not None:
         tools.append(make_reference_tool(wiki))
+        tools.append(make_import_wiki_tool(store, wiki, extractor_llm))
     return tools

@@ -1,6 +1,7 @@
 """Graph tests (R18, R5, R11.2.5-R11.2.8, R10.1, R15.1). No real LLM calls."""
 
 import itertools
+import json
 import uuid
 from typing import Any
 
@@ -34,6 +35,7 @@ from sagaloom.router import MODE_SECTIONS, RouteDecision
 from sagaloom.settings_store import DevSettings
 from sagaloom.tools.facts import FactList
 from sagaloom.wiki.client import WikiClient
+from wikifakes import FIXTURE_PAGES, LICENCE, WikiServer, page_extractor, parse_body, wiki_client
 
 W = "w1"
 S = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s")
@@ -137,10 +139,10 @@ def expected_system(base: str = SYSTEM, mode: str | None = DEFAULT_MODE, block: 
     return base + section + ("\n\n" + block if block else "")
 
 
-def make(store, script, judge_reply=None, saver=None, guard=None, router=None, **build_kwargs):
+def make(store, script, judge_reply=None, saver=None, guard=None, router=None, extractor=None, **build_kwargs):
     agent = ScriptedChat(script=iter(script))
     judge = StubLLM(judge_reply if judge_reply is not None else JudgeOutput(flags=[]))
-    extractor = StubLLM(FactList(facts=[Fact(key="k", value="v")]))
+    extractor = extractor or StubLLM(FactList(facts=[Fact(key="k", value="v")]))
     roles = {
         "agent": agent,
         "judge": judge,
@@ -295,8 +297,9 @@ def test_run_config_groups_langsmith_runs_by_thread():
 # ---------- structure (R18.1, R18.2) ----------
 
 
-def test_graph_structure_only_gate_reaches_commit(store):
-    graph, *_ = make(store, [])
+def test_graph_structure_only_gate_reaches_commit(store, tmp_path, aclose_later):
+    # Built with the wiki client, so `import_wiki` is one of the tools: it adds no edge.
+    graph, *_ = make(store, [], wiki=seeded_wiki(tmp_path, aclose_later)[0])
     edges = graph.get_graph().edges
     into = lambda n: {e.source for e in edges if e.target == n}  # noqa: E731
     assert into("commit") == {"approval_gate"}
@@ -313,8 +316,15 @@ def test_graph_structure_only_gate_reaches_commit(store):
     assert {e.target for e in edges if e.source == "guard"} == {"router", "__end__"}
 
 
-async def test_every_path_to_commit_passes_check_and_gate(store):
-    graph, *_ = make(store, [create_call(), AIMessage(content="Saved after review.")])
+@pytest.mark.parametrize("proposer", ["create_or_update_entry", "import_wiki"])
+async def test_every_path_to_commit_passes_check_and_gate(store, tmp_path, aclose_later, proposer):
+    first_call = create_call() if proposer == "create_or_update_entry" else import_call(FIXTURE_URLS[:1])
+    graph, *_ = make(
+        store,
+        [first_call, AIMessage(content="Saved after review.")],
+        extractor=page_extractor(other=FactList(facts=[Fact(key="k", value="v")])),
+        wiki=seeded_wiki(tmp_path, aclose_later)[0],
+    )
     cfg = run_config("t1", W)
     first = await run(graph, start(), cfg)
     assert first[-1] == "__interrupt__"
@@ -322,6 +332,22 @@ async def test_every_path_to_commit_passes_check_and_gate(store):
     second = await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
     seq = [n for n in first + second if n != "__interrupt__"]
     assert seq == ["guard", "router", "agent", "tools", "check", "approval_gate", "commit", "agent"]
+
+
+def seeded_wiki(tmp_path, aclose_later, server: WikiServer | None = None):
+    """A client on a cache seeded from the committed fixtures; any other request goes to
+    `server` (or fails the test). Closed at teardown."""
+    client, srv = wiki_client(tmp_path / f"wiki-{uuid.uuid4().hex[:6]}", server)
+    aclose_later(client)
+    return client, srv
+
+
+FIXTURE_URLS = [p["in"] for p in FIXTURE_PAGES]
+FIXTURE_TITLES = [p["title"] for p in FIXTURE_PAGES]  # Rivendell, Gandalf, The Shire
+
+
+def import_call(urls: list[str], call_id: str | None = None) -> AIMessage:
+    return tc("import_wiki", {"urls": urls}, call_id)
 
 
 def test_every_static_path_to_commit_passes_check_then_gate(store):
@@ -1587,6 +1613,110 @@ async def test_prompt_record_lists_only_enabled_tools_after_a_toggle(store, tmp_
              if rec.role == "agent"]
     assert names and "real_world_reference" in names[0]
     assert "real_world_reference" not in names[-1] and "export_world" in names[-1]
+
+
+# ---------- import_wiki (R-W3-4, R-W3-6; invariants 2 and 3) ----------
+
+SENTINEL = "ZEBRA-7741"
+QUILLON_URL = "https://en.wikipedia.org/wiki/Quillon"
+QUILLON_LEAD = f"Quillon is a synthetic test town whose gate code is {SENTINEL}."
+WIKI_OFF_COPY = "Tool 'import_wiki' is turned off in Studio."
+
+
+def quillon_server() -> WikiServer:
+    """A synthetic page (never Fandom text) whose lead holds the sentinel."""
+    return WikiServer(
+        {"Quillon": parse_body("Quillon", f"'''Quillon''' is a synthetic test town whose gate code is {SENTINEL}.")}
+    )
+
+
+def wiki_extractor():
+    return page_extractor({"Quillon": QUILLON_LEAD}, other=FactList(facts=[Fact(key="k", value="v")]))
+
+
+async def approve_all(graph, cfg) -> list[str]:
+    pids = [p["proposal_id"] for p in (await interrupt_payload(graph, cfg))["proposals"]]
+    return await run(graph, resume(*({"proposal_id": pid, "action": "approve"} for pid in pids)), cfg)
+
+
+async def test_import_wiki_turn_pauses_at_gate_before_any_write(store, tmp_path, aclose_later):
+    client, server = seeded_wiki(tmp_path, aclose_later)
+    graph, *_ = make(
+        store,
+        [import_call(FIXTURE_URLS), AIMessage(content="Imported after review.")],
+        extractor=wiki_extractor(),
+        wiki=client,
+    )
+    cfg = run_config("t-wiki", W)
+    first = await run(graph, start("Import these three pages."), cfg)
+    assert first == ["guard", "router", "agent", "tools", "check", "__interrupt__"]  # inside the gate
+    assert store.list_entries(W) == []  # paused at the gate: nothing written
+    asked = (await interrupt_payload(graph, cfg))["proposals"]
+    assert [p["after"]["title"] for p in asked] == FIXTURE_TITLES
+    second = await approve_all(graph, cfg)
+    assert second == ["approval_gate", "commit", "agent"]
+    entries = store.list_entries(W)
+    assert sorted(e.title for e in entries) == sorted(FIXTURE_TITLES)
+    for e in entries:
+        assert (e.source, e.trusted, e.licence) == ("official", False, LICENCE["text"])
+    assert server.requests == []  # pages and licence from the seeded cache
+
+
+async def test_agent_never_sees_page_text(store, tmp_path, aclose_later):
+    client, _ = seeded_wiki(tmp_path, aclose_later, quillon_server())
+    graph, agent, _ = make(
+        store,
+        [import_call([QUILLON_URL, *FIXTURE_URLS]), AIMessage(content="Imported after review.")],
+        extractor=wiki_extractor(),
+        wiki=client,
+    )
+    cfg = run_config("t-wiki-sentinel", W)
+    await run(graph, start("Import these pages."), cfg)
+    asked = (await interrupt_payload(graph, cfg))["proposals"]
+    assert any(SENTINEL in p["after"]["body"] for p in asked)  # the text did come in, as a proposal
+    assert (await approve_all(graph, cfg))[-1] == "agent"
+    assert any(SENTINEL in e.body for e in store.list_entries(W))
+    assert len(agent.seen) == 2  # the import call, then the turn after the approval
+    for prompt in agent.seen:
+        for m in prompt:
+            assert SENTINEL not in json.dumps(m.model_dump(), default=str), m
+
+
+async def test_import_wiki_does_not_taint_other_proposals(store, tmp_path, aclose_later):
+    client, _ = seeded_wiki(tmp_path, aclose_later)
+    both = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "import_wiki", "args": {"urls": FIXTURE_URLS[1:2]}, "id": "c1", "type": "tool_call"},
+            {**create_call().tool_calls[0], "id": "c2"},
+        ],
+    )
+    graph, *_ = make(store, [both, AIMessage(content="ok")], extractor=wiki_extractor(), wiki=client)
+    cfg = run_config("t-wiki-taint", W)
+    await run(graph, start("Import Gandalf and add Ostra."), cfg)
+    by_title = {p.after.title: p.after for p in (await graph.aget_state(cfg)).values["pending_proposals"]}
+    assert set(by_title) == {"Gandalf", "Ostra"}
+    assert (by_title["Ostra"].source, by_title["Ostra"].trusted) == ("user", True)
+    assert (by_title["Gandalf"].source, by_title["Gandalf"].trusted) == ("official", False)
+
+
+async def test_import_wiki_can_be_switched_off(store, tmp_path, aclose_later):
+    client, server = seeded_wiki(tmp_path, aclose_later, quillon_server())
+    graph, agent, _ = make(
+        store,
+        [import_call([QUILLON_URL], "call_wiki"), AIMessage(content="ok")],
+        extractor=wiki_extractor(),
+        dev=lambda: DevSettings(enabled_tools=["real_world_reference"]),
+        wiki=client,
+    )
+    cfg = run_config("t-wiki-off", W)
+    await run(graph, start("Import Quillon."), cfg)
+    assert [set(b) for b in agent.bound] == [CORE | {"real_world_reference"}] * 2
+    values = (await graph.aget_state(cfg)).values
+    [m] = [x for x in values["messages"] if isinstance(x, ToolMessage)]
+    assert (m.status, m.content, m.tool_call_id, m.name) == ("error", WIKI_OFF_COPY, "call_wiki", "import_wiki")
+    assert not values.get("pending_proposals")
+    assert server.requests == []
 
 
 # ---------- long-term memory (R10.2, spec §3.5) ----------

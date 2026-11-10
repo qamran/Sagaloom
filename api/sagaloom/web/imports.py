@@ -21,7 +21,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 
-from sagaloom.importing.extract import ImportPlan, build_import
+from sagaloom.importing.extract import EXTRACTION_FAILED, ImportPlan, build_import
 from sagaloom.importing.wiki import (
     LICENCE_UNREADABLE,
     NOTE_CONTENT,
@@ -35,8 +35,6 @@ from sagaloom.wiki.client import LicenceUnreadable, WikiClient
 from sagaloom.wiki.pages import WikiPage
 
 log = logging.getLogger(__name__)
-
-EXTRACTION_FAILED = "The extraction could not run, so nothing was imported. Try again."
 
 UsageFn = Callable[[], tuple[Usage, Usage]]
 
@@ -169,7 +167,7 @@ async def _extract_then_run(
     )
     yield event("node", {"name": "extract", "phase": "end", "ms": int((time.monotonic() - t0) * 1000)})
 
-    if plan is None or (plan.parts > 0 and plan.failed_parts == plan.parts):
+    if plan is None or plan.extraction_failed:
         # Nothing was imported and the graph never ran, so no checkpoint exists (R-W5-5). The
         # extractor's calls were still paid for, so `usage` comes before the `error`. A plan with
         # no parts (wiki pages with no article text) still runs, so Review shows its note.
