@@ -135,6 +135,7 @@ async def _open_runtime(app: FastAPI):
             yield
         finally:
             await _cancel_turns(deps.tasks)  # while the checkpointer is still open
+            await deps.wiki.aclose()  # the shared HTTP client; reopened lazily on next use
 
 
 async def _cancel_turns(tasks: set[asyncio.Task], timeout: float = 5.0) -> None:

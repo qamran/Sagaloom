@@ -1,0 +1,162 @@
+{
+  "accept": [
+    {
+      "in": "https://en.wikipedia.org/wiki/Shire_(Middle-earth)",
+      "url": "https://en.wikipedia.org/wiki/Shire_(Middle-earth)",
+      "host": "en.wikipedia.org",
+      "lang_path": "",
+      "title": "Shire (Middle-earth)"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/Shire%20(Middle-earth)?oldid=1#History",
+      "url": "https://en.wikipedia.org/wiki/Shire_(Middle-earth)",
+      "host": "en.wikipedia.org",
+      "lang_path": "",
+      "title": "Shire (Middle-earth)"
+    },
+    {
+      "in": "https://en.m.wikipedia.org/wiki/Gandalf#Names",
+      "url": "https://en.wikipedia.org/wiki/Gandalf",
+      "host": "en.wikipedia.org",
+      "lang_path": "",
+      "title": "Gandalf"
+    },
+    {
+      "in": "https://lotr.fandom.com/wiki/Rivendell",
+      "url": "https://lotr.fandom.com/wiki/Rivendell",
+      "host": "lotr.fandom.com",
+      "lang_path": "",
+      "title": "Rivendell"
+    },
+    {
+      "in": "https://starwars.fandom.com/de/wiki/Yoda",
+      "url": "https://starwars.fandom.com/de/wiki/Yoda",
+      "host": "starwars.fandom.com",
+      "lang_path": "/de",
+      "title": "Yoda"
+    },
+    {
+      "in": "https://EN.Wikipedia.org/wiki/Star_Wars:_Episode_IV",
+      "url": "https://en.wikipedia.org/wiki/Star_Wars:_Episode_IV",
+      "host": "en.wikipedia.org",
+      "lang_path": "",
+      "title": "Star Wars: Episode IV"
+    }
+  ],
+  "reject": [
+    {
+      "in": "https://evilwikipedia.org/wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://evilwikipedia.org/wiki/X"
+    },
+    {
+      "in": "https://en.wikipedia.org.evil.com/wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://en.wikipedia.org.evil.com/wiki/X"
+    },
+    {
+      "in": "https://en.wikipedia.org@evil.com/wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://en.wikipedia.org@evil.com/wiki/X"
+    },
+    {
+      "in": "https://en.wikipedia.org:8443/wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://en.wikipedia.org:8443/wiki/X"
+    },
+    {
+      "in": "https://en.wikipedia.org./wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://en.wikipedia.org./wiki/X"
+    },
+    {
+      "in": "http://en.wikipedia.org/wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: http://en.wikipedia.org/wiki/X"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/Category:Elves",
+      "error": "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/Category:Elves"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/File:Map.png",
+      "error": "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/File:Map.png"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/Special:Random",
+      "error": "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/Special:Random"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/category_talk:Elves",
+      "error": "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/category_talk:Elves"
+    },
+    {
+      "in": "https://en.wikipedia.org/w/index.php?title=Gandalf",
+      "error": "Not a wiki page URL: https://en.wikipedia.org/w/index.php?title=Gandalf. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "ftp://en.wikipedia.org/wiki/X",
+      "error": "Only Wikipedia and Fandom pages can be imported: ftp://en.wikipedia.org/wiki/X"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/",
+      "error": "Not a wiki page URL: https://en.wikipedia.org/wiki/. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "https://en.wikipedia.org/X",
+      "error": "Not a wiki page URL: https://en.wikipedia.org/X. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "https://a.b.fandom.com/wiki/X",
+      "error": "Not a wiki page URL: https://a.b.fandom.com/wiki/X. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "not a url",
+      "error": "Not a wiki page URL: not a url. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/Category:Elves_of_Middle-earth_Elves_of_Middle-earth_Elves_of_Middle-earth_Elves_of_Middle-earth_",
+      "error": "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/Category:Elves_of_Middle-earth_Elves_of_Middle-ear"
+    }
+  ],
+  "lists": [
+    {
+      "in": [],
+      "error": "Paste 1 to 10 page URLs, one per line."
+    },
+    {
+      "in": [
+        "https://en.wikipedia.org/wiki/Page_0",
+        "https://en.wikipedia.org/wiki/Page_1",
+        "https://en.wikipedia.org/wiki/Page_2",
+        "https://en.wikipedia.org/wiki/Page_3",
+        "https://en.wikipedia.org/wiki/Page_4",
+        "https://en.wikipedia.org/wiki/Page_5",
+        "https://en.wikipedia.org/wiki/Page_6",
+        "https://en.wikipedia.org/wiki/Page_7",
+        "https://en.wikipedia.org/wiki/Page_8",
+        "https://en.wikipedia.org/wiki/Page_9",
+        "https://en.wikipedia.org/wiki/Page_10"
+      ],
+      "error": "Paste 1 to 10 page URLs, one per line."
+    },
+    {
+      "in": [
+        "https://en.wikipedia.org/wiki/Gandalf",
+        "https://de.wikipedia.org/wiki/Gandalf"
+      ],
+      "error": "All URLs in one import must come from the same wiki."
+    },
+    {
+      "in": [
+        "https://en.wikipedia.org/wiki/Gandalf",
+        "https://en.wikipedia.org/wiki/gandalf"
+      ],
+      "error": "This page is listed twice: https://en.wikipedia.org/wiki/gandalf"
+    },
+    {
+      "in": [
+        "https://en.wikipedia.org/wiki/Gandalf",
+        "",
+        "https://en.wikipedia.org/wiki/Rivendell",
+        "   ",
+        "https://en.wikipedia.org/wiki/Shire_(Middle-earth)"
+      ],
+      "error": null
+    }
+  ]
+}

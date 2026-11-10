@@ -1224,7 +1224,7 @@ def fake_wiki(tmp_path) -> WikiClient:
             )
         return httpx.Response(200, json={"extract": "Some reference text."})
 
-    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler))
+    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler), min_interval=0)
 
 
 def ref_call() -> AIMessage:
@@ -1291,7 +1291,7 @@ async def test_empty_reference_lookup_does_not_taint(store, tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"query": {"search": []}})
 
-    wiki = WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler))
+    wiki = WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler), min_interval=0)
     graph, *_ = make(store, [ref_call(), create_call()], wiki=wiki)
     cfg = run_config("t1", W)
     await run(graph, start("Make a port like Atlantis"), cfg)
@@ -1397,7 +1397,7 @@ def timeout_wiki(tmp_path) -> WikiClient:
     def boom(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("slow", request=request)
 
-    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(boom))
+    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(boom), min_interval=0)
 
 
 @pytest.mark.parametrize("failure", ["timeout", "invalid_args"])
@@ -1434,7 +1434,7 @@ def counting_wiki(tmp_path):
         requests.append(request)
         return httpx.Response(200, json={"query": {"search": []}})
 
-    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler)), requests
+    return WikiClient(tmp_path / "wiki", transport=httpx.MockTransport(handler), min_interval=0), requests
 
 
 async def test_disabled_tool_not_bound(store, tmp_path):

@@ -374,7 +374,12 @@ async def test_an_in_band_client_error_is_left_as_it_was(streaming, structured):
     async with client:
         with pytest.raises(Exception) as info:
             await runnable.ainvoke("hi")
-    assert not isinstance(info.value, openai.InternalServerError)
+    exc = info.value
+    assert not isinstance(exc, TRANSIENT_API_ERRORS)
+    # Each path surfaces its own untranslated error: a bare `openai.APIError` from the stream,
+    # langchain's `TypeError` on a structured reply, and its `ValueError` on a plain one.
+    expected = openai.APIError if streaming else TypeError if structured else ValueError
+    assert type(exc) is expected
 
 
 @pytest.mark.parametrize("code", [None, "server_error", 408, 429, 500, 503])
