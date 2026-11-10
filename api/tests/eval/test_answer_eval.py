@@ -23,7 +23,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from sagaloom.config import Settings
-from sagaloom.graph.build import build_graph, run_config
+from sagaloom.graph.build import build_graph, checkpoint_serde, run_config
 from sagaloom.llm import make_embeddings
 from sagaloom.model_settings import ModelSettings
 from sagaloom.models import Entry
@@ -89,7 +89,7 @@ def _setup(tmp_path: Path, wiki: WikiClient | None = None, memory: InMemoryStore
     graph = build_graph(
         store=store,
         model_for=make_model_for(settings, model_settings),
-        checkpointer=InMemorySaver(),
+        checkpointer=InMemorySaver(serde=checkpoint_serde()),
         wiki=wiki,
         memory_store=memory,
     )

@@ -90,3 +90,35 @@ def test_memory_models_roundtrip_through_the_strict_serde(caplog):
     ):
         assert serde.loads_typed(serde.dumps_typed(obj)) == obj
     assert "not in the allowed" not in caplog.text.lower() and "blocked" not in caplog.text.lower()
+
+
+def test_eval_in_memory_checkpointers_use_the_strict_serde(store, caplog):
+    """The evals' in-memory savers rebuild `Proposal`/`CheckResult` without langgraph's
+    "Deserializing unregistered type" warning: they are built with `checkpoint_serde()`."""
+    from pathlib import Path
+
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from sagaloom.graph.build import checkpoint_serde
+    from sagaloom.models import CheckResult, EntryDraft, EntrySource, Proposal
+
+    eval_dir = Path(__file__).resolve().parents[1] / "eval"
+    builds = [line for f in eval_dir.glob("*.py") for line in f.read_text("utf-8").splitlines()
+              if "InMemorySaver(" in line]
+    assert builds and all("InMemorySaver(serde=checkpoint_serde())" in b for b in builds), builds
+
+    serde = InMemorySaver(serde=checkpoint_serde()).serde
+    draft = EntryDraft(
+        title="Ostra", type="place", body="A port.", trusted=False,
+        sources=[EntrySource(kind="official", url="https://en.wikipedia.org/wiki/Ostra")],
+    )
+    objs = (
+        [Proposal(proposal_id="p1", action="create", world_id=W, entry_id=None, before=None, after=draft)],
+        {"p1": CheckResult(proposal_id="p1", verdict="none")},
+    )
+    caplog.set_level(logging.WARNING)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for obj in objs:
+            assert serde.loads_typed(serde.dumps_typed(obj)) == obj
+    assert "unregistered" not in caplog.text.lower(), caplog.text
