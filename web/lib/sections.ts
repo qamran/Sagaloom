@@ -1,5 +1,7 @@
 import { isImportedHeading } from "@/lib/imported";
 
+const OPENER = /^## +/;
+
 export interface Section {
   heading: string;
   text: string;
@@ -11,8 +13,8 @@ export function sectionsOf(body: string): Section[] {
   const sections: Section[] = [{ heading: "Description", text: "", imported: false }];
   const lines: string[][] = [[]];
   for (const line of body.split("\n")) {
-    if (line.startsWith("## ")) {
-      const heading = line.slice(3).trim();
+    if (OPENER.test(line)) {
+      const heading = line.replace(OPENER, "").trimEnd();
       sections.push({ heading, text: "", imported: isImportedHeading(heading) });
       lines.push([]);
     } else {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linkEntities, suggestEntries, type Named } from "@/lib/mentions";
+import { linkEntities, matcherBuildCount, suggestEntries, type Named } from "@/lib/mentions";
 
 const e = (id: string, title: string, type: Named["type"], aliases: string[] = [], status: Named["status"] = "canon"): Named => ({
   id, title, type, aliases, status,
@@ -24,6 +24,22 @@ describe("linkEntities", () => {
       ") over ",
       { entry: entries[0], text: "velmar" },
     ]);
+  });
+  it("reuses its matcher for the same entries", () => {
+    const own = [e("ent_0100", "Quillon", "place")];
+    const before = matcherBuildCount();
+    linkEntities("Quillon", own, false);
+    linkEntities("in Quillon again", own, false);
+    expect(matcherBuildCount() - before).toBe(1);
+    linkEntities("Quillon", own, true);
+    expect(matcherBuildCount() - before).toBe(2);
+    linkEntities("Quillon", [...own], false);
+    expect(matcherBuildCount() - before).toBe(3);
+  });
+  it("a 3-letter alias chips only as written", () => {
+    const ash = [e("ent_0200", "Ashwin", "character", ["Ash"])];
+    expect(chips(linkEntities("Ash sat by the ash tree.", ash, false))).toEqual([{ entry: ash[0], text: "Ash" }]);
+    expect(chips(linkEntities("ASH and ash", ash, false))).toEqual([]);
   });
   it("prefers the longest match", () => {
     const p = linkEntities("In the city of Velmar.", entries, false);

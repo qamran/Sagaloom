@@ -21,8 +21,10 @@
   --well-2: #14181a;
   --raised: #1a1f1d;
 
-  /* amber "conflict" family and the violet "under the hood" outlines */
+  /* a failed call or check */
   --failed: #e8785a;
+
+  /* amber "conflict" family and the violet "under the hood" outlines */
   --conflict-bg: #221c15;
   --conflict-bg-2: #261e14;
   --conflict-line: #5a4228;
@@ -90,6 +92,17 @@
   --color-event-line: #6b5a2a;
   --color-item-bg: #2a2018;
   --color-item-line: #66503a;
+
+  /* one-off surfaces and outlines */
+  --color-row-active: #1f2725;
+  --color-user-line: #2e3834;
+  --color-hood-bg: #2a2340;
+  --color-untrusted-bg: #2a2418;
+  --color-call-open-bg: #1c1a28;
+  --color-live-summary: #1d3a30;
+  --color-configured-summary: #2f2a1c;
+  --color-off-summary: #23282a;
+  --color-configured-border: #4a4128;
 
   --color-ring: var(--ring);
 

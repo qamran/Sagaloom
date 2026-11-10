@@ -36,7 +36,7 @@ function Content({ text }: { text: string }) {
           <div
             key={i}
             data-testid="untrusted"
-            className="mt-1 rounded-md border border-conflict-line bg-[#2A2418] px-2 py-1.5 text-conflict-text-2"
+            className="mt-1 rounded-md border border-conflict-line bg-untrusted-bg px-2 py-1.5 text-conflict-text-2"
           >
             {p}
           </div>
@@ -181,7 +181,7 @@ function CallCard({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2 text-left text-xs ${open ? "bg-[#1C1A28]" : ""}`}
+        className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2 text-left text-xs ${open ? "bg-call-open-bg" : ""}`}
       >
         <span className="text-muted-foreground">{index + 1}</span>
         <span className="font-semibold">{role}</span>

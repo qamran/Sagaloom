@@ -62,7 +62,7 @@ function Message({
   }
   if (m.role === "user") {
     return (
-      <div className="max-w-[80%] self-end whitespace-pre-wrap rounded-[14px_14px_4px_14px] border border-[#2e3834] bg-panel-3 px-4 py-3">
+      <div className="max-w-[80%] self-end whitespace-pre-wrap rounded-[14px_14px_4px_14px] border border-user-line bg-panel-3 px-4 py-3">
         <span className="sr-only">You: </span>
         {m.content}
         {m.mode && (
@@ -218,7 +218,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           aria-pressed={hood}
           onClick={() => setHood(!hood)}
           className={`flex min-h-9 items-center gap-2 rounded-lg border px-3 text-[13px] ${
-            hood ? "border-violet-line-strong bg-[#2A2340] text-myth" : "border-border-strong text-foreground"
+            hood ? "border-violet-line-strong bg-hood-bg text-myth" : "border-border-strong text-foreground"
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

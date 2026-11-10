@@ -5,14 +5,14 @@ import { useEffect, useRef } from "react";
 import type { FeatureCardData } from "@/lib/types";
 
 const BADGE: Record<FeatureCardData["status"], { label: string; cls: string; summary: string }> = {
-  live: { label: "Live", cls: "bg-place text-background", summary: "bg-[#1D3A30] text-place" },
-  configured: { label: "Configured", cls: "bg-event text-background", summary: "bg-[#2F2A1C] text-event" },
-  off: { label: "Off", cls: "bg-border-strong text-foreground", summary: "bg-[#23282A] text-muted-foreground" },
+  live: { label: "Live", cls: "bg-place text-background", summary: "bg-live-summary text-place" },
+  configured: { label: "Configured", cls: "bg-event text-background", summary: "bg-configured-summary text-event" },
+  off: { label: "Off", cls: "bg-border-strong text-foreground", summary: "bg-off-summary text-muted-foreground" },
 };
 
 const CARD: Record<FeatureCardData["status"], string> = {
   live: "border border-border bg-panel-2",
-  configured: "border border-[#4A4128] bg-panel-2",
+  configured: "border border-configured-border bg-panel-2",
   off: "border border-dashed border-border-strong bg-panel",
 };
 

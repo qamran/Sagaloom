@@ -17,6 +17,9 @@ describe("importedSections", () => {
   it("ignores other headings and inline mentions", () => {
     expect(importedSections("## History\nImported from nowhere\n### Imported from x (2026-01-01)")).toEqual([]);
   });
+  it("a double-space imported heading counts in both", () => {
+    expect(importedSections("##  Imported from x (2026-01-01)\nText.")).toEqual(["x (2026-01-01)"]);
+  });
   it("is empty for an empty body", () => {
     expect(importedSections("")).toEqual([]);
   });

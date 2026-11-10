@@ -84,7 +84,7 @@ export function CanonList() {
                   href={href}
                   aria-current={active ? "page" : undefined}
                   className={`flex min-h-11 items-center rounded-md py-1 pl-[14px] pr-1.5 text-foreground no-underline hover:text-foreground hover:no-underline hover:bg-panel-3 md:min-h-8 ${
-                    active ? "bg-[#1f2725] font-semibold" : ""
+                    active ? "bg-row-active font-semibold" : ""
                   }`}
                 >
                   <span aria-hidden="true" data-type-dot className={`mr-2 size-2 shrink-0 rounded-full ${TYPE_DOT[e.type]}`} />

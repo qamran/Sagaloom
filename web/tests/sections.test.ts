@@ -22,6 +22,13 @@ describe("sectionsOf", () => {
   it("does not mark an undated Imported from heading as imported", () => {
     expect(sectionsOf("Intro.\n## Imported from X\nT.")[1].imported).toBe(false);
   });
+  it("a double-space imported heading counts in both", () => {
+    expect(sectionsOf("Intro.\n##  Imported from x (2026-01-01)\nText.")[1]).toEqual({
+      heading: "Imported from x (2026-01-01)",
+      text: "Text.",
+      imported: true,
+    });
+  });
   it("drops the empty Description when the body opens with a heading", () => {
     expect(sectionsOf("## History\nOld.")).toEqual([{ heading: "History", text: "Old.", imported: false }]);
   });
