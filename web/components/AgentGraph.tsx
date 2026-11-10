@@ -14,8 +14,8 @@ export function AgentGraph({ mermaid }: { mermaid: string }) {
   const ids = threads.data?.map((t) => t.thread_id) ?? [];
   const first = ids[0] ?? null;
   const pick = [picked, wanted].find((id) => id && ids.includes(id));
-  // An unknown ?thread= falls back to the first thread. While the list loads, trust the URL.
-  const threadId = pick ?? (threads.data ? first : (wanted ?? null));
+  // An unknown ?thread= falls back to the first thread. No last-run request until the list has loaded.
+  const threadId = pick ?? (threads.data ? first : null);
   const run = useQuery({
     queryKey: ["last-run", threadId],
     queryFn: () => getLastRun(threadId as string),

@@ -1,8 +1,11 @@
 import { norm } from "@/lib/text";
-import type { Badge, CheckResult, Entry, EntryDraft, Flag, PendingInterrupt, Proposal } from "@/lib/types";
+import type { Badge, CheckResult, Entry, EntryDraft, Flag, PendingInterrupt, Proposal, ThreadSummary } from "@/lib/types";
 
 /** TanStack Query key for a world's pending review threads; invalidate `["review"]` for every world. */
 export const REVIEW_KEY = (worldId: string) => ["review", worldId] as const;
+
+/** Poll fast while a thread is extracting or running, slowly otherwise; focus and invalidation refetch regardless. */
+export const reviewPollMs = (rows: ThreadSummary[] | undefined) => (rows?.some((t) => t.running) ? 5_000 : 60_000);
 
 /** Badge labels, worst first (spec §3.8). The card says "No conflicts found" in place of "Clear". */
 export const BADGE_LABEL: Record<Badge, string> = {

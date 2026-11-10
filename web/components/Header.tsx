@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 import { getReviewThreads, getThread } from "@/lib/api";
 import { useCourseNotes } from "@/lib/courseNotes";
 import { SecretsToggle } from "@/components/SecretsToggle";
-import { REVIEW_KEY } from "@/lib/review";
+import { REVIEW_KEY, reviewPollMs } from "@/lib/review";
 import { useWorld } from "@/lib/world";
 
 const NEW_WORLD = "__new__";
@@ -161,7 +161,7 @@ function ReviewCount() {
     queryKey: REVIEW_KEY(world?.id ?? ""),
     queryFn: () => getReviewThreads(world?.id as string),
     enabled: !!world,
-    refetchInterval: 15000,
+    refetchInterval: (q) => reviewPollMs(q.state.data),
   });
   const count = data?.reduce((n, t) => n + t.pending, 0) ?? 0;
   if (!count) return null;

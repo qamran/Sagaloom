@@ -46,6 +46,14 @@ describe("ReviewList", () => {
     expect(within(second).getByText("3 proposals")).toBeInTheDocument();
   });
 
+  it("a row with no badge still lists", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([row({ thread_id: "t9", title: "Quiet chat", badge: null })]);
+    renderList();
+    const link = await screen.findByRole("link", { name: /Quiet chat/ });
+    expect(link).toHaveAttribute("href", "/review/t9");
+    expect(within(link).queryByText(/conflict|retcon|clear|note|failed/i)).toBeNull();
+  });
+
   it("shows the empty state", async () => {
     vi.mocked(getReviewThreads).mockResolvedValue([]);
     renderList();

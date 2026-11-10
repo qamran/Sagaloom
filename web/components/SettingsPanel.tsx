@@ -39,7 +39,7 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
     setTemp(String(next.settings.agent_temperature));
     setTokens(next.settings.agent_max_tokens?.toString() ?? "");
     setPrompt(promptOf(next));
-    void qc.invalidateQueries({ queryKey: ["settings"] });
+    void qc.invalidateQueries({ queryKey: ["settings"], exact: true });
     void qc.invalidateQueries({ queryKey: ["studio"] });
   }
 

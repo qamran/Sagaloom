@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { getImports } from "@/lib/api";
+import { reviewPollMs } from "@/lib/review";
 import { ago } from "@/lib/time";
 import { useWorld } from "@/lib/world";
 
@@ -16,7 +17,7 @@ export function RecentImports() {
     queryKey: ["imports", world?.id ?? ""],
     queryFn: () => getImports(world?.id as string),
     enabled: !!world,
-    refetchInterval: 15000,
+    refetchInterval: (q) => reviewPollMs(q.state.data),
   });
   return (
     <section aria-label="Recent imports" className="flex max-w-3xl flex-col gap-2">

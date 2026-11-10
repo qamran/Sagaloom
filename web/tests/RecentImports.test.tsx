@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentImports } from "@/components/RecentImports";
 import { getImports } from "@/lib/api";
@@ -30,6 +30,19 @@ describe("RecentImports", () => {
     expect(link).toHaveTextContent("just now");
     expect(link).toHaveTextContent("2 pending · 1 approved · 0 rejected");
     expect(getImports).toHaveBeenCalledWith("w1");
+  });
+
+  it("polls every 5 s while an import runs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(getImports).mockResolvedValue([row({ running: true })]);
+      renderIt();
+      await waitFor(() => expect(getImports).toHaveBeenCalledTimes(1));
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+      expect(getImports).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows Importing… for a running import", async () => {

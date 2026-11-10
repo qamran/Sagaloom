@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { getReviewThreads } from "@/lib/api";
-import { BADGE_CLASS, BADGE_LABEL, REVIEW_KEY } from "@/lib/review";
+import { BADGE_CLASS, BADGE_LABEL, REVIEW_KEY, reviewPollMs } from "@/lib/review";
 import { ago } from "@/lib/time";
 import { useWorld } from "@/lib/world";
 
@@ -17,7 +17,7 @@ export function ReviewList() {
     queryKey: REVIEW_KEY(world?.id ?? ""),
     queryFn: () => getReviewThreads(world?.id as string),
     enabled: !!world,
-    refetchInterval: 15000,
+    refetchInterval: (q) => reviewPollMs(q.state.data),
   });
 
   return (

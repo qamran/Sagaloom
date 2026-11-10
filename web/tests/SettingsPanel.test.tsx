@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,8 +25,7 @@ const payload: SettingsPayload = {
   guard_policy: "policy text",
 };
 
-function setup() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function setup(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   render(
     <QueryClientProvider client={qc}>
       <SettingsPanel payload={payload} />
@@ -53,6 +52,25 @@ describe("SettingsPanel", () => {
     await userEvent.type(t, "0.7");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(putSettings).toHaveBeenCalledWith({ agent_temperature: 0.7 }));
+  });
+
+  it("saving does not refetch the model list", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const settings = vi.fn().mockResolvedValue(payload);
+    const models = vi.fn().mockResolvedValue([]);
+    await qc.fetchQuery({ queryKey: ["settings"], queryFn: settings });
+    await qc.fetchQuery({ queryKey: ["settings", "models"], queryFn: models });
+    const observe = (queryKey: string[], queryFn: () => Promise<unknown>) =>
+      new QueryObserver(qc, { queryKey, queryFn, staleTime: Infinity }).subscribe(() => {});
+    const off = [observe(["settings"], settings), observe(["settings", "models"], models)];
+    setup(qc);
+    const t = screen.getByLabelText("Agent temperature");
+    await userEvent.clear(t);
+    await userEvent.type(t, "0.7");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(settings).toHaveBeenCalledTimes(2));
+    expect(models).toHaveBeenCalledTimes(1);
+    off.forEach((f) => f());
   });
 
   it("clearing max tokens sends null", async () => {

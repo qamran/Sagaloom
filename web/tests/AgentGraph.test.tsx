@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentGraph } from "@/components/AgentGraph";
@@ -79,6 +79,24 @@ describe("AgentGraph", () => {
     wrap(<AgentGraph mermaid={SRC} />);
     await waitFor(() => expect(getLastRun).toHaveBeenCalledWith("t1"));
     expect(await screen.findByRole("combobox")).toHaveValue("t1");
+  });
+
+  it("an unknown thread param makes no last-run request for it", async () => {
+    search = "thread=gone";
+    wrap(<AgentGraph mermaid={SRC} />);
+    await waitFor(() => expect(getLastRun).toHaveBeenCalledWith("t1"));
+    expect(getLastRun).not.toHaveBeenCalledWith("gone");
+  });
+
+  it("makes no last-run request before the thread list has loaded", async () => {
+    search = "thread=t2";
+    let release: (v: ThreadSummary[]) => void = () => {};
+    vi.mocked(getThreads).mockReturnValue(new Promise((r) => (release = r)));
+    wrap(<AgentGraph mermaid={SRC} />);
+    await act(async () => {});
+    expect(getLastRun).not.toHaveBeenCalled();
+    await act(async () => release([summary("t1", "w", 0), summary("t2", "w", 0)]));
+    await waitFor(() => expect(getLastRun).toHaveBeenCalledWith("t2"));
   });
 
   it("says when the run is waiting for approval", async () => {

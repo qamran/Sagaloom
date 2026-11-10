@@ -27,7 +27,7 @@ export function GuardrailsPanel({ payload }: { payload: SettingsPayload }) {
     try {
       const next = await putSettings({ guard_enabled: !on });
       setOn(next.settings.guard_enabled);
-      void qc.invalidateQueries({ queryKey: ["settings"] });
+      void qc.invalidateQueries({ queryKey: ["settings"], exact: true });
       void qc.invalidateQueries({ queryKey: ["studio"] });
     } catch {
       setError("The guard setting was not saved. Try again.");

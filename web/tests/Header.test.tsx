@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/components/Header";
 import { getReviewThreads } from "@/lib/api";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
@@ -47,6 +47,39 @@ describe("Header Review tab", () => {
     await vi.mocked(getReviewThreads).mock.results[0].value;
     await act(async () => {});
     expect(await screen.findByRole("link", { name: "Review" })).toHaveTextContent(/^Review$/);
+  });
+});
+
+describe("Header pill polling", () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
+  it("polls every 60 s when nothing runs", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([row("t1", 1)]);
+    renderHeader();
+    await screen.findByRole("link", { name: "Review 1 pending" });
+    expect(getReviewThreads).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(getReviewThreads).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(45_000); });
+    expect(getReviewThreads).toHaveBeenCalledTimes(2);
+  });
+
+  it("polls every 5 s while a thread runs", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([{ ...row("t1", 0), running: true }]);
+    renderHeader();
+    await waitFor(() => expect(getReviewThreads).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(getReviewThreads).toHaveBeenCalledTimes(2);
+  });
+
+  it("pill updates after a decision without waiting for the interval", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValueOnce([row("t1", 2)]).mockResolvedValue([row("t1", 1)]);
+    renderHeader();
+    await screen.findByRole("link", { name: "Review 2 pending" });
+    await act(async () => { await qc.invalidateQueries({ queryKey: ["review"] }); });
+    expect(await screen.findByRole("link", { name: "Review 1 pending" })).toBeInTheDocument();
+    expect(getReviewThreads).toHaveBeenCalledTimes(2);
   });
 });
 
