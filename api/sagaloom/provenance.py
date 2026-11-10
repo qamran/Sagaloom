@@ -48,7 +48,7 @@ def merge_provenance(before: Entry, draft: EntryDraft) -> dict:
     first added. With no sources at all, a non-`user` source is never downgraded to `user` and a
     new `source_url`/`licence` wins, else the old one."""
     trusted = before.trusted and draft.trusted
-    sources = union_sources(before.sources, getattr(draft, "sources", None) or [])
+    sources = union_sources(before.sources, draft.sources)
     if sources:
         return provenance_fields(sources, trusted)
     return {

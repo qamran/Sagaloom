@@ -182,7 +182,9 @@ def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]
     if not called:
         return provenance_fields([], trusted=True)
     url = source_url if source_url in urls else (urls[0] if urls else None)
-    if url is None:  # results without a URL: still tainted, with nothing to cite
+    if url is None:
+        # Results without a URL: the reference text still came in, so the proposal stays an
+        # untrusted `reference` one, with no source to cite (the one primary without a source).
         return {**provenance_fields([], trusted=False), "source": "reference"}
     return provenance_fields([EntrySource(kind="reference", url=url)], trusted=False)
 

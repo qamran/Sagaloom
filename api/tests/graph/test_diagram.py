@@ -4,8 +4,8 @@ import re
 from pathlib import Path
 
 import pytest
-from langgraph.checkpoint.memory import InMemorySaver
 
+from checkpointers import memory_checkpointer
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
 
@@ -31,6 +31,6 @@ def test_documented_diagram_matches_compiled_graph(path):
     graph = build_graph(
         store=object(),  # never called: the graph is only compiled and drawn
         model_for=lambda role: None,
-        checkpointer=InMemorySaver(),
+        checkpointer=memory_checkpointer(),
     )
     assert _documented(path) == _body(graph.get_graph().draw_mermaid())

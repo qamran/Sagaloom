@@ -34,11 +34,11 @@ import chromadb
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai.chat_models._client_utils import _cached_async_httpx_client
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
+from checkpointers import memory_checkpointer
 from sagaloom.config import Settings
-from sagaloom.graph.build import build_graph, checkpoint_serde, run_config
+from sagaloom.graph.build import build_graph, run_config
 from sagaloom.graph.nodes import RoleModel
 from sagaloom.importing.extract import build_import
 from sagaloom.llm import make_embeddings
@@ -121,7 +121,7 @@ def _setup(tmp_path: Path):
     load_seed(store, WorldRegistry(tmp_path / f"worlds_{uuid.uuid4().hex}.json"), SEED)
     model_settings = ModelSettings(tmp_path / "model_settings.json", settings)
     model_for = make_model_for(settings, model_settings)
-    graph = build_graph(store=store, model_for=model_for, checkpointer=InMemorySaver(serde=checkpoint_serde()))
+    graph = build_graph(store=store, model_for=model_for, checkpointer=memory_checkpointer())
     return settings, store, model_for, graph
 
 

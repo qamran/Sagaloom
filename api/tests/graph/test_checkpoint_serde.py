@@ -92,22 +92,37 @@ def test_memory_models_roundtrip_through_the_strict_serde(caplog):
     assert "not in the allowed" not in caplog.text.lower() and "blocked" not in caplog.text.lower()
 
 
-def test_eval_in_memory_checkpointers_use_the_strict_serde(store, caplog):
-    """The evals' in-memory savers rebuild `Proposal`/`CheckResult` without langgraph's
-    "Deserializing unregistered type" warning: they are built with `checkpoint_serde()`."""
+SAVERS = ("InMemorySaver", "MemorySaver", "AsyncSqliteSaver", "SqliteSaver")
+
+
+def test_every_test_checkpointer_uses_the_strict_serde(caplog):
+    """Every checkpointer built under api/tests passes a serde (they all go through
+    `checkpointers.memory_checkpointer` or `sqlite_checkpointer`), and the in-memory one
+    rebuilds `Proposal`/`CheckResult` without langgraph's "Deserializing unregistered type"
+    warning. An AST scan, so a call that
+    wraps onto several lines is still seen."""
+    import ast
     from pathlib import Path
 
-    from langgraph.checkpoint.memory import InMemorySaver
+    from checkpointers import memory_checkpointer
 
-    from sagaloom.graph.build import checkpoint_serde
     from sagaloom.models import CheckResult, EntryDraft, EntrySource, Proposal
 
-    eval_dir = Path(__file__).resolve().parents[1] / "eval"
-    builds = [line for f in eval_dir.glob("*.py") for line in f.read_text("utf-8").splitlines()
-              if "InMemorySaver(" in line]
-    assert builds and all("InMemorySaver(serde=checkpoint_serde())" in b for b in builds), builds
+    tests_dir = Path(__file__).resolve().parents[1]
+    bare = []
+    for f in tests_dir.rglob("*.py"):
+        for node in ast.walk(ast.parse(f.read_text("utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            # `from_conn_string` takes no serde, so it always builds a permissive saver.
+            if name == "from_conn_string" or (
+                name in SAVERS and not any(k.arg == "serde" for k in node.keywords)
+            ):
+                bare.append(f"{f.relative_to(tests_dir)}:{node.lineno}")
+    assert not bare, bare
 
-    serde = InMemorySaver(serde=checkpoint_serde()).serde
+    serde = memory_checkpointer().serde
     draft = EntryDraft(
         title="Ostra", type="place", body="A port.", trusted=False,
         sources=[EntrySource(kind="official", url="https://en.wikipedia.org/wiki/Ostra")],

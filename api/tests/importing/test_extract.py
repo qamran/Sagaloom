@@ -7,8 +7,8 @@ from datetime import date
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import ValidationError
-from langgraph.checkpoint.memory import InMemorySaver
 
+from checkpointers import memory_checkpointer
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.check.retcon import detect_retcons
 from sagaloom.graph.build import build_graph, run_config
@@ -299,7 +299,7 @@ async def test_same_entry_candidates_combine_into_one_proposal(store):
     graph = build_graph(
         store=store,
         model_for=lambda role: judge if role == "judge" else None,
-        checkpointer=InMemorySaver(),
+        checkpointer=memory_checkpointer(),
     )
     cfg = run_config("t_import", W)
     note = HumanMessage(name="import", content="Imported text: 1 proposals for review, 0 not imported.")

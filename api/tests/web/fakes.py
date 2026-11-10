@@ -11,11 +11,11 @@ from httpx import ASGITransport, AsyncClient
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 from langchain_core.runnables import RunnableLambda
 from pydantic import Field
 
+from checkpointers import memory_checkpointer
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
@@ -226,7 +226,7 @@ def make_env(store, tmp_path, aclose_later):
         graph = build_graph(
             store=store,
             model_for=lambda role: roles[role],
-            checkpointer=InMemorySaver(),
+            checkpointer=memory_checkpointer(),
             memory_store=memory,
             memory_locks=memory_locks,
         )

@@ -5,8 +5,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from fakes import HEADERS, KEY, SECRET, W, Env, FakeJudge, ScriptedChat, StubLLM, create_call
 from httpx import ASGITransport, AsyncClient
-from langgraph.checkpoint.memory import InMemorySaver
 
+from checkpointers import memory_checkpointer
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
 from sagaloom.router import RouteDecision
@@ -44,7 +44,7 @@ def build_switchable_env(store, tmp_path, aclose_later) -> Env:
     graph = build_graph(
         store=store,
         model_for=make_model_for(settings, ms, factory),
-        checkpointer=InMemorySaver(),
+        checkpointer=memory_checkpointer(),
     )
     worlds = WorldRegistry(tmp_path / "worlds.json")
     worlds.create("World One", world_id=W)

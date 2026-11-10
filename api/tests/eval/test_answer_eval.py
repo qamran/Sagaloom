@@ -19,11 +19,11 @@ import httpx
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_openai.chat_models._client_utils import _cached_async_httpx_client
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
+from checkpointers import memory_checkpointer
 from sagaloom.config import Settings
-from sagaloom.graph.build import build_graph, checkpoint_serde, run_config
+from sagaloom.graph.build import build_graph, run_config
 from sagaloom.llm import make_embeddings
 from sagaloom.model_settings import ModelSettings
 from sagaloom.models import Entry
@@ -89,7 +89,7 @@ def _setup(tmp_path: Path, wiki: WikiClient | None = None, memory: InMemoryStore
     graph = build_graph(
         store=store,
         model_for=make_model_for(settings, model_settings),
-        checkpointer=InMemorySaver(serde=checkpoint_serde()),
+        checkpointer=memory_checkpointer(),
         wiki=wiki,
         memory_store=memory,
     )

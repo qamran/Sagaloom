@@ -9,16 +9,15 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.errors import GraphRecursionError
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 from pydantic import Field
 
+from checkpointers import memory_checkpointer
 from sagaloom.check.contradiction import JudgeFlag, JudgeOutput
 from sagaloom.config import Settings
-from sagaloom.graph.build import build_graph, run_config
+from sagaloom.graph.build import build_graph, run_config, sqlite_checkpointer
 from sagaloom.graph.nodes import (
     make_commit_node,
     make_router_node,
@@ -152,7 +151,7 @@ def make(store, script, judge_reply=None, saver=None, guard=None, router=None, *
     graph = build_graph(
         store=store,
         model_for=lambda role: roles[role],
-        checkpointer=saver if saver is not None else InMemorySaver(),
+        checkpointer=saver if saver is not None else memory_checkpointer(),
         **build_kwargs,
     )
     return graph, agent, judge
@@ -1013,12 +1012,12 @@ async def test_runaway_tool_loop_hits_recursion_limit(store):
 
 
 async def test_pending_interrupt_survives_new_saver_instance(store, tmp_path):
-    path = str(tmp_path / "checkpoints.sqlite")
+    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
     cfg = run_config("t1", W)
-    async with AsyncSqliteSaver.from_conn_string(path) as saver:
+    async with sqlite_checkpointer(settings) as saver:  # the app's saver, with the strict serde
         graph, *_ = make(store, [create_call()], saver=saver)
         await run(graph, start(), cfg)
-    async with AsyncSqliteSaver.from_conn_string(path) as saver:
+    async with sqlite_checkpointer(settings) as saver:
         graph, *_ = make(store, [AIMessage(content="Done.")], saver=saver)
         state = await graph.aget_state(cfg)
         assert state.interrupts
@@ -1065,7 +1064,7 @@ async def test_tool_drafts_facts_through_role_proxy_in_real_tool_node(store):
         {"action": "create", "title": "Ostra", "type": "place", "body": "A deep port."},
     )]))
     roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])), "extractor": extractor, "guard": safe_guard(), "router": scripted_router()}
-    graph = build_graph(store=store, model_for=roles.__getitem__, checkpointer=InMemorySaver())
+    graph = build_graph(store=store, model_for=roles.__getitem__, checkpointer=memory_checkpointer())
     cfg = run_config("t1", W)
     await run(graph, start(), cfg)
     assert extractor.calls == 1
@@ -1083,7 +1082,7 @@ async def test_model_for_is_resolved_on_each_turn(store):
         "guard": safe_guard(),
         "router": scripted_router(),
     }
-    graph = build_graph(store=store, model_for=lambda r: roles[r], checkpointer=InMemorySaver())
+    graph = build_graph(store=store, model_for=lambda r: roles[r], checkpointer=memory_checkpointer())
     cfg = run_config("t1", W)
     await run(graph, start("hi"), cfg)
     roles["agent"] = second
@@ -1202,7 +1201,7 @@ async def test_tool_args_validated_before_tool_runs(store):
     agent = ScriptedChat(script=iter([tc("create_or_update_entry", {"type": "spaceship"})]))
     extractor = StubLLM(FactList(facts=[Fact(key="k", value="v")]))
     roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])), "extractor": extractor, "guard": safe_guard(), "router": scripted_router()}
-    graph = build_graph(store=store, model_for=roles.__getitem__, checkpointer=InMemorySaver())
+    graph = build_graph(store=store, model_for=roles.__getitem__, checkpointer=memory_checkpointer())
     cfg = run_config("t1", W)
     await run(graph, start(), cfg)
     values = (await graph.aget_state(cfg)).values
@@ -1543,7 +1542,7 @@ async def test_prompt_record_lists_only_enabled_tools_after_a_toggle(store, tmp_
     roles = {"agent": agent, "judge": StubLLM(JudgeOutput(flags=[])),
              "extractor": StubLLM(FactList(facts=[])), "guard": safe_guard(), "router": scripted_router()}
     graph = build_graph(
-        store=store, model_for=roles.__getitem__, checkpointer=InMemorySaver(),
+        store=store, model_for=roles.__getitem__, checkpointer=memory_checkpointer(),
         dev=lambda: current, wiki=fake_wiki(tmp_path),
     )
     log = PromptLog(tmp_path / "prompts.sqlite")
