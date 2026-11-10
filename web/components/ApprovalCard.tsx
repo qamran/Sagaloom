@@ -13,14 +13,12 @@ import {
   BADGE_CLASS,
   BADGE_LABEL,
   badgeOf,
+  CHECK_FAILED_TEXT,
   entryIndex,
   isSecretFact,
   judgeSecrets,
 } from "@/lib/review";
 import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Proposal, Status } from "@/lib/types";
-
-export const CHECK_FAILED_TEXT =
-  "The contradiction check couldn't run. Review this change yourself before approving.";
 
 const TEXTAREA =
   "w-full rounded-lg border border-border bg-background px-3 py-2 font-heading text-[15px] text-foreground";

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
+import { norm } from "@/lib/text";
 import type { CheckResult, Entry, Fact, Flag, Proposal } from "@/lib/types";
 
 const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fact => ({
@@ -117,6 +118,28 @@ describe("buildFactRows", () => {
   it("gives a delete no rows", () => {
     const del: Proposal = { ...update([]), action: "delete", after: null };
     expect(buildFactRows(del, check([]))).toEqual([]);
+  });
+});
+
+describe("buildFactRows grouping", () => {
+  const founded = (n: string) =>
+    flag({ kind: "note", severity: "note", fact_key: "Founded", explanation: n, entry_id: `ent_${n}` });
+
+  it("groups unmatched flags by key", () => {
+    const flags = [founded("a"), flag({ ...founded("b"), fact_key: "founded" })];
+    const rows = buildFactRows(update(fiveSeats), check(flags));
+    const extra = rows.filter((r) => norm(r.key) === "founded");
+    expect(extra).toHaveLength(1);
+    expect(extra[0].flags).toEqual(flags);
+    expect(extra[0].result).toBe("Note");
+  });
+
+  it("groups unmatched flags by key on a create too", () => {
+    const create: Proposal = { ...update(fiveSeats), action: "create", entry_id: null, before: null };
+    const flags = [founded("a"), founded("b")];
+    const rows = buildFactRows(create, check(flags));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].flags).toEqual(flags);
   });
 });
 

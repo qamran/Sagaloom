@@ -42,6 +42,8 @@ export interface AgentStream {
   importNote: ImportNote | null;
   /** Decisions picked so far for the pending card(s), keyed by proposal_id. */
   chosen: Record<string, Decision>;
+  /** The set just sent for decision, with its choices, kept (while `pending` is null) until the next interrupt. */
+  sent: { pending: PendingInterrupt; chosen: Record<string, Decision> } | null;
   turnEvents: TurnEvents[];
   send: (content: string) => Promise<void>;
   /** Sends decisions now. They must name exactly the pending proposal ids. */
@@ -123,6 +125,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
   const [threadKind, setThreadKind] = useState<"chat" | "import">("chat");
   const [threadTitle, setThreadTitle] = useState<string | null>(null);
   const [chosen, setChosenState] = useState<Record<string, Decision>>({});
+  const [sent, setSent] = useState<AgentStream["sent"]>(null);
   const [turnEvents, setTurnEvents] = useState<TurnEvents[]>([]);
 
   // Mirrors of state that callbacks read synchronously.
@@ -136,6 +139,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
   const setPending = useCallback((p: PendingInterrupt | null) => {
     pendingRef.current = p;
     setPendingState(p);
+    if (p) setSent(null);
     // A new interrupt (also after an edit re-check, same proposal ids) starts a fresh choice.
     chosenRef.current = {};
     setChosenState({});
@@ -362,6 +366,9 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
       const ordered = asked.map((id) => decisions.find((d) => d.proposal_id === id) as Decision);
       await run("decisions", { decisions: ordered }, "decision", () => {
         if (ordered.some((d) => d.action === "save_as_myth")) markTour("myth");
+        if (pendingRef.current) {
+          setSent({ pending: pendingRef.current, chosen: Object.fromEntries(ordered.map((d) => [d.proposal_id, d])) });
+        }
         setPending(null);
       });
     },
@@ -405,6 +412,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
     error,
     loaded,
     chosen,
+    sent,
     turnEvents,
     send,
     decide,

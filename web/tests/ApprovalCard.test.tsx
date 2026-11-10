@@ -1,7 +1,8 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ApprovalCard, CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
+import { ApprovalCard } from "@/components/ApprovalCard";
+import { CHECK_FAILED_TEXT } from "@/lib/review";
 import { ReviewQueue } from "@/components/ReviewQueue";
 import { SecretsWorldProvider, SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { CheckResult, Entry, Fact, Flag, Proposal } from "@/lib/types";

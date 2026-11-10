@@ -40,7 +40,7 @@ const two = pendingOf(
 
 const base = (over: Partial<AgentStream> = {}): AgentStream => ({
   messages: [], streaming: false, pending: null, usage: null, status: "idle", error: null, loaded: true,
-  worldId: "w1", kind: "chat", title: null, importNote: null, chosen: {}, turnEvents: [],
+  worldId: "w1", kind: "chat", title: null, importNote: null, chosen: {}, sent: null, turnEvents: [],
   send: vi.fn(), decide: vi.fn(async () => undefined), choose: vi.fn(async () => undefined),
   chooseMany: vi.fn(async () => undefined), unchoose: vi.fn(), ...over,
 });
@@ -140,7 +140,7 @@ describe("ReviewDetail", () => {
 
   it("keeps the cards, disabled, while the hook has cleared pending to send", () => {
     const { rerender } = render(ui());
-    stream = base({ pending: null, streaming: true, status: "streaming" });
+    stream = base({ pending: null, sent: { pending: two, chosen: {} }, streaming: true, status: "streaming" });
     rerender(ui());
     expect(screen.getByText("Sending your decisions…")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Review proposal: Tide Council" })).toBeInTheDocument();

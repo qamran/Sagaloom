@@ -1,4 +1,4 @@
-import { norm } from "@/lib/review";
+import { norm } from "@/lib/text";
 import type { CheckResult, Entry, EntryDraft, Fact, Flag, Proposal } from "@/lib/types";
 
 /**
@@ -47,16 +47,19 @@ export function buildFactRows(p: Proposal, c: CheckResult): FactRow[] {
   const after = p.after;
   const under = (facts: Fact[], key: string) => facts.filter((f) => norm(f.key) === key);
 
+  // Keyed flags by normalised key, in first-seen order: one row per key however many flags name it.
+  const flagged = new Map<string, { key: string; flags: Flag[] }>();
+  for (const flag of keyed) {
+    const k = norm(flag.fact_key);
+    const group = flagged.get(k);
+    if (group) group.flags.push(flag);
+    else flagged.set(k, { key: flag.fact_key, flags: [flag] });
+  }
+
   if (p.action === "create" || !p.before) {
-    return keyed.map((flag) => {
-      const proposed = under(after.facts, norm(flag.fact_key));
-      return {
-        key: flag.fact_key,
-        canon: [],
-        proposed,
-        result: resultOf([], proposed, [flag]),
-        flags: [flag],
-      };
+    return [...flagged].map(([k, { key, flags }]) => {
+      const proposed = under(after.facts, k);
+      return { key, canon: [], proposed, result: resultOf([], proposed, flags), flags };
     });
   }
 
@@ -66,12 +69,11 @@ export function buildFactRows(p: Proposal, c: CheckResult): FactRow[] {
   const rows: FactRow[] = [...keys].map(([k, key]) => {
     const canon = under(before.facts, k);
     const proposed = under(after.facts, k);
-    const flags = keyed.filter((f) => norm(f.fact_key) === k);
+    const flags = flagged.get(k)?.flags ?? [];
     return { key, canon, proposed, result: resultOf(canon, proposed, flags), flags };
   });
-  for (const flag of keyed) {
-    if (keys.has(norm(flag.fact_key))) continue;
-    rows.push({ key: flag.fact_key, canon: [], proposed: [], result: resultOf([], [], [flag]), flags: [flag] });
+  for (const [k, { key, flags }] of flagged) {
+    if (!keys.has(k)) rows.push({ key, canon: [], proposed: [], result: resultOf([], [], flags), flags });
   }
   return rows;
 }

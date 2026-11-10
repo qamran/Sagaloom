@@ -40,6 +40,20 @@ describe("ReviewQueue", () => {
     expect(screen.getByText("Moons: one → three")).toBeInTheDocument();
   });
 
+  it("a keyless hard conflict shows its explanation", () => {
+    const keyless: Flag = { ...flag, fact_key: null, existing_secret: false, explanation: "Two founders claimed." };
+    const only: PendingInterrupt = {
+      proposals: [proposal("p_a", "Sky of Velmar", "canon")],
+      checks: { p_a: check("p_a", [keyless]) },
+    };
+    render(
+      <SecretsWorldProvider worldId="w1">
+        <ReviewQueue pending={only} canon={[ister]} selectedId="p_a" chosen={{}} onSelect={vi.fn()} />
+      </SecretsWorldProvider>,
+    );
+    expect(screen.getByText("Two founders claimed.")).toBeInTheDocument();
+  });
+
   it("queue title follows the world toggle", () => {
     const { unmount } = render(ui());
     expect(screen.queryByText("The Choir Ledger")).toBeNull();

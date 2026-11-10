@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getThread } from "@/lib/api";
 import { TOUR_KEYS } from "@/lib/tour";
-import type { CheckResult, PendingInterrupt, Proposal, ThreadState } from "@/lib/types";
+import type { CheckResult, Decision, PendingInterrupt, Proposal, ThreadState } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
 
 vi.mock("@/lib/api", () => ({ getThread: vi.fn() }));
@@ -496,6 +496,28 @@ describe("useAgentStream", () => {
     expect(result.current.pending).toBeNull();
     expect(result.current.messages.at(-1)?.role).toBe("review");
     expect(localStorage.getItem(TOUR_KEYS.myth)).toBe("1");
+  });
+
+  it("keeps the sent set until the next interrupt", async () => {
+    const asked = pendingOf("p_1");
+    getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: asked }));
+    getThreadMock.mockResolvedValue(thread());
+    fetchMock.mockResolvedValue(streamResponse([sse("done", {})]));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.pending).not.toBeNull());
+    expect(result.current.sent).toBeNull();
+    const approve: Decision = { proposal_id: "p_1", action: "approve" };
+    await act(async () => {
+      await result.current.decide([approve]);
+    });
+    expect(result.current.pending).toBeNull();
+    expect(result.current.sent).toEqual({ pending: asked, chosen: { p_1: approve } });
+    fetchMock.mockResolvedValue(streamResponse([sse("interrupt", pendingOf("p_2")), sse("done", {})]));
+    await act(async () => {
+      await result.current.send("Another change");
+    });
+    expect(result.current.pending?.proposals[0].proposal_id).toBe("p_2");
+    expect(result.current.sent).toBeNull();
   });
 
   it("shows field names for a 422 list detail", async () => {

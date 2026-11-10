@@ -1,6 +1,5 @@
-import { CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
 import { TYPE_DOT } from "@/lib/entity";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, judgeSecrets, proposalSummary } from "@/lib/review";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, CHECK_FAILED_TEXT, judgeSecrets, proposalSummary } from "@/lib/review";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Decision, Entry, PendingInterrupt, Proposal } from "@/lib/types";
 

@@ -1,3 +1,4 @@
+import { norm } from "@/lib/text";
 import type { Badge, CheckResult, Entry, EntryDraft, Flag, PendingInterrupt, Proposal } from "@/lib/types";
 
 /** TanStack Query key for a world's pending review threads; invalidate `["review"]` for every world. */
@@ -53,9 +54,9 @@ export function checkSummary(p: PendingInterrupt): { text: string; warn: boolean
   return { text: parts.length ? parts.join(", ") : "no conflicts found", warn };
 }
 
-/** Keys and values compare like api/sagaloom/store/canon.py `norm`. */
-export const norm = (s: string) =>
-  s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+/** Shown for a proposal whose contradiction check did not run. */
+export const CHECK_FAILED_TEXT =
+  "The contradiction check couldn't run. Review this change yourself before approving.";
 
 /** True when `value` under `key` is (or most likely is) a secret fact of `entry`. */
 export function isSecretFact(

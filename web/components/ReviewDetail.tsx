@@ -10,7 +10,7 @@ import { getEntries } from "@/lib/api";
 import { SecretsWorldProvider } from "@/lib/secrets";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
-import type { CheckResult, Decision, ImportNote, PendingInterrupt } from "@/lib/types";
+import type { CheckResult, ImportNote, PendingInterrupt } from "@/lib/types";
 
 const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
@@ -39,10 +39,13 @@ function NotImported({ note }: { note: ImportNote | null }) {
   );
 }
 
-/** A pending set the author has not decided yet, with the choices made so far. */
-interface Held {
-  pending: PendingInterrupt;
-  chosen: Record<string, Decision>;
+function ErrorLine({ text }: { text?: string | null }) {
+  if (!text) return null;
+  return (
+    <p role="alert" className="m-0 text-sm text-conflict">
+      {text}
+    </p>
+  );
 }
 
 /** One thread's pending proposals as a queue and the selected card, with one submit (spec §3.8). */
@@ -52,14 +55,10 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   // How many review notes the thread had when the author submitted; later ones are this turn's.
   const [notesBefore, setNotesBefore] = useState<number | null>(null);
-  // The hook clears `pending` the moment decisions are sent: keep showing the cards, disabled.
-  const [held, setHeld] = useState<Held | null>(null);
-  if (s.pending && (held?.pending !== s.pending || held.chosen !== s.chosen)) {
-    setHeld({ pending: s.pending, chosen: s.chosen });
-  }
 
   const busy = s.status === "streaming" || s.status === "reconnecting";
-  const live = s.pending ?? (busy ? held?.pending : null) ?? null;
+  // The hook clears `pending` the moment decisions are sent: keep showing the cards, disabled.
+  const live = s.pending ?? (busy ? s.sent?.pending : null) ?? null;
   // A proposal the server sent without a check counts as a failed one, so it still gets a row and a decision.
   const shown: PendingInterrupt | null = live && {
     ...live,
@@ -70,7 +69,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
       ]),
     ),
   };
-  const chosen = s.pending ? s.chosen : (held?.chosen ?? {});
+  const chosen = s.pending ? s.chosen : (s.sent?.chosen ?? {});
   const worldId = shown?.proposals[0]?.world_id ?? world?.id;
   const { data: canon } = useQuery({
     queryKey: ["entries", worldId],
@@ -108,11 +107,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
           {back}
           {isImport && !otherWorld && backToImport}
         </div>
-        {s.error && (
-          <p role="alert" className="m-0 text-sm text-conflict">
-            {s.error}
-          </p>
-        )}
+        <ErrorLine text={s.error} />
       </>,
     );
   }
@@ -132,11 +127,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
           </ul>
         )}
         {isImport && <NotImported note={s.importNote} />}
-        {s.error && (
-          <p role="alert" className="m-0 text-sm text-conflict">
-            {s.error}
-          </p>
-        )}
+        <ErrorLine text={s.error} />
         <div className="flex flex-wrap gap-2.5">
           {back}
           {isImport ? (
@@ -177,11 +168,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
           <p className="m-0 text-[13px] text-muted-foreground">
             {n} {n === 1 ? "proposal" : "proposals"} · nothing enters canon until you decide
           </p>
-          {shown.error && (
-            <p role="alert" className="m-0 text-sm text-conflict">
-              {shown.error}
-            </p>
-          )}
+          <ErrorLine text={shown.error} />
           <div className="flex flex-wrap gap-2">
             {clean.length > 0 && (
               <button
@@ -238,11 +225,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
               Sending your decisions…
             </p>
           )}
-          {s.error && (
-            <p role="alert" className="m-0 text-sm text-conflict">
-              {s.error}
-            </p>
-          )}
+          <ErrorLine text={s.error} />
           <div>
             <button type="button" disabled={!complete || busy} onClick={submit} className={BTN_PRIMARY}>
               Submit {n} {n === 1 ? "decision" : "decisions"}
