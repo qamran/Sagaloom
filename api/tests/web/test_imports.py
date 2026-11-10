@@ -7,7 +7,8 @@ from langchain_core.messages import AIMessage
 from sagaloom.importing.extract import NOT_LOCATED, Candidate, ExtractionOutput
 from sagaloom.models import Entry
 
-from fakes import W, create_call, names, parse_sse
+from fakes import StubLLM, W, create_call, names, parse_sse
+from wikifakes import FIXTURE_PAGES, LICENCE, WikiServer, wiki_client
 
 OSTRA = "Ostra is a port town with a deep harbour."
 EXTRACTION_FAILED = "The extraction could not run, so nothing was imported. Try again."
@@ -25,26 +26,6 @@ async def post_import(env, text: str, filename: str | None = "session-12-notes.m
     body = {"text": text} if filename is None else {"text": text, "filename": filename}
     r = await env.client.post(f"/api/worlds/{world_id}/imports", json=body)
     return r, parse_sse(r.text) if r.status_code == 200 else []
-
-
-class StubLLM:
-    """An extractor stub: `reply` is an ExtractionOutput to return, or an exception to raise. With
-    `include_raw=True` it answers as LangChain does: {"raw", "parsed", "parsing_error"}."""
-
-    def __init__(self, reply) -> None:
-        self.reply = reply
-        self.include_raw = False
-
-    def with_structured_output(self, schema, **kwargs):
-        self.include_raw = kwargs.get("include_raw", False)
-        return self
-
-    async def ainvoke(self, messages, config=None):
-        if isinstance(self.reply, Exception):
-            raise self.reply
-        if not self.include_raw:
-            return self.reply
-        return {"raw": AIMessage(content=self.reply.model_dump_json()), "parsed": self.reply, "parsing_error": None}
 
 
 def interrupt(events) -> dict:
@@ -149,7 +130,8 @@ async def test_import_note_is_in_thread_and_neutral(make_env):
     assert note["role"] == "import"
     assert note["content"] == "Imported text: 1 proposals for review, 1 not imported."
     assert note["import"]["source"] == "session-12-notes.md"
-    assert note["import"]["skipped"] == [{"title": "Ghost Isle", "reason": NOT_LOCATED}]
+    assert note["import"]["kind"] == "text"
+    assert note["import"]["skipped"] == [{"title": "Ghost Isle", "reason": NOT_LOCATED, "paste": False}]
     [pid] = note["import"]["first_lines"]
     assert note["import"]["first_lines"][pid] == OSTRA
     for leaked in ("Ostra", "Ghost Isle", "harbour"):
@@ -254,9 +236,10 @@ async def test_import_note_payload_is_exact(store):
     assert note.content == "Imported text: 2 proposals for review, 1 not imported."
     assert note.additional_kwargs == {
         "import": {
+            "kind": "text",
             "source": "notes.md",
             "first_lines": {ostra.proposal_id: OSTRA, market.proposal_id: gull},
-            "skipped": [{"title": "Ghost Isle", "reason": NOT_LOCATED}],
+            "skipped": [{"title": "Ghost Isle", "reason": NOT_LOCATED, "paste": False}],
         }
     }
 
@@ -319,3 +302,192 @@ async def test_import_writes_the_thread_summary(make_env):
     [t] = import_threads(env)
     assert t.summary is not None
     assert (t.summary.pending, t.summary.title) == (1, "session-12-notes.md")
+
+
+# ---------- fan-wiki import (M3 Wave 3) ----------
+
+EVENT_SET = {
+    "token", "tool_call", "tool_result", "node", "llm_request", "llm_response", "interrupt", "usage", "done", "error",
+}
+FIXTURE_URLS = [p["in"] for p in FIXTURE_PAGES]
+WIKI_LEADS = {
+    "Gandalf": "He is a wizard, one of the Istari order, and the leader of the Company of the Ring.",
+    "Rivendell": "It is an important location in The Hobbit and The Lord of the Rings, "
+    "being the place where the quest to destroy the One Ring begins.",
+    "The Shire": "The Shire is an inland area settled exclusively by hobbits, the Shire-folk, "
+    "largely sheltered from the goings-on in the rest of Middle-earth.",
+}
+
+
+def lead_of_page(messages) -> ExtractionOutput:
+    """The extractor's answer for one wiki page: its subject, quoting a lead sentence."""
+    body = messages[-1].content
+    start = body.index("Page title: ") + len("Page title: ")
+    title = body[start : body.index("\n", start)]
+    return found(Candidate(title=title, type="place", excerpt=WIKI_LEADS[title]))
+
+
+def wiki_env(make_env, tmp_path, aclose_later, server: WikiServer | None = None, seed: bool = True):
+    """An app whose wiki client reads a cache under `tmp_path` (seeded with the fixtures unless
+    `seed` is False) and sends any request to `server`."""
+    client, server = wiki_client(tmp_path / "wiki-cache", server, seed)
+    aclose_later(client)
+    return make_env(extraction=lead_of_page, wiki=client), server
+
+
+async def post_wiki(env, urls: list[str], world_id: str = W):
+    r = await env.client.post(f"/api/worlds/{world_id}/imports", json={"kind": "wiki", "urls": urls})
+    return r, parse_sse(r.text) if r.status_code == 200 else []
+
+
+async def test_wiki_import_streams_fetch_extract_check_and_returns_thread_id(make_env, tmp_path, aclose_later):
+    env, server = wiki_env(make_env, tmp_path, aclose_later)
+    r, events = await post_wiki(env, FIXTURE_URLS)
+    assert r.status_code == 200
+    assert server.requests == []  # the seeded cache served every page and the licence
+    n = names(events)
+    assert events[0] == ("node", {"name": "fetch", "phase": "start"})
+    assert events[1] == (
+        "tool_result", {"name": "fetch", "summary": "3 pages fetched, 0 not fetched", "pages": 3, "failed": 0}
+    )
+    assert events[2][0] == "node" and events[2][1]["name"] == "fetch" and events[2][1]["phase"] == "end"
+    assert events[3] == ("node", {"name": "extract", "phase": "start"})
+    assert n[4:10] == ["llm_request", "llm_response"] * 3
+    assert events[10] == (
+        "tool_result",
+        {"name": "extract", "summary": "3 candidates, 0 not imported", "candidates": 3, "skipped": 0},
+    )
+    assert events[11][1]["name"] == "extract" and events[11][1]["phase"] == "end"
+    assert events[12] == ("node", {"name": "check", "phase": "start"})
+    assert set(n[12 : n.index("interrupt")]) == {"node"}
+    assert n[-2:] == ["usage", "done"] and n.count("interrupt") == 1 and "error" not in n
+    proposals = interrupt(events)["proposals"]
+    assert [p["after"]["title"] for p in proposals] == [p["title"] for p in FIXTURE_PAGES]
+    assert all(p["after"]["trusted"] is False and p["after"]["source"] == "official" for p in proposals)
+    tid = events[-1][1]["thread_id"]
+    [t] = import_threads(env)
+    assert (t.thread_id, t.kind, t.title) == (tid, "import", "Fan wiki: en.wikipedia.org (3 pages)")
+    assert tid not in env.deps.locks
+
+
+async def test_wiki_import_uses_only_the_existing_event_set(make_env, tmp_path, aclose_later):
+    env, _ = wiki_env(make_env, tmp_path, aclose_later)
+    _, ok = await post_wiki(env, FIXTURE_URLS)
+    env.deps.wiki, _ = wiki_client(tmp_path / "b", WikiServer(licence=403), seed=False)
+    aclose_later(env.deps.wiki)
+    _, licence_failure = await post_wiki(env, FIXTURE_URLS)
+    env.deps.wiki, _ = wiki_client(tmp_path / "c", WikiServer({"Nowhere": 404}))
+    aclose_later(env.deps.wiki)
+    _, zero_pages = await post_wiki(env, ["https://en.wikipedia.org/wiki/Nowhere"])
+    assert "interrupt" in names(ok) and "error" in names(licence_failure) and "done" in names(zero_pages)
+    for stream in (ok, licence_failure, zero_pages):
+        assert set(names(stream)) <= EVENT_SET
+
+
+async def test_wiki_import_rejects_bad_urls_without_creating_a_thread(make_env, tmp_path, aclose_later):
+    env, server = wiki_env(make_env, tmp_path, aclose_later)
+    eleven = [f"https://en.wikipedia.org/wiki/Page_{i}" for i in range(11)]
+    mixed = ["https://en.wikipedia.org/wiki/Gandalf", "https://lotr.fandom.com/wiki/Gandalf"]
+    category = "https://en.wikipedia.org/wiki/Category:Middle-earth"
+    elsewhere = "https://example.com/wiki/Gandalf"
+    for urls, detail in [
+        (eleven, "Paste 1 to 10 page URLs, one per line."),
+        ([], "Paste 1 to 10 page URLs, one per line."),
+        (mixed, "All URLs in one import must come from the same wiki."),
+        ([category], f"Only article pages can be imported, not category, file or special pages: {category}"),
+        ([elsewhere], f"Only Wikipedia and Fandom pages can be imported: {elsewhere}"),
+    ]:
+        r, _ = await post_wiki(env, urls)
+        assert r.status_code == 422 and r.json() == {"detail": detail}, urls
+    r, _ = await post_wiki(env, ["https://en.wikipedia.org/wiki/" + "x" * 2000])
+    assert r.status_code == 422  # one URL over 2,000 characters
+    assert env.deps.threads.list() == [] and server.requests == []
+
+
+async def test_wiki_import_unknown_world_or_no_client(make_env, tmp_path, aclose_later):
+    env, _ = wiki_env(make_env, tmp_path, aclose_later)
+    r, _ = await post_wiki(env, FIXTURE_URLS, world_id="nope")
+    assert r.status_code == 404
+    env.deps.wiki = None
+    r, _ = await post_wiki(env, FIXTURE_URLS)
+    assert r.status_code == 503
+    assert env.deps.threads.list() == []
+
+
+async def test_wiki_import_licence_failure_is_error_and_removes_thread(make_env, tmp_path, aclose_later):
+    env, server = wiki_env(make_env, tmp_path, aclose_later, WikiServer(licence=403), seed=False)
+    r, events = await post_wiki(env, FIXTURE_URLS)
+    assert r.status_code == 200
+    assert names(events) == ["node", "node", "usage", "error"]
+    assert [d["phase"] for e, d in events if e == "node"] == ["start", "end"]
+    assert events[-1] == (
+        "error",
+        {
+            "message": "Couldn't read the licence of en.wikipedia.org, so nothing was imported. "
+            "A licence is never assumed: try again later, or paste the text instead.",
+            "retryable": True,
+        },
+    )
+    assert server.parse_requests() == []
+    assert env.deps.threads.list() == []
+    assert env.deps.store.list_entries(W) == []
+
+
+async def test_wiki_import_with_no_fetched_pages_finishes_with_note(make_env, tmp_path, aclose_later):
+    env, _ = wiki_env(make_env, tmp_path, aclose_later, WikiServer({"Nowhere": 404, "Elsewhere": 429}))
+    urls = ["https://en.wikipedia.org/wiki/Nowhere", "https://en.wikipedia.org/wiki/Elsewhere"]
+    _, events = await post_wiki(env, urls)
+    n = names(events)
+    assert "interrupt" not in n and "llm_request" not in n and n[-2:] == ["usage", "done"]
+    assert [d["name"] for e, d in events if e == "node"][:2] == ["fetch", "fetch"]
+    assert "extract" not in [d.get("name") for _, d in events]
+    tid = events[-1][1]["thread_id"]
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    [note] = body["messages"]
+    assert note["content"] == "Imported wiki pages: 0 proposals for review, 2 not imported."
+    assert note["import"]["skipped"] == [
+        {"title": "Nowhere", "reason": "the page does not exist", "paste": True},
+        {"title": "Elsewhere", "reason": "the wiki asked us to slow down (HTTP 429)", "paste": True},
+    ]
+    assert body["pending_interrupt"] is None
+
+
+async def test_wiki_note_is_neutral(make_env, tmp_path, aclose_later):
+    env, _ = wiki_env(make_env, tmp_path, aclose_later)
+    _, events = await post_wiki(env, FIXTURE_URLS)
+    tid = events[-1][1]["thread_id"]
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    [note] = body["messages"]
+    assert note["role"] == "import"
+    assert note["content"] == "Imported wiki pages: 3 proposals for review, 0 not imported."
+    for page in FIXTURE_PAGES:
+        assert page["title"] not in note["content"]
+    for lead in WIKI_LEADS.values():
+        assert lead[:20] not in note["content"]
+    payload = note["import"]
+    assert (payload["kind"], payload["source"], payload["skipped"]) == ("wiki", "en.wikipedia.org", [])
+    assert payload["licence"] == {"text": LICENCE["text"], "url": LICENCE["url"], "nc": False}
+    pids = [p["proposal_id"] for p in body["pending_interrupt"]["proposals"]]
+    assert list(payload["first_lines"]) == pids
+
+
+async def test_text_import_body_still_accepted_without_kind(make_env):
+    env = make_env(extraction=found(cand("Ostra", OSTRA)))
+    r = await env.client.post(f"/api/worlds/{W}/imports", json={"text": OSTRA, "filename": "notes.md"})
+    assert r.status_code == 200 and names(parse_sse(r.text))[-1] == "done"
+    r = await env.client.post(f"/api/worlds/{W}/imports", json={"kind": "text", "text": OSTRA})
+    assert r.status_code == 200 and names(parse_sse(r.text))[-1] == "done"
+
+
+async def test_wiki_import_of_pages_without_text_finishes_with_note(make_env, tmp_path, aclose_later):
+    """Fetched pages that all have no article text run no extraction call, and still end with the
+    note, not the extraction-failed error."""
+    server = WikiServer({"Mercury": {"parse": {"title": "Mercury", "wikitext": "{{Disambiguation}}"}}})
+    env, _ = wiki_env(make_env, tmp_path, aclose_later, server)
+    _, events = await post_wiki(env, ["https://en.wikipedia.org/wiki/Mercury"])
+    n = names(events)
+    assert "error" not in n and "llm_request" not in n and n[-2:] == ["usage", "done"]
+    body = (await env.client.get(f"/api/threads/{events[-1][1]['thread_id']}")).json()
+    assert body["messages"][0]["import"]["skipped"] == [
+        {"title": "Mercury", "reason": "the page has no article text", "paste": False}
+    ]

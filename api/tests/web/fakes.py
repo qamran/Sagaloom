@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnableLambda
 from pydantic import Field
 
 from checkpointers import memory_checkpointer
+from stubs import StubLLM  # noqa: F401  (the one structured-output stub, as `fakes.StubLLM`)
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
@@ -99,15 +100,18 @@ class FakeJudge(BaseChatModel):
 
 class FakeExtractor(BaseChatModel):
     """A fact extractor that IS a chat model, so its call is captured like the judge's.
-    `extraction` answers the import extraction (an ExtractionOutput, or an exception to raise)."""
+    `extraction` answers the import extraction: an ExtractionOutput, an exception to raise, or a
+    callable of the prompt messages returning either."""
 
     extraction: Any = None
+    last_messages: Any = None
 
     @property
     def _llm_type(self) -> str:
         return "fake-extractor"
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.last_messages = list(messages)
         msg = AIMessage(
             content="{}",
             usage_metadata={"input_tokens": 30, "output_tokens": 5, "total_tokens": 35},
@@ -121,21 +125,11 @@ class FakeExtractor(BaseChatModel):
 
     def _extraction_reply(self, raw):
         """LangChain's `include_raw=True` shape: the generated message, then the parse."""
-        if isinstance(self.extraction, Exception):
-            raise self.extraction
-        parsed = self.extraction if self.extraction is not None else ExtractionOutput(candidates=[])
+        reply = self.extraction(self.last_messages) if callable(self.extraction) else self.extraction
+        if isinstance(reply, Exception):
+            raise reply
+        parsed = reply if reply is not None else ExtractionOutput(candidates=[])
         return {"raw": raw, "parsed": parsed, "parsing_error": None}
-
-
-class StubLLM:
-    def __init__(self, reply):
-        self.reply = reply
-
-    def with_structured_output(self, schema, **kwargs):
-        return self
-
-    async def ainvoke(self, messages, config=None):
-        return self.reply
 
 
 def tc(name: str, args: dict, content: str = "", call_id: str | None = None) -> AIMessage:
@@ -204,7 +198,7 @@ class Env:
 def make_env(store, tmp_path, aclose_later):
     def build(
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
-        guard=None, router=None, extraction=None,
+        guard=None, router=None, extraction=None, wiki=None,
     ) -> Env:
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
@@ -242,6 +236,7 @@ def make_env(store, tmp_path, aclose_later):
             memory=memory,
             memory_locks=memory_locks,
             model_for=lambda role: roles[role],
+            wiki=wiki,
         )
         app = create_app(settings, deps)
         client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)

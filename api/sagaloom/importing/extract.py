@@ -81,6 +81,7 @@ class ExtractionOutput(BaseModel):
 class Skipped(BaseModel):
     title: str
     reason: str
+    paste: bool = False  # Review offers "Paste the text instead" (a wiki page that wasn't fetched)
 
 
 class ImportPlan(BaseModel):
@@ -89,6 +90,7 @@ class ImportPlan(BaseModel):
     first_lines: dict[str, str]
     failed_parts: int
     parts: int
+    licence: dict | None = None  # a wiki import's {"text", "url", "nc"}, as the wiki reported it
 
 
 # ---------- text helpers ----------
@@ -225,14 +227,18 @@ def _one_by_one(items: list) -> tuple[list[Candidate], list[Skipped]]:
 
 
 async def _extract(
-    llm: "ChatModelLike", chunk: str, label: str, config: RunnableConfig | None
+    llm: "ChatModelLike",
+    chunk: str,
+    label: str,
+    config: RunnableConfig | None,
+    system: str = EXTRACT_SYSTEM,
 ) -> tuple[list[Candidate], list[Skipped]] | None:
     """(candidates, invalid ones skipped), or None after MAX_ATTEMPTS failed attempts. A valid
     parse gives every candidate; a failed parse whose raw reply still holds a `candidates` list is
     validated item by item; anything else, including an exception from the call, is a failed
     attempt. No tools (R13.6)."""
     messages = [
-        SystemMessage(content=EXTRACT_SYSTEM),
+        SystemMessage(content=system),
         HumanMessage(content=wrap_untrusted(chunk, f"import:{label}")),
     ]
     structured = llm.with_structured_output(ExtractionOutput, include_raw=True)

@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import ValidationError
 
 from checkpointers import memory_checkpointer
+from stubs import StubLLM
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.check.retcon import detect_retcons
 from sagaloom.graph.build import build_graph, run_config
@@ -34,47 +35,6 @@ from sagaloom.models import Entry, Fact
 W = "w1"
 TODAY = date(2026, 11, 6)
 LABEL = "session-12-notes.md"
-
-
-class StubLLM:
-    """Structured-output stub: `reply` is a value, an exception, or a callable of the chunk
-    index (1-based) and attempt, returning either."""
-
-    def __init__(self, reply):
-        self.reply = reply
-        self.schemas: list = []
-        self.prompts: list = []
-        self.configs: list = []
-        self.kwargs: list = []
-
-    def bind_tools(self, *a, **kw):
-        raise AssertionError("bind_tools must never be called on the extractor")
-
-    def with_structured_output(self, schema, **kwargs):
-        self.schemas.append(schema)
-        self.kwargs.append(kwargs)
-        return self
-
-    async def ainvoke(self, messages, config=None):
-        self.prompts.append(messages)
-        self.configs.append(config)
-        reply = self.reply(messages) if callable(self.reply) else self.reply
-        if isinstance(reply, Exception):
-            raise reply
-        if not self.kwargs[-1].get("include_raw") or (isinstance(reply, dict) and "raw" in reply):
-            return reply
-        return as_raw(reply)
-
-
-def as_raw(reply) -> dict:
-    """`reply` as LangChain's `include_raw=True` answer: the raw message, then the parse."""
-    if isinstance(reply, ExtractionOutput):
-        return {"raw": AIMessage(content=reply.model_dump_json()), "parsed": reply, "parsing_error": None}
-    try:
-        return {"raw": AIMessage(content=json.dumps(reply)), "parsed": ExtractionOutput.model_validate(reply),
-                "parsing_error": None}
-    except ValidationError as exc:
-        return {"raw": AIMessage(content=json.dumps(reply)), "parsed": None, "parsing_error": exc}
 
 
 def cand(title, excerpt, type="place", facts=(), aliases=()) -> Candidate:

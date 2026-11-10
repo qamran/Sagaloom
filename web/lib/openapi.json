@@ -697,34 +697,6 @@
         "title": "ModelChoice",
         "type": "object"
       },
-      "NewImport": {
-        "properties": {
-          "filename": {
-            "anyOf": [
-              {
-                "maxLength": 120,
-                "pattern": "(?i)^[^/\\\\\\p{Cc}\\p{Zl}\\p{Zp}]+\\.(md|txt)$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filename"
-          },
-          "text": {
-            "maxLength": 100000,
-            "minLength": 1,
-            "title": "Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ],
-        "title": "NewImport",
-        "type": "object"
-      },
       "NewMessage": {
         "properties": {
           "content": {
@@ -840,6 +812,40 @@
         "title": "PromptRecord",
         "type": "object"
       },
+      "TextImport": {
+        "properties": {
+          "filename": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "pattern": "(?i)^[^/\\\\\\p{Cc}\\p{Zl}\\p{Zp}]+\\.(md|txt)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "kind": {
+            "const": "text",
+            "default": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextImport",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -878,6 +884,29 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WikiImport": {
+        "properties": {
+          "kind": {
+            "const": "wiki",
+            "title": "Kind",
+            "type": "string"
+          },
+          "urls": {
+            "items": {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            "title": "Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "urls"
+        ],
+        "title": "WikiImport",
         "type": "object"
       },
       "World": {
@@ -2133,7 +2162,7 @@
     },
     "/api/worlds/{world_id}/imports": {
       "post": {
-        "description": "A new `import` thread: extraction, then the graph run from `check` (spec \u00a73.1).",
+        "description": "A new `import` thread: extraction, then the graph run from `check` (spec \u00a73.1). A wiki\nimport fetches its pages first (M3 design \u00a75).",
         "operationId": "post_import_api_worlds__world_id__imports_post",
         "parameters": [
           {
@@ -2166,7 +2195,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewImport"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WikiImport"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TextImport"
+                  }
+                ],
+                "title": "Body"
               }
             }
           },

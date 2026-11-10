@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -26,7 +26,7 @@ from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
 from sagaloom.text import first_line, message_text
 from sagaloom.tools.specs import TOOL_SPECS
-from sagaloom.web.imports import import_events
+from sagaloom.web.imports import import_events, wiki_import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
 from sagaloom.web.thread_list import (
     list_rows,
@@ -35,6 +35,7 @@ from sagaloom.web.thread_list import (
     thread_title,
     with_summary,
 )
+from sagaloom.wiki.pages import BadWikiUrl, parse_page_urls
 
 router = APIRouter()
 
@@ -55,13 +56,24 @@ class DecisionBody(BaseModel):
     decisions: list[Decision]
 
 
-class NewImport(BaseModel):
+class TextImport(BaseModel):
+    kind: Literal["text"] = "text"
     text: str = Field(min_length=1, max_length=MAX_CHARS)
     # The name part refuses path separators and every control, line and paragraph separator
     # (Cc, Zl, Zp: the classes `memory._one_line` refuses), so the label stays one line.
     filename: str | None = Field(
         default=None, max_length=120, pattern=r"(?i)^[^/\\\p{Cc}\p{Zl}\p{Zp}]+\.(md|txt)$"
     )
+
+
+class WikiImport(BaseModel):
+    kind: Literal["wiki"]
+    # 1 to 10 page URLs: `parse_page_urls` checks the count, so a wrong count gets its copy
+    # (R-W3-8) rather than a schema error; the request body cap bounds the list.
+    urls: list[Annotated[str, Field(max_length=2000)]]
+
+
+NewImport = WikiImport | TextImport
 
 
 def _deps(request: Request):
@@ -263,26 +275,24 @@ PASTE_TITLE_CHARS = 60
 
 @router.post("/worlds/{world_id}/imports")
 async def post_import(world_id: str, body: NewImport, request: Request):
-    """A new `import` thread: extraction, then the graph run from `check` (spec §3.1)."""
+    """A new `import` thread: extraction, then the graph run from `check` (spec §3.1). A wiki
+    import fetches its pages first (M3 design §5)."""
     d = _deps(request)
     if d.worlds.get(world_id) is None:
         raise HTTPException(status_code=404, detail="world not found")
+    if isinstance(body, WikiImport):
+        return await _post_wiki_import(world_id, body, request)
     if not body.text.strip():
         raise HTTPException(status_code=422, detail=BLANK_IMPORT)
     if d.model_for is None:
         raise HTTPException(status_code=503, detail="import is not available")
     label = body.filename or "paste"
     title = body.filename or "Pasted text: " + first_line(body.text)[:PASTE_TITLE_CHARS]
-    thread_id = d.threads.create(world_id, kind="import", title=title)
-    try:
-        release = await _take_turn(request, thread_id)
-    except BaseException:
-        d.threads.delete(thread_id)
-        raise
-    try:
-        thread = d.threads.get(thread_id)
-        queue, cfg, usage_fn = _turn(request, thread)
-        events = import_events(
+    return await _stream_import(
+        request,
+        world_id,
+        title,
+        lambda thread_id, cfg, queue, usage_fn: import_events(
             d.graph,
             d.store,
             RoleModel(d.model_for, "extractor"),
@@ -294,7 +304,52 @@ async def post_import(world_id: str, body: NewImport, request: Request):
             queue,
             usage_fn,
             d.threads,
-        )
+        ),
+    )
+
+
+async def _post_wiki_import(world_id: str, body: WikiImport, request: Request):
+    d = _deps(request)
+    try:
+        pages = parse_page_urls(body.urls)
+    except BadWikiUrl as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    if d.wiki is None or d.model_for is None:
+        raise HTTPException(status_code=503, detail="import is not available")
+    return await _stream_import(
+        request,
+        world_id,
+        f"Fan wiki: {pages[0].host} ({len(body.urls)} pages)",
+        lambda thread_id, cfg, queue, usage_fn: wiki_import_events(
+            d.graph,
+            d.store,
+            d.wiki,
+            RoleModel(d.model_for, "extractor"),
+            world_id,
+            thread_id,
+            pages,
+            cfg,
+            queue,
+            usage_fn,
+            d.threads,
+        ),
+    )
+
+
+async def _stream_import(request: Request, world_id: str, title: str, make_events: Callable[..., Any]):
+    """A new `import` thread under its turn lock, streaming `make_events(thread_id, cfg, queue,
+    usage_fn)` shielded; the row goes again when the stream can't start."""
+    d = _deps(request)
+    thread_id = d.threads.create(world_id, kind="import", title=title)
+    try:
+        release = await _take_turn(request, thread_id)
+    except BaseException:
+        d.threads.delete(thread_id)
+        raise
+    try:
+        thread = d.threads.get(thread_id)
+        queue, cfg, usage_fn = _turn(request, thread)
+        events = make_events(thread_id, cfg, queue, usage_fn)
         events = with_summary(events, lambda: refresh_summary(d, thread_id))
         return sse_response(shielded(events, on_finish=release, tasks=d.tasks))
     except BaseException:

@@ -319,7 +319,8 @@ export interface paths {
         put?: never;
         /**
          * Post Import
-         * @description A new `import` thread: extraction, then the graph run from `check` (spec §3.1).
+         * @description A new `import` thread: extraction, then the graph run from `check` (spec §3.1). A wiki
+         *     import fetches its pages first (M3 design §5).
          */
         post: operations["post_import_api_worlds__world_id__imports_post"];
         delete?: never;
@@ -603,13 +604,6 @@ export interface components {
             /** Role */
             role: string;
         };
-        /** NewImport */
-        NewImport: {
-            /** Filename */
-            filename?: string | null;
-            /** Text */
-            text: string;
-        };
         /** NewMessage */
         NewMessage: {
             /** Content */
@@ -654,6 +648,19 @@ export interface components {
             /** Thread Id */
             thread_id: string;
         };
+        /** TextImport */
+        TextImport: {
+            /** Filename */
+            filename?: string | null;
+            /**
+             * Kind
+             * @default text
+             * @constant
+             */
+            kind?: "text";
+            /** Text */
+            text: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -666,6 +673,16 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WikiImport */
+        WikiImport: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "wiki";
+            /** Urls */
+            urls: string[];
         };
         /** World */
         World: {
@@ -1423,7 +1440,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NewImport"];
+                "application/json": components["schemas"]["WikiImport"] | components["schemas"]["TextImport"];
             };
         };
         responses: {

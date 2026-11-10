@@ -45,6 +45,9 @@ _NAMESPACES = frozenset(
         "media",
     }
 )
+# Fandom's own non-article namespaces. A pasted link is refused only for `_NAMESPACES`; these are
+# checked too once MediaWiki has followed a redirect (`is_article_title`).
+_FANDOM_NAMESPACES = frozenset({"forum", "blog", "message wall"})
 _NOT_A_LANGUAGE = frozenset({"www", "m"})
 _TITLE_SAFE = "()!*',:;@$"
 
@@ -91,13 +94,19 @@ def _wiki_label(host: str, domain: str) -> str | None:
     return label if _LABEL.fullmatch(label) else None
 
 
-def _is_namespaced(title: str) -> bool:
+def _is_namespaced(title: str, namespaces: frozenset[str] = _NAMESPACES) -> bool:
     if ":" not in title:
         return False
     prefix = title.split(":", 1)[0].strip().lower()
     if prefix.endswith(" talk"):
         prefix = prefix[: -len(" talk")].strip()
-    return prefix in _NAMESPACES
+    return prefix in namespaces
+
+
+def is_article_title(title: str) -> bool:
+    """False for a title in a non-article namespace, Fandom's included: a redirect can land a
+    plain-looking link (`WP:NPOV`) on one (`Wikipedia:Neutral point of view`)."""
+    return not _is_namespaced(title, _NAMESPACES | _FANDOM_NAMESPACES)
 
 
 def _title_path(title: str) -> str:
