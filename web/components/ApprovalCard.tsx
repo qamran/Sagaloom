@@ -21,7 +21,7 @@ import {
   proseSecretOf,
   textSecretOf,
 } from "@/lib/review";
-import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Proposal, Status } from "@/lib/types";
+import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Flag, Proposal, Status } from "@/lib/types";
 
 export const CHECK_FAILED_TEXT =
   "The contradiction check couldn't run. Review this change yourself before approving.";
@@ -89,11 +89,24 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   const ownEntry = (id: string) => !!id && id === proposal.entry_id;
   // A flag citing this entry itself (a retcon) is hidden with the entry and has no Show of its own.
   const citeSecret = (id: string) => (ownEntry(id) ? entryHidden : unknown(id) || byId.get(id)?.status === "secret");
-  const existingSecret = existingSecretOf(proposal, canon);
+
+  // Everything of this entry's own is judged as if the entry were not secret: `entryHidden` covers
+  // that part (one mask, the header's one Show), and what is left is secret in its own right, each
+  // value behind its own Show. A flag citing this entry is judged by its facts too, since the
+  // server marks an own retcon `existing_secret` whenever the entry is secret (retcon.py).
+  const asOpen = <T extends { status: Status }>(e: T): T => (e.status === "secret" ? { ...e, status: "canon" } : e);
+  const plain: Proposal = entrySecret
+    ? { ...proposal, before: proposal.before && asOpen(proposal.before), after: proposal.after && asOpen(proposal.after) }
+    : proposal;
+  const plainCanon = entrySecret ? canon?.map((e) => (ownEntry(e.id) ? asOpen(e) : e)) : canon;
+  const openFlag = (f: Flag): Flag => (entrySecret && ownEntry(f.entry_id) ? { ...f, existing_secret: false } : f);
+  const existingPlain = existingSecretOf(plain, plainCanon);
+  const existingSecret = (f: Flag) => existingPlain(openFlag(f));
   // The existing side of a flag, and the judge's free text about it (explanation, suggested
   // fix), may restate a secret: the server marks such flags (existing_secret), and the client
   // heuristics in lib/review.ts still apply on top.
-  const textSecret = textSecretOf(proposal, canon);
+  const textPlain = textSecretOf(plain, plainCanon);
+  const textSecret = (f: Flag) => textPlain(openFlag(f));
 
   const badge = badgeOf(check);
   const failed = badge === "failed";
@@ -117,14 +130,18 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   const before = proposal.action === "update" ? proposal.before : null;
   const after = proposal.after;
   const prose = shown.filter((f) => !f.fact_key);
-  const proseSecret = proseSecretOf(proposal, canon);
-  const draftSecret = draftHoldsSecret(proposal);
-  const ownSecret = (e: { status: Status } | null, f: Fact) => f.status === "secret" || e?.status === "secret";
+  const prosePlain = proseSecretOf(plain, plainCanon);
+  const proseSecret = (f: Flag) => prosePlain(openFlag(f));
+  const draftSecret = draftHoldsSecret(plain);
+  // Prose about a flag can restate this entry's facts: hidden with the entry, no Show of its own.
+  // A quote from another entry is that entry's text and keeps its own rule.
+  const withEntry = (secret: boolean) => ({ secret: entryHidden || secret, revealable: !entryHidden });
   const secretOf: SecretOf = {
-    canon: (f) => ownSecret(before, f),
-    proposed: (f) => ownSecret(after, f),
+    entry: entryHidden,
+    canon: (f) => f.status === "secret",
+    proposed: (f) => f.status === "secret",
     existing: existingSecret,
-    incoming: (f) => isSecretFact(after, f.fact_key, f.new_fact),
+    incoming: (f) => isSecretFact(plain.after, f.fact_key, f.new_fact),
     text: textSecret,
     cite: citeSecret,
     ownEntry,
@@ -188,15 +205,8 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
 
         {before && after && (
           <>
-            <LineDiff
-              changes={lineDiff(before, after)}
-              secret={before.status === "secret" || after.status === "secret"}
-            />
-            <BodyDiff
-              before={before.body}
-              after={after.body}
-              secret={before.status === "secret" || after.status === "secret"}
-            />
+            <LineDiff changes={lineDiff(before, after)} secret={entryHidden} revealable={false} />
+            <BodyDiff before={before.body} after={after.body} secret={entryHidden} revealable={false} />
           </>
         )}
 
@@ -214,21 +224,24 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
                 secret={citeSecret(f.entry_id)}
                 revealable={!ownEntry(f.entry_id)}
               />
-              {f.explanation && <SecretValue value={f.explanation} secret={proseSecret(f)} />}
+              {f.explanation && <SecretValue value={f.explanation} {...withEntry(proseSecret(f))} />}
             </div>
             {f.existing_quote && (
               <blockquote className="m-0 border-l-2 border-border-strong pl-3 font-heading text-[15px]">
                 In canon: “
-                <SecretValue value={f.existing_quote} secret={textSecret(f)} />”
+                <SecretValue
+                  value={f.existing_quote}
+                  {...(ownEntry(f.entry_id) ? withEntry(textSecret(f)) : { secret: textSecret(f) })}
+                />”
               </blockquote>
             )}
             {f.new_quote && (
               <blockquote className="m-0 border-l-2 border-conflict/60 pl-3 font-heading text-[15px]">
                 Proposed: “
-                <SecretValue value={f.new_quote} secret={draftSecret} />”
+                <SecretValue value={f.new_quote} {...withEntry(draftSecret)} />”
               </blockquote>
             )}
-            {f.suggested_fix && <FlagFix fix={f.suggested_fix} secret={proseSecret(f)} />}
+            {f.suggested_fix && <FlagFix fix={f.suggested_fix} {...withEntry(proseSecret(f))} />}
           </div>
         ))}
 

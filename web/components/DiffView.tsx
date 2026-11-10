@@ -12,14 +12,17 @@ const display = (field: LineField, v: string) => (field === "type" ? (TYPE_LABEL
 
 /**
  * Changed one-line fields: old struck through, new highlighted. For a secret entry the title and
- * alias values (which name it) stay behind one Show, like BodyDiff.
+ * alias values (which name it) stay behind one Show, like BodyDiff. `revealable={false}` drops that
+ * Show, for a diff hidden with its entry and revealed by the card's one Show.
  */
 export function LineDiff({
   changes,
   secret = false,
+  revealable = true,
 }: {
   changes: { field: LineField; old: string; new: string }[];
   secret?: boolean;
+  revealable?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   const worldShown = useWorldShowSecrets();
@@ -51,7 +54,7 @@ export function LineDiff({
           </div>
         ))}
       </dl>
-      {changes.some((c) => hides(c.field)) && (
+      {revealable && changes.some((c) => hides(c.field)) && (
         <div>
           <button
             type="button"
@@ -67,8 +70,21 @@ export function LineDiff({
   );
 }
 
-/** Word diff of an entry body, open when it changed; a secret entry's diff stays behind one Show. */
-export function BodyDiff({ before, after, secret }: { before: string; after: string; secret: boolean }) {
+/**
+ * Word diff of an entry body, open when it changed; a secret entry's diff stays behind one Show.
+ * `revealable={false}` drops that Show, as for LineDiff.
+ */
+export function BodyDiff({
+  before,
+  after,
+  secret,
+  revealable = true,
+}: {
+  before: string;
+  after: string;
+  secret: boolean;
+  revealable?: boolean;
+}) {
   const [shown, setShown] = useState(false);
   const worldShown = useWorldShowSecrets();
   if (before === after) return null;
@@ -81,14 +97,16 @@ export function BodyDiff({ before, after, secret }: { before: string; after: str
             <span aria-hidden="true">••••••</span>
             <span className="sr-only">hidden secret</span>
           </span>
-          <button
-            type="button"
-            onClick={() => setShown(true)}
-            aria-label="Show secret body changes"
-            className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
-          >
-            Show
-          </button>
+          {revealable && (
+            <button
+              type="button"
+              onClick={() => setShown(true)}
+              aria-label="Show secret body changes"
+              className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
+            >
+              Show
+            </button>
+          )}
         </div>
       ) : (
         <p className="m-0 mt-2 whitespace-pre-line font-heading text-[15px] text-prose">

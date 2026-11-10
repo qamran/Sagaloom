@@ -119,16 +119,23 @@ export function SecretValue({
 export const KIND_LABEL: Record<Flag["kind"], string> = { conflict: "Conflict", retcon: "Retcon", note: "Note" };
 
 /** A flag's suggested fix: guidance only, never an action (R4.5). */
-export function FlagFix({ fix, secret }: { fix: string; secret: boolean }) {
+export function FlagFix({ fix, secret, revealable = true }: { fix: string; secret: boolean; revealable?: boolean }) {
   return (
     <div className="rounded-[10px] bg-panel-3 px-3.5 py-2">
-      <strong>Suggested fix:</strong> <SecretValue value={fix} secret={secret} />
+      <strong>Suggested fix:</strong> <SecretValue value={fix} secret={secret} revealable={revealable} />
     </div>
   );
 }
 
-/** Which values on the card stay hidden until Show (R12.12). */
+/**
+ * Which values on the card stay hidden until Show (R12.12). `entry` is the proposal's own entry
+ * hidden for its own sake: every value of this entry (its facts, keys, retcons and flag text) is
+ * then masked with no Show, and the card's one Show reveals them. The predicates below say what
+ * stays secret apart from that, each value behind its own Show.
+ */
 export interface SecretOf {
+  /** The proposal's own entry is hidden (secret, stored-aware, not yet revealed or shown). */
+  entry: boolean;
   /** A stored fact of this entry. */
   canon: (f: Fact) => boolean;
   /** A drafted fact. */
@@ -179,6 +186,8 @@ const DOT = (
 interface Item {
   value: string | null;
   secret: boolean;
+  /** False when the item is hidden with its entry: no Show of its own. */
+  revealable?: boolean;
   status?: Fact["status"];
   toldBy?: string | null;
   cite?: { id: string; title: string };
@@ -186,13 +195,21 @@ interface Item {
 
 const ofFact = (f: Fact, secret: boolean): Item => ({ value: f.value, secret, status: f.status, toldBy: f.told_by });
 
+/** An item of this entry's own: hidden with the entry (no Show), else by its own predicate. */
+const own = (entry: boolean, it: Item): Item => (entry ? { ...it, secret: true, revealable: false } : it);
+
 /** One item per (value, cited entry); an item is masked if any source of it is. */
 function unique(items: Item[]) {
   const out = new Map<string, Item>();
   for (const it of items) {
     const k = JSON.stringify([it.value, it.status ?? null, it.toldBy ?? null, it.cite?.id ?? null]);
     const seen = out.get(k);
-    out.set(k, seen ? { ...seen, secret: seen.secret || it.secret } : it);
+    out.set(
+      k,
+      seen
+        ? { ...seen, secret: seen.secret || it.secret, revealable: seen.revealable !== false && it.revealable !== false }
+        : it,
+    );
   }
   return [...out.values()];
 }
@@ -201,7 +218,7 @@ function Value({ item }: { item: Item }) {
   if (item.value === null) return null;
   const tag = item.status && item.status !== "canon" ? item.status : null;
   return (
-    <SecretValue value={item.value} secret={item.secret}>
+    <SecretValue value={item.value} secret={item.secret} revealable={item.revealable !== false}>
       {(tag || item.toldBy) && (
         <>
           {tag && <span className={`rounded-md border px-1.5 text-[11px] ${STATUS_TAG[tag]}`}>{tag}</span>}
@@ -277,13 +294,14 @@ export function FactTable({
           {rows.map((row, i) => {
             // A retcon's existing value is one of this entry's own facts (cited by none); every
             // other keyed flag comes from another entry, whose value sits next to its own Cite.
-            const own = row.flags.filter((f) => f.kind === "retcon");
+            const hid = secretOf.entry;
+            const retcons = row.flags.filter((f) => f.kind === "retcon");
             const others = row.flags.filter((f) => f.kind !== "retcon");
             const existing: Item[] = [
-              ...row.canon.map((f) => ofFact(f, secretOf.canon(f))),
-              ...(row.canon.length ? [] : own)
+              ...row.canon.map((f) => own(hid, ofFact(f, secretOf.canon(f)))),
+              ...(row.canon.length ? [] : retcons)
                 .filter((f) => f.existing_fact !== null)
-                .map((f) => ({ value: f.existing_fact, secret: secretOf.existing(f) })),
+                .map((f) => own(hid, { value: f.existing_fact, secret: secretOf.existing(f) })),
               ...others.map((f) => ({
                 value: f.existing_fact,
                 secret: secretOf.existing(f),
@@ -292,22 +310,22 @@ export function FactTable({
             ];
             const proposed: Item[] =
               row.proposed.length || row.canon.length
-                ? row.proposed.map((f) => ofFact(f, secretOf.proposed(f)))
+                ? row.proposed.map((f) => own(hid, ofFact(f, secretOf.proposed(f))))
                 : row.flags
                     .filter((f) => f.new_fact !== null)
-                    .map((f) => ({ value: f.new_fact, secret: secretOf.incoming(f) }));
+                    .map((f) => own(hid, { value: f.new_fact, secret: secretOf.incoming(f) }));
             const ownFacts = [...row.canon, ...row.proposed];
             const keySecret = ownFacts.length > 0 && ownFacts.every((f) => f.status === "secret");
             // Free text about a flag can restate either side (a retcon's explanation names the
             // added values), so it is masked when either side is.
             const draftSecret = row.proposed.some((f) => secretOf.proposed(f));
-            const textSecret = (f: Flag) => secretOf.text(f) || secretOf.incoming(f) || draftSecret;
+            const textSecret = (f: Flag) => hid || secretOf.text(f) || secretOf.incoming(f) || draftSecret;
             const cells = { typeOf, citeSecret: secretOf.cite, ownEntry: secretOf.ownEntry };
             return (
               <Fragment key={`${row.key}-${i}`}>
                 <tr className="border-t border-border">
                   <td className={`${CELL} break-words text-muted-foreground`}>
-                    <SecretValue value={row.key} secret={keySecret} />
+                    <SecretValue value={row.key} secret={hid || keySecret} revealable={!hid} />
                   </td>
                   <td className={CELL}>
                     <Values items={existing} empty="Not set" {...cells} />
@@ -340,11 +358,11 @@ export function FactTable({
                               {f.explanation && (
                                 <>
                                   {DOT}
-                                  <SecretValue value={f.explanation} secret={textSecret(f)} />
+                                  <SecretValue value={f.explanation} secret={textSecret(f)} revealable={!hid} />
                                 </>
                               )}
                             </div>
-                            {f.suggested_fix && <FlagFix fix={f.suggested_fix} secret={textSecret(f)} />}
+                            {f.suggested_fix && <FlagFix fix={f.suggested_fix} secret={textSecret(f)} revealable={!hid} />}
                           </li>
                         ))}
                       </ul>
