@@ -616,7 +616,7 @@ test("M1 exit demo", async ({ page }) => {
   await page.goto("/canon");
   await expect(worldPicker).toHaveValue("velmar");
   await expect(headerSecrets).toHaveAttribute("aria-pressed", "false");
-  await expect(entryLinks.filter({ hasText: "Sky of Velmar" })).toHaveCount(1);
+  await expect(page.locator('nav[aria-label="Entries"] a[href$="/canon/ent_0007"]')).toHaveCount(1);
   const velmarEntries = await entryLinks.count();
 
   await worldPicker.selectOption({ label: "+ New world" });
