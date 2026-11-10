@@ -71,4 +71,15 @@ describe("parseRouterMode", () => {
     expect(parseRouterMode(resp("", [{ id: "1", name: "X", args: "nope" }]))).toBeNull();
     expect(parseRouterMode(null)).toBeNull();
   });
+
+  it("parseRouterMode reads a plain object and rejects junk", () => {
+    expect(parseRouterMode({ content: JSON.stringify({ mode: "query" }) })).toBe("query");
+    expect(parseRouterMode({ id: "r1", content: "", tool_calls: [{ args: { mode: "edit" } }] })).toBe("edit");
+    expect(parseRouterMode(undefined)).toBeNull();
+    expect(parseRouterMode("brainstorm")).toBeNull();
+    expect(parseRouterMode(42)).toBeNull();
+    expect(parseRouterMode([])).toBeNull();
+    expect(parseRouterMode({ content: 7, tool_calls: "x" })).toBeNull();
+    expect(parseRouterMode({ tool_calls: [null, { args: { mode: "edit" } }] })).toBeNull();
+  });
 });

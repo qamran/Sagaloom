@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SHOW_SECRETS_KEY, useShowSecrets } from "@/lib/secrets";
+import { SHOW_SECRETS_KEY, listenedWorldCount, useShowSecrets } from "@/lib/secrets";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -59,5 +59,29 @@ describe("useShowSecrets with only setItem failing", () => {
     const { result } = renderHook(() => useShowSecrets("w8"));
     act(() => result.current[1](true));
     expect(result.current[0]).toBe(true);
+  });
+});
+
+describe("useShowSecrets fails closed", () => {
+  it("turning secrets off while storage fails reads off", () => {
+    const { result } = renderHook(() => useShowSecrets("w7"));
+    act(() => result.current[1](true));
+    expect(sessionStorage.getItem(SHOW_SECRETS_KEY("w7"))).toBe("true");
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    act(() => result.current[1](false));
+    expect(result.current[0]).toBe(false);
+  });
+
+  it("drops a world's listener set when the last subscriber leaves", () => {
+    const before = listenedWorldCount();
+    const a = renderHook(() => useShowSecrets("w-listen"));
+    const b = renderHook(() => useShowSecrets("w-listen"));
+    expect(listenedWorldCount()).toBe(before + 1);
+    a.unmount();
+    expect(listenedWorldCount()).toBe(before + 1);
+    b.unmount();
+    expect(listenedWorldCount()).toBe(before);
   });
 });

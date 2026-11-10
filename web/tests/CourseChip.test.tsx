@@ -58,6 +58,25 @@ describe("CourseChip", () => {
   });
 });
 
+describe("course notes storage", () => {
+  it("course notes follow the last write while storage fails", async () => {
+    render(page());
+    const toggle = screen.getByRole("button", { name: "Course notes" });
+    if (toggle.getAttribute("aria-pressed") === "true") await userEvent.click(toggle);
+    expect(localStorage.getItem("sagaloom.courseNotes")).toBe("false");
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: /Course note/ })).toBeInTheDocument();
+  });
+});
+
 describe("FeatureMap highlight", () => {
   it("marks the highlighted card", () => {
     const cards: FeatureCardData[] = ["memory", "agentic_rag"].map((id) => ({

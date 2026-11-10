@@ -17,26 +17,25 @@ export type FeatureCardId =
   | "injection_safe_extraction";
 
 const listeners = new Set<() => void>();
-// Fallback for when localStorage is unavailable: the toggle still works for this page load.
+// Kept only while the last write to localStorage failed, and wins over storage while kept, so a
+// failed toggle never reads back the stored value. A successful write clears it.
 let memory: boolean | null = null;
 
 function read(): boolean {
+  if (memory !== null) return memory;
   try {
-    const v = localStorage.getItem(COURSE_NOTES_KEY);
-    if (v === "true") return true;
-    if (v === "false") return false;
+    return localStorage.getItem(COURSE_NOTES_KEY) !== "false";
   } catch {
-    /* storage unavailable */
+    return true;
   }
-  return memory ?? true;
 }
 
 function write(on: boolean) {
-  memory = on;
   try {
     localStorage.setItem(COURSE_NOTES_KEY, String(on));
+    memory = null;
   } catch {
-    /* storage unavailable */
+    memory = on;
   }
   listeners.forEach((l) => l());
 }

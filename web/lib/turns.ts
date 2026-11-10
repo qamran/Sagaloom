@@ -55,19 +55,21 @@ export function callFromRecord(r: PromptRecord): LlmCall {
 const MODES: readonly Mode[] = ["brainstorm", "query", "edit"];
 
 /** The mode in a router response (api/sagaloom/router.py RouteDecision): the content as JSON, else
- * the first tool call's args. Anything else (prose, an unknown mode, no response) is null. */
-export function parseRouterMode(response: LlmResponse | null): Mode | null {
-  if (!response) return null;
+ * the first tool call's args. Takes the raw `llm_response` payload and narrows it itself; anything
+ * else (prose, an unknown mode, no response, not an object) is null. */
+export function parseRouterMode(data: unknown): Mode | null {
+  if (!data || typeof data !== "object") return null;
+  const { content, tool_calls } = data as { content?: unknown; tool_calls?: unknown };
   const candidates: unknown[] = [];
-  if (typeof response.content === "string" && response.content.trim()) {
+  if (typeof content === "string" && content.trim()) {
     try {
-      candidates.push(JSON.parse(response.content));
+      candidates.push(JSON.parse(content));
     } catch {
       /* not JSON */
     }
   }
-  const first = Array.isArray(response.tool_calls) ? response.tool_calls[0] : undefined;
-  if (first && typeof first === "object") candidates.push(first.args);
+  const first: unknown = Array.isArray(tool_calls) ? tool_calls[0] : undefined;
+  if (first && typeof first === "object") candidates.push((first as { args?: unknown }).args);
   for (const c of candidates) {
     const mode = c && typeof c === "object" ? (c as { mode?: unknown }).mode : undefined;
     if (MODES.includes(mode as Mode)) return mode as Mode;

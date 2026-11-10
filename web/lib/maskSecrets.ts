@@ -3,9 +3,13 @@ import type { LlmResponse } from "@/lib/types";
 /** What a masked prompt line shows in the Under the hood drawer (R20.3). */
 export const MASKED_LINE = "[secret fact hidden]";
 
+// The block's wrapper tags, as regex sources: the one place both patterns below are built from.
+const OPEN_TAG = String.raw`<untrusted_data[^>]*>`;
+const CLOSE_TAG = String.raw`<\/untrusted_data>`;
+
 /** An `<untrusted_data …>…</untrusted_data>` block, as one capture group (so `split` keeps it). */
-export const UNTRUSTED = /(<untrusted_data[^>]*>[\s\S]*?<\/untrusted_data>)/g;
-const BLOCK_PARTS = /^(<untrusted_data[^>]*>)([\s\S]*)(<\/untrusted_data>)$/;
+export const UNTRUSTED = new RegExp(String.raw`(${OPEN_TAG}[\s\S]*?${CLOSE_TAG})`, "g");
+const BLOCK_PARTS = new RegExp(String.raw`^(${OPEN_TAG})([\s\S]*)(${CLOSE_TAG})$`);
 
 // Secret fact lines end `[secret]` or carry it before `(told by …)`; Pass 1 lines name their entry's status.
 const SECRET_LINE = /\[secret\]|\(entry status: secret\)/;
@@ -48,11 +52,23 @@ export function maskPrompt(text: string): { text: string; masked: number } {
 const isSecret = (v: unknown) =>
   !!v && typeof v === "object" && (v as { status?: unknown }).status === "secret";
 
+/** Args as an object: a string is parsed as JSON first (an unparsable one is not an object). */
+function argsObject(args: unknown): unknown {
+  if (typeof args !== "string") return args;
+  try {
+    return JSON.parse(args);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * True when tool-call args propose a secret: `status: "secret"` on the entry or on any fact.
+ * True when tool-call args propose a secret: `status: "secret"` on the entry or on any fact. String
+ * args (a provider's raw JSON) are parsed first; a string that is not JSON holds no secret status.
  * The args-shaped twin of `draftHoldsSecret` (lib/review.ts), which reads a Proposal instead.
  */
-export function argsHoldSecret(args: unknown): boolean {
+export function argsHoldSecret(raw: unknown): boolean {
+  const args = argsObject(raw);
   if (!args || typeof args !== "object") return false;
   const facts = (args as { facts?: unknown }).facts;
   return isSecret(args) || (Array.isArray(facts) && facts.some(isSecret));

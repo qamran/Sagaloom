@@ -45,6 +45,7 @@ beforeEach(() => {
   vi.mocked(createThread).mockReset().mockResolvedValue({ thread_id: "t_new" });
   vi.mocked(getReviewThreads).mockReset();
   vi.mocked(getLlmLog).mockReset().mockResolvedValue([]);
+  vi.mocked(getEntries).mockReset().mockResolvedValue([]);
 });
 
 describe("/chat", () => {

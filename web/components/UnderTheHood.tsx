@@ -105,7 +105,9 @@ function Messages({ call, texts, hidden }: { call: LlmCall; texts: string[]; hid
   );
 }
 
-function Response({ call }: { call: LlmCall }) {
+/** The Response tab. It masks secret tool-call args itself while hidden, so it is safe without the
+ * veil `CallCard` puts in front of it. */
+export function Response({ call, hidden }: { call: LlmCall; hidden: boolean }) {
   const r = call.response;
   if (!r) return <p className="m-0 bg-well px-3 py-2.5 text-xs text-muted-foreground">No response recorded yet.</p>;
   return (
@@ -117,7 +119,7 @@ function Response({ call }: { call: LlmCall }) {
       )}
       {r.tool_calls.map((c, i) => (
         <div key={i} className="text-place">
-          {callText(c.name, c.args, false)}
+          {callText(c.name, c.args, hidden)}
         </div>
       ))}
     </section>
@@ -228,7 +230,7 @@ function CallCard({
             ))}
           </div>
           {tab === "Request" && <Messages call={call} texts={texts} hidden={hidden} />}
-          {tab === "Response" && (veiled ? <MaskedResponse /> : <Response call={call} />)}
+          {tab === "Response" && (veiled ? <MaskedResponse /> : <Response call={call} hidden={hidden} />)}
           {tab === "Raw JSON" && veiled && (
             <pre data-testid="raw-json" className="m-0 bg-well px-3 py-2.5 text-xs text-muted-foreground">
               {MASKED_RESPONSE}

@@ -4,24 +4,26 @@ import { useWorld } from "@/lib/world";
 export const SHOW_SECRETS_KEY = (worldId: string) => `sagaloom.showSecrets.${worldId}`;
 
 const listeners = new Map<string, Set<() => void>>();
-// Fallback for when sessionStorage is unavailable: the toggle still works for this page load.
+// Kept only while the last write to sessionStorage failed, and wins over storage while kept, so a
+// failed "off" never reads back a stored "on". A successful write clears it.
 const memory = new Map<string, boolean>();
 
 function read(worldId: string): boolean {
   const key = SHOW_SECRETS_KEY(worldId);
+  const kept = memory.get(key);
+  if (kept !== undefined) return kept;
   try {
-    const v = sessionStorage.getItem(key);
-    if (v === "true" || v === "false") return v === "true";
+    return sessionStorage.getItem(key) === "true";
   } catch {
-    /* storage unavailable */
+    return false;
   }
-  return memory.get(key) ?? false;
 }
 
 function write(worldId: string, on: boolean) {
   const key = SHOW_SECRETS_KEY(worldId);
   try {
     sessionStorage.setItem(key, String(on));
+    memory.delete(key);
   } catch {
     memory.set(key, on);
   }
@@ -35,8 +37,12 @@ function subscribe(worldId: string, cb: () => void) {
   listeners.set(key, set);
   return () => {
     set.delete(cb);
+    if (set.size === 0 && listeners.get(key) === set) listeners.delete(key);
   };
 }
+
+/** How many worlds have a live listener (for tests: a world's set goes when its last one leaves). */
+export const listenedWorldCount = () => listeners.size;
 
 /** Whether secrets show for a world (this tab only). Always false without a world id. */
 export function useShowSecrets(worldId: string | undefined): [boolean, (on: boolean) => void] {

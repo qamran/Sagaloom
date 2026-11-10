@@ -6,7 +6,7 @@ import { getThread, PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
-import type { ChatMessage, Decision, ImportNote, LlmResponse, Mode, PendingInterrupt, SseEvent, ThreadState, Usage } from "./types";
+import type { ChatMessage, Decision, ImportNote, Mode, PendingInterrupt, SseEvent, ThreadState, Usage } from "./types";
 
 export type StreamStatus = "idle" | "streaming" | "reconnecting" | "error";
 
@@ -297,7 +297,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
               break;
             case "llm_response": {
               if (typeof ev.data.id === "string" && routerCalls.has(ev.data.id)) {
-                const mode = parseRouterMode(ev.data as unknown as LlmResponse);
+                const mode = parseRouterMode(ev.data);
                 if (mode) setMessages((m) => withMode(m, mode));
               }
               record(ev);

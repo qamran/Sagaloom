@@ -1,7 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { UnderTheHood } from "@/components/UnderTheHood";
+import { Response as ResponseTab, UnderTheHood } from "@/components/UnderTheHood";
+import { MASKED_LINE } from "@/lib/maskSecrets";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { TurnView } from "@/lib/turns";
 
@@ -294,5 +295,23 @@ describe("UnderTheHood", () => {
       await user.click(screen.getByRole("button", { name: "Raw JSON" }));
       expect(screen.getByTestId("raw-json")).toHaveTextContent(HIDDEN);
     });
+  });
+
+  it("Response masks secret tool-call args while hidden even without the veil", () => {
+    const call = {
+      ...turn.calls[0],
+      messages: [{ role: "user" as const, content: "Add the ledger." }],
+      response: {
+        ...turn.calls[0].response!,
+        content: "",
+        tool_calls: [{ id: "tc1", name: "propose_entry", args: { title: "Ledger", status: "secret", facts: [{ key: "Kept in", value: "The crypt" }] } }],
+      },
+    };
+    const { rerender } = render(<ResponseTab call={call} hidden />);
+    const region = screen.getByRole("region", { name: "Response" });
+    expect(region).toHaveTextContent(`propose_entry(${MASKED_LINE})`);
+    expect(region).not.toHaveTextContent("The crypt");
+    rerender(<ResponseTab call={call} hidden={false} />);
+    expect(screen.getByRole("region", { name: "Response" })).toHaveTextContent("The crypt");
   });
 });

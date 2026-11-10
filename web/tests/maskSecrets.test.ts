@@ -101,6 +101,17 @@ describe("argsHoldSecret", () => {
     expect(argsHoldSecret("status: secret")).toBe(false);
     expect(argsHoldSecret({ facts: "x" })).toBe(false);
   });
+
+  it("a JSON-string args with a secret status is masked", () => {
+    expect(argsHoldSecret(JSON.stringify({ action: "create", title: "Ledger", status: "secret" }))).toBe(true);
+    expect(argsHoldSecret(JSON.stringify({ facts: [{ key: "Sings", value: "Yes", status: "secret" }] }))).toBe(true);
+    expect(argsHoldSecret(JSON.stringify({ title: "Quay", status: "canon" }))).toBe(false);
+  });
+
+  it("an unparsable string args is not", () => {
+    expect(argsHoldSecret('{"status": "secret"')).toBe(false);
+    expect(argsHoldSecret("")).toBe(false);
+  });
 });
 
 describe("responseHoldsSecret", () => {
