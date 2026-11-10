@@ -58,7 +58,7 @@ def test_strip_keeps_link_text_and_headings():
 
 def test_strip_external_links_and_lists():
     raw = "See [https://example.org the site] and [https://example.org/x].\n* one\n** two\n# three"
-    assert strip_wikitext(raw).text == "See the site and .\none\ntwo\nthree"
+    assert strip_wikitext(raw).text == "See the site and.\none\ntwo\nthree"
 
 
 def test_whitespace_is_stable():
@@ -151,3 +151,60 @@ def test_template_only_page_strips_to_empty_prose():
 
 def test_unbalanced_braces_do_not_hang_or_eat_text():
     assert strip_wikitext("a {{b c").text == "a b c"
+
+
+def test_one_line_table_is_dropped_and_the_rest_survives():
+    assert strip_wikitext("Before\n{| class=x | a |}\nAfter").text == "Before\nAfter"
+
+
+def test_unclosed_table_drops_only_its_opener():
+    assert strip_wikitext("Before\n{| class=x\n| a\nAfter").text == "Before\n| a\nAfter"
+
+
+def test_nested_one_line_table_inside_a_table():
+    assert strip_wikitext("A\n{|\n{| x |}\n|-\n|}\nB").text == "A\nB"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("A\n\n== {{anchor}} ==\n\nB", "A\n\nB"),
+        ("A\n== {{anchor}} ==", "A"),
+        ("A\n==[[File:x.jpg]]==\nB", "A\n\nB"),
+    ],
+)
+def test_empty_heading_leaves_no_extra_blank_lines(raw, expected):
+    assert strip_wikitext(raw).text == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "A\n\n== {{anchor}} ==\n\nB",
+        "A\n== {{anchor}} ==",
+        "Rivendell () is a valley , with ( ) gaps .\n\n== One ==\n\n\nBody ;  x",
+        "{{Infobox x|a=b ( )}}\n\n\nLead .\n== H ==\nT",
+    ],
+)
+def test_stripping_twice_gives_the_same_text(raw):
+    once = strip_wikitext(raw).text
+    assert strip_wikitext(once).text == once
+
+
+def test_stripping_twice_is_stable_on_fixtures(page_url, tmp_path):
+    once = strip_wikitext(wikitext_of(page_url, tmp_path)).text
+    assert strip_wikitext(once).text == once
+
+
+def test_entities_are_unescaped_before_quote_runs():
+    assert strip_wikitext("&#39;&#39;&#39;x&#39;&#39;&#39; &amp; y").text == "x & y"
+
+
+def test_non_http_external_links_keep_their_text():
+    raw = "[mailto:a@b.c mail me] and [ftp://h/f the file] and [//h/p proto]"
+    assert strip_wikitext(raw).text == "mail me and the file and proto"
+
+
+def test_space_before_punctuation_and_empty_parentheses_are_tidied():
+    raw = "Rivendell {{IPA|x}} ({{IPA|y}}) is a valley{{efn|n}} . It has a ref<ref>r</ref> , and more ; yes : no"
+    assert strip_wikitext(raw).text == "Rivendell is a valley. It has a ref, and more; yes: no"

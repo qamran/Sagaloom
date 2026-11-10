@@ -25,12 +25,17 @@ _BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _TAG = re.compile(r"</?[A-Za-z][^<>]*>")
 _LINK = re.compile(r"\[\[([^\[\]|]*)(?:\|([^\[\]]*))?\]\]")
 _DROPPED_NAMESPACES = ("file:", "image:", "category:")
-_EXTERNAL = re.compile(r"\[(?:https?:)?//[^\s\]]+(?:[ \t]+([^\]]*))?\]")
+_EXTERNAL = re.compile(
+    r"\[(?:(?:https?|ftps?|sftp|news|irc|ircs|gopher)://|//|mailto:)[^\s\]]+(?:[ \t]+([^\]]*))?\]",
+    re.IGNORECASE,
+)
 _MAGIC_WORD = re.compile(r"__[A-Z]+__")
 _QUOTES = re.compile(r"'{2,}")
 _HEADING = re.compile(r"^(={1,6})[ \t]*(.*?)[ \t]*\1[ \t]*$")
 _LIST_MARKER = re.compile(r"^[*#:;]+[ \t]*")
 _SPACES = re.compile(r"[ \t]+")
+_EMPTY_PARENS = re.compile(r"\(\s*\)")
+_SPACE_BEFORE_PUNCT = re.compile(r" +([.,;:])")
 
 
 class StrippedPage(BaseModel):
@@ -58,16 +63,23 @@ def _find_close(text: str, start: int, opener: str, closer: str) -> int:
 
 
 def _remove_tables(text: str) -> str:
-    kept, depth = [], 0
-    for line in text.split("\n"):
-        head = line.lstrip()
-        if head.startswith("{|"):
-            depth += 1
-        if depth == 0:
-            kept.append(line)
-        elif head.startswith("|}"):
-            depth -= 1
-    return "\n".join(kept)
+    """Drop each `{|` ... `|}` table; one that never closes loses only its opener line."""
+    lines = text.split("\n")
+    drop: set[int] = set()
+    for first, line in enumerate(lines):
+        if first in drop or not line.lstrip().startswith("{|"):
+            continue
+        depth = 0
+        for i in range(first, len(lines)):
+            head = lines[i].strip()
+            depth += head.startswith("{|")
+            depth -= head.endswith("|}")
+            if depth <= 0:
+                drop.update(range(first, i + 1))
+                break
+        else:
+            drop.add(first)
+    return "\n".join(line for i, line in enumerate(lines) if i not in drop)
 
 
 def _split_params(body: str) -> list[str]:
@@ -151,10 +163,21 @@ def _clean(text: str) -> str:
     text = _replace_links(text)
     text = _EXTERNAL.sub(lambda m: m.group(1) or "", text)
     text = _MAGIC_WORD.sub("", text)
-    text = _QUOTES.sub("", text)
     text = _BR.sub("\n", text)
     text = _TAG.sub("", text)
-    return html.unescape(text).replace("\xa0", " ")
+    text = html.unescape(text).replace("\xa0", " ")
+    return _QUOTES.sub("", text)  # after unescaping, so `&#39;&#39;` runs go too
+
+
+def _tidy(line: str) -> str:
+    """What template and ref removal leaves behind: empty `()`, runs of spaces, a space before
+    `.` `,` `;` `:`. Repeated until stable, so stripping the result again changes nothing."""
+    while True:
+        tidy = _SPACES.sub(" ", _EMPTY_PARENS.sub("", line))
+        tidy = _SPACE_BEFORE_PUNCT.sub(r"\1", tidy).strip()
+        if tidy == line:
+            return tidy
+        line = tidy
 
 
 def _remove_blocks(text: str) -> str:
@@ -168,7 +191,7 @@ def _remove_blocks(text: str) -> str:
 def _inline(value: str) -> str:
     """An infobox value as one line of plain text."""
     value, _, _ = _remove_templates(_remove_blocks(value))
-    parts = (" ".join(_LIST_MARKER.sub("", p.strip()).split()) for p in _clean(value).split("\n"))
+    parts = (_tidy(_LIST_MARKER.sub("", p.strip())) for p in _clean(value).split("\n"))
     return ", ".join(part for part in parts if part)
 
 
@@ -184,10 +207,12 @@ def strip_wikitext(wikitext: str) -> StrippedPage:
     for line in _clean(text).split("\n"):
         line = line.strip()
         if m := _HEADING.match(line):
-            line = _HEADING_MARK + m.group(2)
+            line = _tidy(m.group(2))
+            if line:  # a heading that strips to nothing is just an empty line
+                line = _HEADING_MARK + line
         else:
-            line = _LIST_MARKER.sub("", line)
-        lines.append(_SPACES.sub(" ", line).strip())
+            line = _tidy(_LIST_MARKER.sub("", line))
+        lines.append(line)
     prose = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip("\n")
     head = "\n".join(f"{_key_label(k)}: {v}" for k, v in infobox.items() if v)
     prefix = head + "\n\n" if head and prose else head

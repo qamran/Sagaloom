@@ -16,8 +16,7 @@ MANIFEST = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
 
 
 def _host_ok(url: str) -> bool:
-    host = httpx.URL(url).host
-    return host == "wikipedia.org" or host.endswith(".wikipedia.org")
+    return httpx.URL(url).host.endswith(".wikipedia.org")
 
 
 def test_manifest_lists_three_pages_and_a_licence():
@@ -33,7 +32,7 @@ def test_committed_wiki_fixtures_are_wikipedia_only():
     for cache in caches:
         raw = cache.read_text(encoding="utf-8")
         assert _host_ok(json.loads(raw)["final_url"])
-        assert "fandom.com" not in raw
+        assert "fandom.com" not in raw.lower()
     attribution = (FIXTURES / "ATTRIBUTION.md").read_text(encoding="utf-8")
     for page in MANIFEST["pages"]:
         assert page["url"] in attribution and page["in"] in attribution
