@@ -1,6 +1,6 @@
-import { isImportedHeading } from "@/lib/imported";
+import { HEADING_OPENER, isImportedHeading } from "@/lib/imported";
 
-const OPENER = /^## +/;
+const OPENER = new RegExp(HEADING_OPENER);
 
 export interface Section {
   heading: string;
@@ -14,7 +14,7 @@ export function sectionsOf(body: string): Section[] {
   const lines: string[][] = [[]];
   for (const line of body.split("\n")) {
     if (OPENER.test(line)) {
-      const heading = line.replace(OPENER, "").trimEnd();
+      const heading = line.replace(OPENER, "").trim();
       sections.push({ heading, text: "", imported: isImportedHeading(heading) });
       lines.push([]);
     } else {

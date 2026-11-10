@@ -61,19 +61,23 @@ describe("ReviewDetail", () => {
     render(ui());
     expect(screen.getByText("2 proposals · nothing enters canon until you decide")).toBeInTheDocument();
     const queue = screen.getByRole("complementary", { name: "Pending proposals" });
+    // Fails closed: until this world's canon has loaded, the update's own entry (it may be stored
+    // secret) and the cited entry's value stay hidden.
+    expect(within(queue).getByText("Secret entry")).toBeInTheDocument();
+    expect(within(queue).queryByText("Sky of Velmar")).toBeNull();
+    expect(within(queue).queryByText("Moons: one → three")).toBeNull();
+    expect(await within(queue).findByText("Moons: one → three")).toBeInTheDocument();
     const rows = within(queue).getAllByRole("button", { name: /Tide Council|Sky of Velmar/ });
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveAttribute("aria-current", "true");
     expect(rows[1]).not.toHaveAttribute("aria-current");
-    // Fails closed: the cited entry's value stays hidden until this world's canon has loaded.
-    expect(within(rows[1]).getByText("Moons: a secret fact → three")).toBeInTheDocument();
-    expect(await within(rows[1]).findByText("Moons: one → three")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Moons: one → three")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Review proposal: Tide Council" })).toBeInTheDocument();
   });
 
   it("selects another proposal from the queue", async () => {
     render(ui());
-    await userEvent.click(screen.getByRole("button", { name: /Sky of Velmar/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Sky of Velmar/ }));
     expect(screen.getByRole("region", { name: "Review proposal: Sky of Velmar" })).toBeInTheDocument();
   });
 

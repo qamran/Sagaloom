@@ -41,6 +41,10 @@ describe("linkEntities", () => {
     expect(chips(linkEntities("Ash sat by the ash tree.", ash, false))).toEqual([{ entry: ash[0], text: "Ash" }]);
     expect(chips(linkEntities("ASH and ash", ash, false))).toEqual([]);
   });
+  it("a 4-letter alias chips in any case", () => {
+    const vale = [e("ent_0201", "Valerian", "character", ["Vale"])];
+    expect(chips(linkEntities("Down in the vale.", vale, false))).toEqual([{ entry: vale[0], text: "vale" }]);
+  });
   it("prefers the longest match", () => {
     const p = linkEntities("In the city of Velmar.", entries, false);
     expect(chips(p)).toEqual([{ entry: entries[1], text: "the city of Velmar" }]);

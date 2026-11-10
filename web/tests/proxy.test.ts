@@ -230,23 +230,15 @@ describe("proxy path hardening", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("answers the path guard in JSON", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}")));
-    const res = await GET(new Request("http://localhost:3000/api/proxy/x"), {
-      params: Promise.resolve({ path: ["worlds", ".."] }),
-    });
-    expect(res.status).toBe(400);
-    expect(res.headers.get("content-type")).toBe("application/json");
-    expect(await res.json()).toEqual({ detail: "Bad path" });
-  });
-
-  it("still rejects a dot segment", async () => {
+  it("answers the path guard in JSON without calling the API", async () => {
     const fetchMock = vi.fn(async () => new Response("{}"));
     vi.stubGlobal("fetch", fetchMock);
     const res = await GET(new Request("http://localhost:3000/api/proxy/x"), {
       params: Promise.resolve({ path: ["worlds", ".."] }),
     });
     expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("application/json");
+    expect(await res.json()).toEqual({ detail: "Bad path" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

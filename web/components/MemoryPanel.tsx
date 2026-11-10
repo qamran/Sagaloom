@@ -17,19 +17,25 @@ export function MemoryPanel() {
     enabled: !!worldId,
   });
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  // Rows whose Delete is in flight; one per row, so overlapping Deletes each stay busy.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
 
   async function del(key: string, item?: string) {
     if (!worldId) return;
     setError(null);
-    setBusy(`${key}:${item}`);
+    const id = `${key}:${item}`;
+    setBusy((s) => new Set(s).add(id));
     try {
       await forgetMemory(worldId, key, item);
       void qc.invalidateQueries({ queryKey: ["memory", worldId] });
     } catch {
       setError("The preference was not deleted. Try again.");
     } finally {
-      setBusy(null);
+      setBusy((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -81,8 +87,8 @@ export function MemoryPanel() {
                     type="button"
                     aria-label={`Delete ${r.key}: ${r.value}`}
                     onClick={() => void del(r.key, r.value)}
-                    disabled={busy === `${r.key}:${r.value}`}
-                    aria-busy={busy === `${r.key}:${r.value}`}
+                    disabled={busy.has(`${r.key}:${r.value}`)}
+                    aria-busy={busy.has(`${r.key}:${r.value}`)}
                     className="rounded-md border border-border-strong px-2 py-1 text-muted-foreground disabled:opacity-50"
                   >
                     Delete

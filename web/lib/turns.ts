@@ -38,6 +38,7 @@ export interface TurnView {
 
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
 const list = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+const num = (v: unknown, d = 0): number => (typeof v === "number" ? v : d);
 
 export function callFromRecord(r: PromptRecord): LlmCall {
   return {
@@ -119,8 +120,17 @@ export function viewFromEvents(t: TurnEvents): TurnView {
         break;
       }
       case "llm_response": {
-        const call = calls.find((c) => c.id === ev.data.id);
-        if (call) call.response = ev.data as unknown as LlmResponse;
+        const d = ev.data;
+        const call = calls.find((c) => c.id === d.id);
+        if (call)
+          call.response = {
+            content: str(d.content),
+            tool_calls: list<LlmResponse["tool_calls"][number]>(d.tool_calls),
+            prompt_tokens: num(d.prompt_tokens),
+            completion_tokens: num(d.completion_tokens),
+            cost_usd: num(d.cost_usd),
+            latency_ms: num(d.latency_ms),
+          };
         break;
       }
       case "interrupt": {

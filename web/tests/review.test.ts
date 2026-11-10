@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BADGE_CLASS, badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
-import type { CheckResult, Entry, Flag, Proposal } from "@/lib/types";
+import { BADGE_CLASS, badgeOf, existingSecretOf, proposalSummary, proseSecretOf, reviewPollMs } from "@/lib/review";
+import type { CheckResult, Entry, Flag, Proposal, ThreadSummary } from "@/lib/types";
 
 const flag = (over: Partial<Flag>): Flag => ({
   kind: "conflict", entry_id: "ent_0011", title: "The Salt Guild", fact_key: null, existing_fact: null,
@@ -261,5 +261,17 @@ describe("proposalSummary secret fact", () => {
 describe("BADGE_CLASS", () => {
   it("fills the failed badge from the failed token", () => {
     expect(BADGE_CLASS.failed).toBe("bg-failed text-background");
+  });
+});
+
+describe("reviewPollMs", () => {
+  const row = (running: boolean) => ({ running }) as ThreadSummary;
+  it("polls every 60 s when nothing runs", () => {
+    expect(reviewPollMs(undefined)).toBe(60_000);
+    expect(reviewPollMs([])).toBe(60_000);
+    expect(reviewPollMs([row(false)])).toBe(60_000);
+  });
+  it("polls every 5 s while a thread runs", () => {
+    expect(reviewPollMs([row(false), row(true)])).toBe(5_000);
   });
 });

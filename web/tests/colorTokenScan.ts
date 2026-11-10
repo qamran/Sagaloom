@@ -39,7 +39,7 @@ export function undefinedTokens(source: string, defined: Set<string>): string[] 
   return out;
 }
 
-/** The arbitrary hex colours (`bg-[#1f2725]`, `border-[#abc]`) in `source`, in order. */
+/** The arbitrary hex colours (`bg-[#1f2725]`, `border-[#abc]`, `border-t-[#abc]`) in `source`, in order. */
 export function arbitraryHexColours(source: string): string[] {
-  return [...source.matchAll(new RegExp(String.raw`(?<![\w\-\[])(?:${UTILITY})-\[#[0-9a-fA-F]{3,8}\]`, "g"))].map((m) => m[0]);
+  return [...source.matchAll(new RegExp(String.raw`(?<![\w\-\[])(?:${UTILITY})-(?:[tblrxyse]-)?\[#[0-9a-fA-F]{3,8}\]`, "g"))].map((m) => m[0]);
 }

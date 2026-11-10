@@ -68,14 +68,17 @@ describe("SettingsPanel", () => {
     const observe = (queryKey: string[], queryFn: () => Promise<unknown>) =>
       new QueryObserver(qc, { queryKey, queryFn, staleTime: Infinity }).subscribe(() => {});
     const off = [observe(["settings"], settings), observe(["settings", "models"], models)];
-    setup(qc);
-    const t = screen.getByLabelText("Agent temperature");
-    await userEvent.clear(t);
-    await userEvent.type(t, "0.7");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(settings).toHaveBeenCalledTimes(2));
-    expect(models).toHaveBeenCalledTimes(1);
-    off.forEach((f) => f());
+    try {
+      setup(qc);
+      const t = screen.getByLabelText("Agent temperature");
+      await userEvent.clear(t);
+      await userEvent.type(t, "0.7");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(settings).toHaveBeenCalledTimes(2));
+      expect(models).toHaveBeenCalledTimes(1);
+    } finally {
+      off.forEach((f) => f());
+    }
   });
 
   it("clearing max tokens sends null", async () => {
@@ -110,15 +113,19 @@ describe("SettingsPanel", () => {
   it("a disabled Save says why", async () => {
     setup();
     expect(screen.getByText("No changes to save")).toBeInTheDocument();
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toHaveAccessibleDescription("No changes to save");
     const t = screen.getByLabelText("Agent temperature");
     await userEvent.clear(t);
     await userEvent.type(t, "2.5");
     expect(screen.getByText("Fix the highlighted value")).toBeInTheDocument();
+    expect(save).toHaveAccessibleDescription("Fix the highlighted value");
     expect(screen.queryByText("No changes to save")).toBeNull();
     await userEvent.clear(t);
     await userEvent.type(t, "0.7");
     expect(screen.queryByText("Fix the highlighted value")).toBeNull();
     expect(screen.queryByText("No changes to save")).toBeNull();
+    expect(save).not.toHaveAttribute("aria-describedby");
   });
 
   it("shows the server detail on a 422", async () => {

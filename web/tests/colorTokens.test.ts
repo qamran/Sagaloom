@@ -38,6 +38,8 @@ describe("colour tokens (M13)", () => {
     expect(undefinedTokens('className="border-t-accent border-x-conflict-line border-b-2"', DEFINED)).toEqual([]);
     expect(undefinedTokens('className="border-t-nope"', DEFINED)).toEqual(["nope"]);
     expect(arbitraryHexColours('className="bg-[#1f2725] border-[#abc] w-[80%] text-[13px]"')).toEqual(["bg-[#1f2725]", "border-[#abc]"]);
+    expect(arbitraryHexColours('className="border-t-[#abc]"')).toEqual(["border-t-[#abc]"]);
+    expect(arbitraryHexColours('className="divide-x-[#123456] border-t-[2px] w-x-[#abc]"')).toEqual(["divide-x-[#123456]"]);
   });
 
   it("bites on an undefined token", () => {

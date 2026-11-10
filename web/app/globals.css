@@ -102,7 +102,7 @@
   --color-live-summary: #1d3a30;
   --color-configured-summary: #2f2a1c;
   --color-off-summary: #23282a;
-  --color-configured-border: #4a4128;
+  --color-configured-line: #4a4128;
 
   --color-ring: var(--ring);
 

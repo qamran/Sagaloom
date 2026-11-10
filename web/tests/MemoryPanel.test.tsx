@@ -89,4 +89,23 @@ describe("MemoryPanel", () => {
     await waitFor(() => expect(del).toBeEnabled());
     expect(del).not.toHaveAttribute("aria-busy", "true");
   });
+
+  it("each Delete stays busy until its own request ends", async () => {
+    vi.mocked(getMemory).mockResolvedValue(payload({ tone: "grim", banned_tropes: ["amnesia"] }, 2));
+    const releases: ((p: MemoryPayload) => void)[] = [];
+    vi.mocked(forgetMemory).mockImplementation(() => new Promise((r) => releases.push(r)));
+    wrap(<MemoryPanel />);
+    const first = await screen.findByRole("button", { name: "Delete tone: grim" });
+    const second = screen.getByRole("button", { name: "Delete banned_tropes: amnesia" });
+    await userEvent.click(first);
+    await userEvent.click(second);
+    expect(first).toBeDisabled();
+    expect(second).toBeDisabled();
+    releases[0](payload({}));
+    await waitFor(() => expect(first).toBeEnabled());
+    expect(second).toBeDisabled();
+    expect(second).toHaveAttribute("aria-busy", "true");
+    releases[1](payload({}));
+    await waitFor(() => expect(second).toBeEnabled());
+  });
 });

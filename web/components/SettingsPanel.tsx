@@ -124,7 +124,13 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={BTN} disabled={!saveable || saving} onClick={() => void send(patch)}>
+        <button
+          type="button"
+          className={BTN}
+          disabled={!saveable || saving}
+          aria-describedby={saveable ? undefined : "save-why"}
+          onClick={() => void send(patch)}
+        >
           Save
         </button>
         <button
@@ -137,7 +143,7 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
         </button>
       </div>
       {!saveable && (
-        <p className="m-0 text-xs text-muted-foreground">{valid ? "No changes to save" : "Fix the highlighted value"}</p>
+        <p id="save-why" className="m-0 text-xs text-muted-foreground">{valid ? "No changes to save" : "Fix the highlighted value"}</p>
       )}
     </section>
   );

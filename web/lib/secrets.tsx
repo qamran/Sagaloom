@@ -41,7 +41,7 @@ function subscribe(worldId: string, cb: () => void) {
   };
 }
 
-/** How many worlds have a live listener (for tests: a world's set goes when its last one leaves). */
+/** @internal Test-only: how many worlds have a live listener (a world's set goes when its last one leaves). */
 export const listenedWorldCount = () => listeners.size;
 
 /** Whether secrets show for a world (this tab only). Always false without a world id. */

@@ -12,7 +12,7 @@ const BADGE: Record<FeatureCardData["status"], { label: string; cls: string; sum
 
 const CARD: Record<FeatureCardData["status"], string> = {
   live: "border border-border bg-panel-2",
-  configured: "border border-configured-border bg-panel-2",
+  configured: "border border-configured-line bg-panel-2",
   off: "border border-dashed border-border-strong bg-panel",
 };
 

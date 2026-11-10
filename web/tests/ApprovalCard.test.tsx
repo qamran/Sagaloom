@@ -79,7 +79,7 @@ const ister = {
 
 describe("ApprovalCard", () => {
   it("carries the human-in-the-loop course chip", () => {
-    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.getByRole("link", { name: "Course note: Human-in-the-loop · interrupt()" })).toHaveAttribute(
       "href",
       "/studio?card=human_in_the_loop#feature-map",
@@ -113,7 +113,7 @@ describe("ApprovalCard", () => {
 
   it("ApprovalCard Save as myth calls onDecide with save_as_myth", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} canon={[]} onDecide={onDecide} />);
     const save = screen.getByRole("button", { name: "Save as myth" });
     expect(save.tagName).toBe("BUTTON");
     await userEvent.click(save);
@@ -124,7 +124,7 @@ describe("ApprovalCard", () => {
 
   it("ApprovalCard Save as myth passes an optional teller", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} canon={[]} onDecide={onDecide} />);
     await userEvent.type(screen.getByLabelText(/told by/i), "The Ashen Choir");
     await userEvent.click(screen.getByRole("button", { name: "Save as myth" }));
     expect(onDecide).toHaveBeenCalledWith({
@@ -136,7 +136,7 @@ describe("ApprovalCard", () => {
 
   it("ApprovalCard shows check-failed warning and no Save as myth", () => {
     const failed = flag({ kind: "note", entry_id: "", title: "", explanation: "The check failed." });
-    render(<ApprovalCard proposal={update} check={check("failed", [failed])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("failed", [failed])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.getByText("Check failed")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -150,7 +150,7 @@ describe("ApprovalCard", () => {
 
   it("ApprovalCard edit submits edited draft", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} canon={[]} onDecide={onDecide} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     const title = screen.getByLabelText("Title");
     await userEvent.clear(title);
@@ -191,7 +191,7 @@ describe("ApprovalCard", () => {
   });
 
   it("shows every retcon flag on a retcon-only card even though the verdict is none", () => {
-    render(<ApprovalCard proposal={update} check={check("none", [retcon])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("none", [retcon])} canon={[]} onDecide={vi.fn()} />);
     const badges = screen.getByRole("list", { name: "Check result" });
     expect(within(badges).getByText("Retcon")).toBeInTheDocument();
     expect(within(badges).queryByText("Conflict")).toBeNull();
@@ -205,7 +205,7 @@ describe("ApprovalCard", () => {
 
   it("offers a plain Approve and says no conflicts found when the check is clean", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={update} check={check("none", [])} canon={[]} onDecide={onDecide} />);
     expect(screen.getByText("No conflicts found")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save as myth" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Approve" }));
@@ -251,7 +251,7 @@ describe("ApprovalCard", () => {
   });
 
   it("uses real buttons at least 44px tall", () => {
-    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("conflict", [conflict])} canon={[]} onDecide={vi.fn()} />);
     for (const name of ["Save as myth", "Edit", "Approve anyway", "Reject"]) {
       expect(screen.getByRole("button", { name })).toHaveClass("min-h-11");
     }
@@ -259,6 +259,9 @@ describe("ApprovalCard", () => {
 
   it("fails closed while canon is not loaded: cross-entry values, quotes and titles stay hidden", async () => {
     render(<ApprovalCard proposal={update} check={check("conflict", [conflict, note])} onDecide={vi.fn()} />);
+    // The own entry also hides until canon loads (it may be stored secret); its one Show opens it,
+    // and the other entries' values stay hidden. It is first in the card; cited titles have their own.
+    await userEvent.click(screen.getAllByRole("button", { name: "Show secret entry" })[0]);
     const table = screen.getByRole("table");
     expect(within(table).queryByText(/^Moons: One/)).toBeNull();
     expect(screen.queryByText("Ister")).toBeNull();
@@ -330,7 +333,7 @@ describe("ApprovalCard", () => {
       ...update,
       after: { ...update.after!, source: "reference", source_url: url, licence: null, trusted: false },
     };
-    render(<ApprovalCard proposal={ref} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={ref} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.getByText("Source: reference (Wikipedia)")).toBeInTheDocument();
     const link = screen.getByRole("link", { name: url });
     expect(link).toHaveAttribute("href", url);
@@ -343,14 +346,14 @@ describe("ApprovalCard", () => {
       ...update,
       after: { ...update.after!, source: "reference", source_url: null, licence: null, trusted: false },
     };
-    render(<ApprovalCard proposal={ref} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={ref} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.getByText("Source: reference (Wikipedia)")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /wikipedia\.org/ })).not.toBeInTheDocument();
   });
 
   it("shows no source line for the author's own proposal", () => {
     const own: Proposal = { ...update, after: { ...update.after!, source: "user", source_url: null, trusted: true } };
-    render(<ApprovalCard proposal={own} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={own} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.queryByText(/Source: reference/)).not.toBeInTheDocument();
   });
 });
@@ -566,7 +569,7 @@ describe("ApprovalCard complete table", () => {
   });
 
   it("edit form mirrors the schema limits", async () => {
-    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByLabelText("Title")).toHaveAttribute("maxLength", "120");
     expect(screen.getByLabelText("Body")).toHaveAttribute("maxLength", "4000");
@@ -605,7 +608,7 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     const proposal: Proposal = {
       ...update, before: secretBefore, after: { ...update.after!, title: "New Ledger", status: "secret" },
     };
-    render(<ApprovalCard proposal={proposal} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={proposal} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     const row = screen.getByText("Title", { selector: "dt" }).closest("div") as HTMLElement;
     expect(within(row).queryByText("Old Ledger")).toBeNull();
     expect(within(row).queryByText("New Ledger")).toBeNull();
@@ -635,7 +638,7 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
   it("hides a secret update's header title when only the stored entry is secret", () => {
     const secretBefore = { ...before, title: "Old Ledger", status: "secret" } as Entry;
     const proposal: Proposal = { ...update, before: secretBefore, after: { ...update.after!, title: "Old Ledger" } };
-    render(<ApprovalCard proposal={proposal} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={proposal} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.queryByText("Old Ledger")).toBeNull();
     expect(screen.getByRole("region", { name: "Review proposal: secret entry" })).toBeInTheDocument();
   });
@@ -684,7 +687,7 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     expect(screen.getByRole("link", { name: /Captain Sorn/ })).toBeInTheDocument();
   });
 
-  it("names every dependent Secret entry until canon has loaded (fail closed)", () => {
+  it("names every dependent Secret entry until canon has loaded (fail closed)", async () => {
     const del: Proposal = { ...update, proposal_id: "p_2", action: "delete", after: null };
     render(
       <ApprovalCard
@@ -696,6 +699,8 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
         onDecide={vi.fn()}
       />,
     );
+    // The deleted entry hides until canon loads too; opening it leaves the dependent masked (Ruling 10).
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
     expect(screen.queryByText("Captain Sorn")).toBeNull();
     expect(screen.getByText("Secret entry")).toBeInTheDocument();
   });
@@ -729,7 +734,7 @@ describe("ApprovalCard toggle follows the proposal's world", () => {
     expect(screen.queryByText("Names of the Choir.")).toBeNull();
     const updateCard = w2(update);
     cleanup();
-    render(<ApprovalCard proposal={updateCard} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={updateCard} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     expect(screen.queryByText("The moons are lanterns")).toBeNull();
   });
 
@@ -810,7 +815,7 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
 
   it("edit form masks a secret draft until Show to edit", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} canon={[]} onDecide={onDecide} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.queryByDisplayValue("The Choir Ledger")).toBeNull();
     expect(screen.queryByDisplayValue("Kept under the Mayor's floor.")).toBeNull();
@@ -831,7 +836,7 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
 
     // The world toggle shows them without the per-form reveal.
     sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
-    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByLabelText("Title")).toHaveValue("The Choir Ledger");
     expect(screen.queryByRole("button", { name: "Show secret entry to edit" })).toBeNull();
@@ -839,7 +844,7 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
 
   it("edit form hides a secret fact's key until that row's Show, and keeps it on submit", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={update} check={check("none", [])} canon={[]} onDecide={onDecide} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByLabelText("Fact 1 key")).toHaveValue("Moons");
     const key = screen.getByLabelText("Fact 2 key");
@@ -850,14 +855,14 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
     expect(onDecide.mock.calls[0][0].edited.facts[1].key).toBe("Hidden truth");
     cleanup();
-    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     await userEvent.click(screen.getByRole("button", { name: "Show secret fact 2" }));
     expect(screen.getByLabelText("Fact 2 key")).toHaveValue("Hidden truth");
     expect(screen.getByLabelText("Fact 2 key")).toBeEnabled();
     cleanup();
     sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
-    render(<ApprovalCard proposal={update} check={check("none", [])} onDecide={vi.fn()} />);
+    render(<ApprovalCard proposal={update} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByLabelText("Fact 2 key")).toHaveValue("Hidden truth");
   });
@@ -890,7 +895,7 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
 
   it("submitting an unrevealed secret edit keeps title and body", async () => {
     const onDecide = vi.fn();
-    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} onDecide={onDecide} />);
+    render(<ApprovalCard proposal={secretUpdate} check={check("none", [])} canon={[]} onDecide={onDecide} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
     expect(onDecide).toHaveBeenCalledWith({
@@ -1039,6 +1044,37 @@ describe("ApprovalCard one Show per secret entry (M3 Wave 2)", () => {
     );
     expect(screen.queryByText("The Choir Ledger")).toBeNull();
     expect(screen.getByText("Secret entry")).toBeInTheDocument();
+  });
+
+  it("an update hides its entry until canon loads", () => {
+    // before and after are canon, but the stored entry may have turned secret: unknown until canon loads.
+    const proposal: Proposal = {
+      ...update, before: { ...before, title: "The Choir Ledger" } as Entry,
+      after: { ...update.after!, title: "The Choir Ledger", facts: [fact("Moons", "Three")] },
+    };
+    const result = check("none", []);
+    const card = render(<ApprovalCard proposal={proposal} check={result} onDecide={vi.fn()} />);
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByRole("region", { name: "Review proposal: secret entry" })).toBeInTheDocument();
+    card.rerender(<ApprovalCard proposal={proposal} check={result} canon={[proposal.before!]} onDecide={vi.fn()} />);
+    expect(screen.getAllByText("The Choir Ledger").length).toBeGreaterThan(0);
+    cleanup();
+    const queue = (canon: Entry[] | undefined) => (
+      <SecretsWorldProvider worldId="w1">
+        <ReviewQueue
+          pending={{ proposals: [proposal], checks: { p_1: result } }}
+          canon={canon}
+          selectedId="p_1"
+          chosen={{}}
+          onSelect={vi.fn()}
+        />
+      </SecretsWorldProvider>
+    );
+    const row = render(queue(undefined));
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+    row.rerender(queue([proposal.before!]));
+    expect(screen.getByText("The Choir Ledger")).toBeInTheDocument();
   });
 
   it("one Show reveals a secret create", async () => {

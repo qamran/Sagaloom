@@ -32,6 +32,9 @@ describe("sectionsOf", () => {
   it("drops the empty Description when the body opens with a heading", () => {
     expect(sectionsOf("## History\nOld.")).toEqual([{ heading: "History", text: "Old.", imported: false }]);
   });
+  it("trims a tab after the opener", () => {
+    expect(sectionsOf("## \tHistory\nOld.")).toEqual([{ heading: "History", text: "Old.", imported: false }]);
+  });
   it("does not split on ###", () => {
     const s = sectionsOf("Intro.\n### Sub\nMore.");
     expect(s).toHaveLength(1);

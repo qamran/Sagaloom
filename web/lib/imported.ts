@@ -1,6 +1,8 @@
 /** `Imported from <label> (<YYYY-MM-DD>)`: the one pattern source; group 1 is `<label> (<date>)`. */
 const IMPORTED = String.raw`Imported from (.+ \(\d{4}-\d{2}-\d{2}\))`;
-const HEADING = new RegExp(String.raw`^## +${IMPORTED}\s*$`, "gm");
+/** A `## ` heading line's opener (one or more spaces after `##`): the one source for `sections.ts` too. */
+export const HEADING_OPENER = String.raw`^## +`;
+const HEADING = new RegExp(String.raw`${HEADING_OPENER}${IMPORTED}\s*$`, "gm");
 const HEADING_TEXT = new RegExp(String.raw`^${IMPORTED}\s*$`);
 
 /** Whether a `## ` heading text (without the `## `) is a dated `Imported from …` heading. */

@@ -32,6 +32,20 @@ describe("turn views", () => {
     expect(v.tools).toEqual([{ name: "search_canon", args: { query: "x" }, summary: "4 hits" }]);
   });
 
+  it("narrows a partial llm_response: no tool_calls reads as [], missing numbers as 0", () => {
+    const v = viewFromEvents({
+      turn: 1,
+      kind: "message",
+      events: [
+        { event: "llm_request", data: { id: "a", model: "m", messages: [], tools: [] } },
+        { event: "llm_response", data: { id: "a", content: 7, cost_usd: "free" } },
+      ],
+    });
+    expect(v.calls[0].response).toEqual({
+      content: "", tool_calls: [], prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, latency_ms: 0,
+    });
+  });
+
   it("keeps the role from a live llm_request event", () => {
     const v = viewFromEvents({
       turn: 1,

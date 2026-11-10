@@ -177,7 +177,9 @@ export function entryIsSecret(proposal: Proposal, canon: Entry[] | undefined): b
   return (
     proposal.before?.status === "secret" ||
     proposal.after?.status === "secret" ||
-    (!!proposal.entry_id && !!canon?.some((e) => e.id === proposal.entry_id && e.status === "secret"))
+    (!!proposal.entry_id && !!canon?.some((e) => e.id === proposal.entry_id && e.status === "secret")) ||
+    // Fail closed while canon loads, as `entryIndex.unknown` does for citations; a create has no stored copy.
+    (canon === undefined && proposal.action !== "create" && !!proposal.entry_id)
   );
 }
 

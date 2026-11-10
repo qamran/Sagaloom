@@ -75,6 +75,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
     queryKey: ["entries", worldId],
     queryFn: () => getEntries(worldId as string),
     // Loaded up front so cited secrets can be identified; the queue and card fail closed until then.
+    // A failed load keeps an update's or delete's own entry behind its one Show (Ruling 10).
     enabled: !!worldId,
   });
 

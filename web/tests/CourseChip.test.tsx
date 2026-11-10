@@ -74,6 +74,11 @@ describe("course notes storage", () => {
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("link", { name: /Course note/ })).toBeInTheDocument();
+    // A working write clears the module's memory copy, so later tests read storage again.
+    vi.mocked(Storage.prototype.setItem).mockRestore();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(localStorage.getItem("sagaloom.courseNotes")).toBe("false");
   });
 });
 
