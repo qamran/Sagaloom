@@ -36,6 +36,18 @@ describe("FeatureMap", () => {
     expect(screen.getByText("1 Configured")).toBeInTheDocument();
     expect(screen.getByText("1 Off")).toBeInTheDocument();
   });
+
+  it("renders the official-canon licence card with a link to Import", () => {
+    const card: FeatureCardData = {
+      id: "official_canon_licence", title: "Official canon and licences", brief_ref: "Hard 5, Medium 3",
+      req_ids: ["R11.6", "R11.6.12"], status: "live", detail: "Each wiki's licence is read from the wiki.",
+      try_href: "/import",
+    };
+    render(<FeatureMap features={[card]} />);
+    const el = screen.getByRole("article", { name: "Official canon and licences" });
+    expect(within(el).getByText("Live")).toBeInTheDocument();
+    expect(within(el).getByRole("link", { name: /Try it/ })).toHaveAttribute("href", "/import");
+  });
 });
 
 const models: ModelsPayload = {

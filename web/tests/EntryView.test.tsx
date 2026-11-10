@@ -60,6 +60,61 @@ describe("EntryView imported-text marker", () => {
   });
 });
 
+describe("EntryView sources", () => {
+  const gandalf = {
+    kind: "official" as const, url: "https://en.wikipedia.org/wiki/Gandalf",
+    licence: "Creative Commons Attribution-Share Alike 4.0", licence_url: null, nc: false, added_at: "2026-11-09",
+  };
+  const rivendell = { ...gandalf, url: "https://lotr.fandom.com/wiki/Rivendell", licence: "CC BY-NC-SA 3.0", nc: true };
+
+  it("lists each source with its licence and an NC label when one is non-commercial", async () => {
+    vi.mocked(getEntry).mockResolvedValue(entry({ source: "official", sources: [gandalf, rivendell] }));
+    renderIt();
+    const list = await screen.findByRole("region", { name: "Sources" });
+    expect(list).toHaveTextContent("https://en.wikipedia.org/wiki/Gandalf · Creative Commons Attribution-Share Alike 4.0");
+    expect(list).toHaveTextContent("https://lotr.fandom.com/wiki/Rivendell · CC BY-NC-SA 3.0 · NC");
+    expect(screen.getAllByText("NC").length).toBeGreaterThan(0);
+  });
+
+  it("says licence not reported for a source without one, and no NC label", async () => {
+    vi.mocked(getEntry).mockResolvedValue(
+      entry({ source: "reference", sources: [{ ...gandalf, kind: "reference", licence: null }] }),
+    );
+    renderIt();
+    const list = await screen.findByRole("region", { name: "Sources" });
+    expect(list).toHaveTextContent("licence not reported");
+    expect(screen.queryByText("NC")).toBeNull();
+  });
+
+  it("shows no Sources list for an entry without sources", async () => {
+    vi.mocked(getEntry).mockResolvedValue(entry({ sources: [] }));
+    renderIt();
+    await screen.findByRole("heading", { name: "Ister" });
+    expect(screen.queryByRole("region", { name: "Sources" })).toBeNull();
+  });
+
+  it("hides the Sources of a secret entry until Show", async () => {
+    vi.mocked(getEntry).mockResolvedValue(entry({ status: "secret", sources: [rivendell] }));
+    renderIt();
+    await screen.findByText("Secret entry");
+    expect(screen.queryByRole("region", { name: "Sources" })).toBeNull();
+    expect(screen.queryByText("NC")).toBeNull();
+  });
+
+  it("proves the imported-section label on a wiki URL with parentheses", async () => {
+    const url = "https://en.wikipedia.org/wiki/Shire_(Middle-earth)";
+    vi.mocked(getEntry).mockResolvedValue(
+      entry({
+        source: "official", trusted: false, sources: [{ ...gandalf, url }],
+        body: `The Shire.\n\n## Imported from ${url} (2026-11-09)\nA green land.`,
+      }),
+    );
+    renderIt();
+    expect(await screen.findByText(`${url} (2026-11-09)`)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: `Imported from ${url} (2026-11-09)` })).toBeInTheDocument();
+  });
+});
+
 describe("EntryView secrets", () => {
   const secretEntry = () =>
     entry({

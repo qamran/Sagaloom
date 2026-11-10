@@ -146,3 +146,30 @@ describe("useImport", () => {
     expect(result.current.error).toBe(copy);
   });
 });
+
+describe("useImport wiki", () => {
+  it("POSTs a wiki body as JSON with kind wiki", async () => {
+    fetchMock.mockResolvedValue(streamResponse([sse("done", { thread_id: "t9" })]));
+    const { result } = setup();
+    const body = { kind: "wiki" as const, urls: ["https://en.wikipedia.org/wiki/Gandalf"] };
+    await act(async () => {
+      await result.current.start("w1", body);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/proxy/worlds/w1/imports",
+      expect.objectContaining({ method: "POST", body: JSON.stringify(body) }),
+    );
+    expect(push).toHaveBeenCalledWith("/review/t9");
+  });
+
+  it("shows the server's 422 detail", async () => {
+    const detail = "This page is listed twice: https://en.wikipedia.org/wiki/gandalf";
+    fetchMock.mockResolvedValue(errorResponse(422, detail));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { kind: "wiki", urls: ["https://en.wikipedia.org/wiki/Gandalf"] });
+    });
+    expect(result.current.phase).toBe("error");
+    expect(result.current.error).toBe(detail);
+  });
+});

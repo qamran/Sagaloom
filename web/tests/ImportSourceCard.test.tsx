@@ -84,9 +84,51 @@ describe("ImportSourceCard upload", () => {
 });
 
 describe("ImportSourceCard wiki", () => {
-  it("says Coming soon and has no button", () => {
-    render(<ImportSourceCard kind="wiki" />);
-    expect(screen.getByText("Coming soon")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+  const urls = (n: number) => Array.from({ length: n }, (_, i) => `https://en.wikipedia.org/wiki/Page_${i}`).join("\n");
+  const paste = async (text: string) => {
+    await userEvent.click(screen.getByLabelText("Page URLs, one per line"));
+    await userEvent.paste(text);
+  };
+
+  it("names Wikipedia and Fandom and says the licence is read from the wiki", () => {
+    render(<ImportSourceCard kind="wiki" onExtract={vi.fn()} />);
+    expect(screen.getByText(/Wikipedia or Fandom/)).toBeInTheDocument();
+    expect(screen.getByText(/licence is read from the wiki/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Extract entries" })).toBeDisabled();
+  });
+
+  it("refuses 11 lines with the count copy and disables the button", async () => {
+    render(<ImportSourceCard kind="wiki" onExtract={vi.fn()} />);
+    await paste(urls(11));
+    expect(screen.getByRole("alert")).toHaveTextContent("Paste 1 to 10 page URLs, one per line.");
+    expect(screen.getByRole("button", { name: "Extract entries" })).toBeDisabled();
+  });
+
+  it("explains a Category: URL", async () => {
+    render(<ImportSourceCard kind="wiki" onExtract={vi.fn()} />);
+    await paste("https://en.wikipedia.org/wiki/Category:Elves");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/Category:Elves",
+    );
+    expect(screen.getByRole("button", { name: "Extract entries" })).toBeDisabled();
+  });
+
+  it("sends three good lines as a wiki body", async () => {
+    const onExtract = vi.fn();
+    render(<ImportSourceCard kind="wiki" onExtract={onExtract} />);
+    const three = [
+      "https://en.wikipedia.org/wiki/Rivendell",
+      "https://en.wikipedia.org/wiki/Gandalf",
+      "https://en.wikipedia.org/wiki/Shire_(Middle-earth)",
+    ];
+    await paste(three.join("\n"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Extract entries" }));
+    expect(onExtract).toHaveBeenCalledWith({ kind: "wiki", urls: three });
+  });
+
+  it("gives the Paste card the id the Review links point at", () => {
+    render(<ImportSourceCard kind="paste" onExtract={vi.fn()} />);
+    expect(screen.getByRole("region", { name: "Paste text" })).toHaveAttribute("id", "paste");
   });
 });

@@ -1,6 +1,8 @@
 "use client";
 
 import { useId, useState } from "react";
+import { checkWikiUrls } from "@/lib/wikiUrls";
+import type { ImportBody } from "@/lib/useImport";
 
 export const IMPORT_CAP = 100_000;
 export const OVER_CAP = "Over the 100,000-character limit for one import. Split it into smaller imports.";
@@ -11,7 +13,7 @@ const CARD = "flex min-w-0 flex-[1_1_300px] flex-col gap-3 rounded-xl border bor
 const BTN =
   "min-h-11 self-start rounded-lg bg-accent px-4 text-[13px] font-semibold text-accent-foreground hover:brightness-110 disabled:opacity-50";
 
-export type ImportBody = { text: string; filename?: string };
+export type { ImportBody };
 
 type Props = {
   kind: "paste" | "upload" | "wiki";
@@ -37,7 +39,7 @@ function Paste({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) {
   const over = text.length > IMPORT_CAP;
   const blank = text.trim() === "";
   return (
-    <section aria-label="Paste text" className={CARD}>
+    <section id="paste" aria-label="Paste text" className={CARD}>
       <h2 className="m-0 font-heading text-xl font-medium">Paste text</h2>
       <p className="m-0 text-[13px] text-muted-foreground">Notes, a draft chapter, a session log. Your wording stays yours.</p>
       <label htmlFor={id} className="sr-only">
@@ -127,17 +129,48 @@ function Upload({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) 
   );
 }
 
-/** One way to bring text in: paste it, upload a file, or (later) point at a fan wiki. */
-export function ImportSourceCard({ kind, disabled, onExtract }: Props) {
-  if (kind === "paste") return <Paste disabled={disabled} onExtract={onExtract} />;
-  if (kind === "upload") return <Upload disabled={disabled} onExtract={onExtract} />;
+function Wiki({ disabled, onExtract }: Pick<Props, "disabled" | "onExtract">) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const { urls, error } = checkWikiUrls(text);
+  const blank = text.trim() === "";
   return (
     <section aria-label="Fan wiki" className={CARD}>
       <h2 className="m-0 font-heading text-xl font-medium">Fan wiki</h2>
-      <p className="m-0 text-[13px] text-muted-foreground">Pull a page from a fan wiki, with its licence kept.</p>
-      <span className="self-start rounded-full border border-border-strong px-2.5 py-0.5 text-xs text-muted-foreground">
-        Coming soon
-      </span>
+      <p className="m-0 text-[13px] text-muted-foreground">
+        Pull pages from a Wikipedia or Fandom wiki. The licence is read from the wiki and kept with each entry.
+      </p>
+      <label htmlFor={id} className="sr-only">
+        Page URLs, one per line
+      </label>
+      <textarea
+        id={id}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={8}
+        placeholder="https://en.wikipedia.org/wiki/Gandalf"
+        className="min-h-40 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+      />
+      {!blank && error && (
+        <p role="alert" className="m-0 text-sm text-conflict">
+          {error}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || blank || error !== null}
+        onClick={() => onExtract?.({ kind: "wiki", urls })}
+        className={BTN}
+      >
+        Extract entries
+      </button>
     </section>
   );
+}
+
+/** One way to bring text in: paste it, upload a file, or point at pages of a fan wiki. */
+export function ImportSourceCard({ kind, disabled, onExtract }: Props) {
+  if (kind === "paste") return <Paste disabled={disabled} onExtract={onExtract} />;
+  if (kind === "upload") return <Upload disabled={disabled} onExtract={onExtract} />;
+  return <Wiki disabled={disabled} onExtract={onExtract} />;
 }

@@ -9,6 +9,7 @@ import { ApiError, getEntries, getEntry, getMentions } from "@/lib/api";
 import { TYPE_LABEL, TYPE_PLURAL, TYPE_TEXT } from "@/lib/entity";
 import { importedSections } from "@/lib/imported";
 import { sectionsOf } from "@/lib/sections";
+import { entryIsNc, licenceText } from "@/lib/sources";
 import { useShowSecrets } from "@/lib/secrets";
 import { markTour } from "@/lib/tour";
 import { useWorld } from "@/lib/world";
@@ -153,6 +154,35 @@ export function EntryView({ entryId }: { entryId: string }) {
               </div>
               {!entry.trusted && <div className={`uppercase tracking-[1px] ${typeText}`}>Untrusted source</div>}
             </div>
+
+            {entry.sources.length > 0 && (
+              <section aria-label="Sources" className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <h2 className={`m-0 text-xs font-semibold uppercase tracking-[1px] ${typeText}`}>
+                  Sources
+                  {entryIsNc(entry) && (
+                    <span className="ml-2 rounded-full border border-conflict-line px-2 py-px font-normal normal-case tracking-normal text-conflict-text">
+                      NC
+                    </span>
+                  )}
+                </h2>
+                <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+                  {entry.sources.map((s, i) => (
+                    <li key={i}>
+                      {/^https?:\/\//i.test(s.url) ? (
+                        <a href={s.url} target="_blank" rel="noreferrer">
+                          {s.url}
+                        </a>
+                      ) : (
+                        <span>{s.url}</span>
+                      )}
+                      {" · "}
+                      {licenceText(s)}
+                      {s.nc && " · NC"}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {sections.map((sec, i) => (
               <section key={i} className={CARD}>

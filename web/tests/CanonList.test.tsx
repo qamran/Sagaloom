@@ -80,6 +80,35 @@ describe("CanonList world toggle", () => {
   });
 });
 
+describe("CanonList NC label", () => {
+  const src = (nc: boolean) => ({
+    kind: "official" as const, url: "https://en.wikipedia.org/wiki/Gandalf", licence: "CC BY-NC-SA 3.0",
+    licence_url: null, nc, added_at: "2026-11-09",
+  });
+
+  it("labels an entry with a non-commercial source, and no other", async () => {
+    list = [
+      { ...base, id: "ent_0001", title: "Gandalf", type: "character", status: "canon", sources: [src(true)] },
+      { ...base, id: "ent_0003", title: "Rivendell", type: "place", status: "canon", sources: [src(false)] },
+    ] as unknown as Entry[];
+    renderList();
+    const nc = await screen.findByRole("link", { name: /Gandalf/ });
+    expect(nc).toHaveTextContent(/NC$/);
+    expect(screen.getByRole("link", { name: "Rivendell" })).not.toHaveTextContent("NC");
+  });
+
+  it("leaves a secret NC entry out of the list until shown, label and all", async () => {
+    list = [
+      { ...base, id: "ent_0004", title: "The Hidden Gate", type: "place", status: "secret", sources: [src(true)] },
+      { ...base, id: "ent_0001", title: "Sky of Velmar", type: "place", status: "canon" },
+    ] as unknown as Entry[];
+    renderList();
+    await screen.findByText("Sky of Velmar");
+    expect(screen.queryByText("The Hidden Gate")).toBeNull();
+    expect(screen.queryByText("NC")).toBeNull();
+  });
+});
+
 describe("CanonList type dots", () => {
   it("gives each row a dot in its type colour", async () => {
     renderList();

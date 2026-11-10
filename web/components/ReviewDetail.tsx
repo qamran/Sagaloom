@@ -7,10 +7,12 @@ import { ApprovalCard } from "@/components/ApprovalCard";
 import { CourseChip } from "@/components/CourseChip";
 import { ReviewQueue } from "@/components/ReviewQueue";
 import { getEntries } from "@/lib/api";
-import { SecretsWorldProvider } from "@/lib/secrets";
+import { entryIsSecret } from "@/lib/review";
+import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
+import { entryIsNc, licenceText } from "@/lib/sources";
 import { useAgentStream } from "@/lib/useAgentStream";
 import { useWorld } from "@/lib/world";
-import type { CheckResult, ImportNote, PendingInterrupt } from "@/lib/types";
+import type { CheckResult, Entry, ImportNote, PendingInterrupt, Proposal } from "@/lib/types";
 
 const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
@@ -20,6 +22,8 @@ const LINK_BTN = `flex ${BTN} items-center no-underline hover:no-underline`;
 const NOTHING_WAITING = "This conversation has nothing waiting for review.";
 const OTHER_WORLD = "This conversation belongs to another world. Switch worlds to review it.";
 const NOTHING_IMPORTED = "Nothing from this import needs review.";
+const nonCommercial = (licence: string) =>
+  `Non-commercial licence. Some of these pages are licensed for non-commercial use only (${licence}). Approving them means this world can't be used commercially.`;
 
 /** The candidates an import left out, each with why. Titles are the model's, shown as plain text. */
 function NotImported({ note }: { note: ImportNote | null }) {
@@ -32,10 +36,58 @@ function NotImported({ note }: { note: ImportNote | null }) {
           <li key={i} className="rounded-[10px] border border-border bg-panel-2 px-3.5 py-2">
             <span className="font-semibold">{k.title}</span>
             <span className="text-muted-foreground"> · {k.reason}</span>
+            {k.paste && (
+              <>
+                {" · "}
+                <Link href="/import#paste" className="text-accent underline underline-offset-2">
+                  Paste the text instead
+                </Link>
+              </>
+            )}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/** The licence the thread's proposals are under, and a box that warns when any of them is non-commercial only. */
+function LicenceNotice({ note, proposals }: { note: ImportNote | null; proposals: Proposal[] }) {
+  const anyNc = proposals.some((p) => entryIsNc(p.after));
+  const nc = proposals.flatMap((p) => p.after?.sources ?? []).find((s) => s.nc === true);
+  return (
+    <>
+      {note?.kind === "wiki" && <p className="m-0 text-[13px]">Licence: {licenceText({ licence: note.licence?.text })}</p>}
+      {anyNc && (
+        <p role="note" className="m-0 rounded-[10px] border border-conflict-line bg-conflict-bg px-3.5 py-2.5 text-[13px] text-conflict-text">
+          {nonCommercial(licenceText({ licence: nc?.licence }))}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Where the selected card came from: the page URL of a wiki import (never for a hidden secret entry), or the first lines of pasted text. */
+function ImportProvenance({ note, current, canon }: { note: ImportNote | null; current: Proposal; canon: Entry[] | undefined }) {
+  const worldShown = useWorldShowSecrets();
+  if (note?.kind === "wiki") {
+    const url = current.after?.sources?.[0]?.url ?? current.after?.source_url;
+    const hidden = entryIsSecret(current, canon) && !worldShown;
+    return (
+      <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
+        {url && !hidden && <span>From {url}</span>}
+        <CourseChip card="official_canon_licence" label="Official canon · licence" />
+      </p>
+    );
+  }
+  return (
+    <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
+      <span>
+        From {note?.source ?? "paste"}
+        {note?.first_lines[current.proposal_id] ? `: “${note.first_lines[current.proposal_id]}”` : ""}
+      </span>
+      <CourseChip card="injection_safe_extraction" label="Injection-safe extraction" />
+    </p>
   );
 }
 
@@ -170,6 +222,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
             {n} {n === 1 ? "proposal" : "proposals"} · nothing enters canon until you decide
           </p>
           <ErrorLine text={shown.error} />
+          <LicenceNotice note={isImport ? s.importNote : null} proposals={proposals} />
           <div className="flex flex-wrap gap-2">
             {clean.length > 0 && (
               <button
@@ -200,15 +253,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
         </aside>
 
         <main className="flex min-w-0 flex-[999_1_520px] flex-col gap-4 px-4 py-6 md:px-10">
-          {isImport && current && (
-            <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
-              <span>
-                From {s.importNote?.source ?? "paste"}
-                {s.importNote?.first_lines[current.proposal_id] ? `: “${s.importNote.first_lines[current.proposal_id]}”` : ""}
-              </span>
-              <CourseChip card="injection_safe_extraction" label="Injection-safe extraction" />
-            </p>
-          )}
+          {isImport && current && <ImportProvenance note={s.importNote} current={current} canon={canon} />}
           {current && (
             <ApprovalCard
               key={current.proposal_id}

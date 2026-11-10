@@ -351,6 +351,44 @@ describe("ApprovalCard", () => {
     expect(screen.queryByRole("link", { name: /wikipedia\.org/ })).not.toBeInTheDocument();
   });
 
+  const wikiSource = (nc: boolean, licence: string | null = "Creative Commons Attribution-Share Alike 4.0") => ({
+    kind: "official" as const, url: "https://en.wikipedia.org/wiki/Gandalf", licence, licence_url: null, nc,
+  });
+  const official = (nc: boolean, status: "canon" | "secret" = "canon"): Proposal => ({
+    ...update, action: "create", entry_id: null, before: null,
+    after: {
+      ...update.after!, status, source: "official", source_url: "https://en.wikipedia.org/wiki/Gandalf",
+      licence: "Creative Commons Attribution-Share Alike 4.0", trusted: false, sources: [wikiSource(nc)],
+    },
+  });
+
+  it("shows an official draft's source, URL and licence", () => {
+    render(<ApprovalCard proposal={official(false)} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.getByText("Source: official (fan wiki)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "https://en.wikipedia.org/wiki/Gandalf" })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText("Licence: Creative Commons Attribution-Share Alike 4.0")).toBeInTheDocument();
+  });
+
+  it("adds NC to the licence when a source is non-commercial", () => {
+    render(<ApprovalCard proposal={official(true)} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.getByText("Licence: Creative Commons Attribution-Share Alike 4.0 · NC")).toBeInTheDocument();
+  });
+
+  it("says licence not reported for a reference draft without one", () => {
+    const ref: Proposal = {
+      ...update, after: { ...update.after!, source: "reference", source_url: "https://en.wikipedia.org/wiki/Venice", licence: null },
+    };
+    render(<ApprovalCard proposal={ref} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.getByText("Licence: licence not reported")).toBeInTheDocument();
+  });
+
+  it("shows no source line while a secret entry is hidden", () => {
+    render(<ApprovalCard proposal={official(true, "secret")} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.queryByText(/Source: official/)).toBeNull();
+    expect(screen.queryByText(/Licence:/)).toBeNull();
+    expect(screen.queryByText(/wikipedia\.org/)).toBeNull();
+  });
+
   it("shows no source line for the author's own proposal", () => {
     const own: Proposal = { ...update, after: { ...update.after!, source: "user", source_url: null, trusted: true } };
     render(<ApprovalCard proposal={own} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);

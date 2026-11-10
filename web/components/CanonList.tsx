@@ -7,6 +7,7 @@ import { useState } from "react";
 import { getEntries } from "@/lib/api";
 import { TYPE_DOT, TYPE_ORDER, TYPE_PLURAL } from "@/lib/entity";
 import { useShowSecrets } from "@/lib/secrets";
+import { entryIsNc } from "@/lib/sources";
 import { useWorld } from "@/lib/world";
 
 /** Left column of the Canon tab: entries grouped by type, with search (R12.2). */
@@ -92,6 +93,11 @@ export function CanonList() {
                     {e.title}
                     {(e.status === "myth" || e.status === "rumour" || e.status === "secret") && (
                       <span className="ml-1 text-[11px] font-normal text-myth">· {e.status}</span>
+                    )}
+                    {entryIsNc(e) && (
+                      <span title="Non-commercial licence" className="ml-1.5 rounded-full border border-conflict-line px-1.5 text-[10px] font-normal text-conflict-text">
+                        NC
+                      </span>
                     )}
                   </span>
                 </Link>

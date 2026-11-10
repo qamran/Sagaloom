@@ -39,4 +39,13 @@ describe("ImportPage", () => {
     expect(screen.getByLabelText("Text to import")).toHaveValue("Ister has two moons.");
     expect(paste().getByRole("button", { name: "Extract entries" })).toBeEnabled();
   });
+
+  it("starts a wiki import from the Fan wiki card", async () => {
+    render(<ImportPage />);
+    const card = within(screen.getByRole("region", { name: "Fan wiki" }));
+    await userEvent.click(card.getByLabelText("Page URLs, one per line"));
+    await userEvent.paste("https://en.wikipedia.org/wiki/Gandalf");
+    await userEvent.click(card.getByRole("button", { name: "Extract entries" }));
+    expect(run.start).toHaveBeenCalledWith("w1", { kind: "wiki", urls: ["https://en.wikipedia.org/wiki/Gandalf"] });
+  });
 });

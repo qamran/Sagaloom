@@ -3,7 +3,7 @@
 import { ImportProgress } from "@/components/ImportProgress";
 import { ImportSourceCard } from "@/components/ImportSourceCard";
 import { RecentImports } from "@/components/RecentImports";
-import { useImport } from "@/lib/useImport";
+import { useImport, type ImportBody } from "@/lib/useImport";
 import { useWorld } from "@/lib/world";
 
 /** Bring existing notes in: every candidate becomes a proposal that waits in Review. */
@@ -11,7 +11,7 @@ export default function ImportPage() {
   const { world } = useWorld();
   const run = useImport();
   const running = run.phase === "extracting" || run.phase === "checking";
-  const start = (body: { text: string; filename?: string }) => {
+  const start = (body: ImportBody) => {
     if (world) void run.start(world.id, body);
   };
   return (
@@ -36,7 +36,7 @@ export default function ImportPage() {
         <div className="flex flex-wrap items-stretch gap-4">
           <ImportSourceCard kind="paste" disabled={!world} onExtract={start} />
           <ImportSourceCard kind="upload" disabled={!world} onExtract={start} />
-          <ImportSourceCard kind="wiki" />
+          <ImportSourceCard kind="wiki" disabled={!world} onExtract={start} />
         </div>
       </div>
       <RecentImports />

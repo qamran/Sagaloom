@@ -7,6 +7,9 @@ import { PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import type { SseEvent } from "./types";
 
+/** What an import sends: pasted or uploaded text, or the page URLs of a fan wiki. */
+export type ImportBody = { text: string; filename?: string } | { kind: "wiki"; urls: string[] };
+
 export type ImportPhase = "idle" | "extracting" | "checking" | "error";
 
 export interface ImportRun {
@@ -19,7 +22,7 @@ export interface ImportRun {
   /** The world the running (or last) import writes into, so its drawer follows that world's secrets. */
   worldId: string | null;
   error: string | null;
-  start: (worldId: string, body: { text: string; filename?: string }) => Promise<void>;
+  start: (worldId: string, body: ImportBody) => Promise<void>;
 }
 
 const UNREACHABLE = "Could not reach Sagaloom. Please try again.";
@@ -43,7 +46,7 @@ export function useImport(): ImportRun {
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const start = useCallback(
-    async (worldId: string, body: { text: string; filename?: string }) => {
+    async (worldId: string, body: ImportBody) => {
       if (busyRef.current) return;
       busyRef.current = true;
       setPhase("extracting");

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -355,5 +357,96 @@ describe("ReviewDetail for an import thread", () => {
     expect(screen.getByText("Old Mill")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open in Chat" })).toBeNull();
     expect(screen.getByRole("link", { name: "Back to Import" })).toHaveAttribute("href", "/import");
+  });
+});
+
+describe("ReviewDetail for a wiki import thread", () => {
+  const manifest = JSON.parse(
+    readFileSync(join(__dirname, "../../api/tests/fixtures/wiki/manifest.json"), "utf-8"),
+  ) as { licence: { text: string } };
+  const LICENCE = manifest.licence.text;
+  const GANDALF = "https://en.wikipedia.org/wiki/Gandalf";
+  const source = (nc: boolean, licence: string | null = LICENCE) => ({
+    kind: "official" as const, url: GANDALF, licence, licence_url: null, nc,
+  });
+  const wikiProposal = (id: string, title: string, nc = false, status: "canon" | "secret" = "canon"): Proposal => ({
+    ...proposal(id, title),
+    after: {
+      title, type: "character", body: "A wizard.", status, aliases: [], facts: [], source: "official",
+      source_url: GANDALF, licence: LICENCE, trusted: false, sources: [source(nc)],
+    },
+  });
+  const note = {
+    kind: "wiki" as const, source: "en.wikipedia.org", licence: { text: LICENCE, url: null, nc: false },
+    first_lines: {}, skipped: [
+      { title: "Moria", reason: "the page does not exist", paste: true },
+      { title: "Orodruin", reason: "the page has no article text", paste: false },
+    ],
+  };
+  const wikiStream = (pending: PendingInterrupt, over: Partial<AgentStream> = {}) =>
+    base({ kind: "import", title: "Fan wiki: en.wikipedia.org (1 pages)", importNote: note, pending, ...over });
+  const one = (nc = false, status: "canon" | "secret" = "canon") =>
+    pendingOf([wikiProposal("p_g", "Gandalf", nc, status), clean("p_g")]);
+
+  it("shows the licence, the page URL above the card and the course chip", () => {
+    stream = wikiStream(one());
+    render(ui());
+    expect(screen.getByText(`Licence: ${LICENCE}`, { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText(`From ${GANDALF}`)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Course note: Official canon · licence" })).toHaveAttribute(
+      "href",
+      "/studio?card=official_canon_licence#feature-map",
+    );
+    expect(screen.queryByRole("link", { name: /Injection-safe/ })).toBeNull();
+    expect(screen.queryByText(/Non-commercial licence/)).toBeNull();
+  });
+
+  it("says licence not reported when the wiki reported none", () => {
+    stream = wikiStream(one(), { importNote: { ...note, licence: { text: null, url: null, nc: false } } });
+    render(ui());
+    expect(screen.getByText("Licence: licence not reported", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("warns above the queue when a source is non-commercial", () => {
+    stream = wikiStream(pendingOf([wikiProposal("p_g", "Gandalf", true), clean("p_g")]));
+    render(ui());
+    expect(screen.getByText(
+      `Non-commercial licence. Some of these pages are licensed for non-commercial use only (${LICENCE}). Approving them means this world can't be used commercially.`,
+    )).toBeInTheDocument();
+  });
+
+  it("warns for chat-tool proposals too, whatever the thread kind", () => {
+    stream = base({ pending: pendingOf([wikiProposal("p_g", "Gandalf", true), clean("p_g")]) });
+    render(ui());
+    expect(screen.getByText(/^Non-commercial licence\./)).toBeInTheDocument();
+    expect(screen.queryByText(/^Licence:/, { selector: "p" })).toBeNull();
+  });
+
+  it("does not show the URL of a hidden secret entry", () => {
+    stream = wikiStream(one(false, "secret"));
+    render(ui());
+    expect(screen.queryByText(`From ${GANDALF}`)).toBeNull();
+    expect(screen.queryByText(/wikipedia\.org\/wiki\/Gandalf/)).toBeNull();
+  });
+
+  it("links a skipped row to the paste card only where pasting can help", () => {
+    stream = wikiStream(one());
+    render(ui());
+    const list = within(screen.getByRole("region", { name: "Not imported" }));
+    expect(list.getAllByRole("link", { name: "Paste the text instead" })).toHaveLength(1);
+    expect(list.getByRole("link", { name: "Paste the text instead" })).toHaveAttribute("href", "/import#paste");
+    expect(within(list.getByText("Orodruin").closest("li") as HTMLElement).queryByRole("link")).toBeNull();
+  });
+
+  it("keeps From paste and the Injection-safe chip for a text import", () => {
+    stream = base({
+      kind: "import", title: "notes.md", pending: two,
+      importNote: { kind: "text", source: "paste", first_lines: { p_a: "The Tide Council sits." }, skipped: [] },
+    });
+    render(ui());
+    expect(screen.getByText("From paste: \u201cThe Tide Council sits.\u201d")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Course note: Injection-safe extraction" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Official canon/ })).toBeNull();
+    expect(screen.queryByText(/^Licence:/)).toBeNull();
   });
 });

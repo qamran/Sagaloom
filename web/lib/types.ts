@@ -104,11 +104,16 @@ export type Mode = "brainstorm" | "query" | "edit";
 
 /** The note an import thread starts with (api/sagaloom/web/imports.py). */
 export interface ImportNote {
-  /** The filename, or "paste". */
+  /** "wiki" for a fan-wiki import; a note from before wiki imports has no kind and counts as text. */
+  kind?: "wiki" | "text";
+  /** The filename or "paste"; the wiki's host for a wiki import. */
   source: string;
+  /** The wiki's licence as read from it, kept with the import (wiki imports only). */
+  licence?: { text: string | null; url: string | null; nc: boolean } | null;
   /** Each proposal's first line of imported text, keyed by proposal_id. */
   first_lines: Record<string, string>;
-  skipped: { title: string; reason: string }[];
+  /** `paste` is true where pasting the page's text instead can help. */
+  skipped: { title: string; reason: string; paste?: boolean }[];
 }
 
 export interface ChatMessage {

@@ -134,6 +134,10 @@
     {
       "in": "javascript:alert(1)",
       "error": "Not a wiki page URL: javascript:alert(1). Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "   https://evilwikipedia.org/wiki/X  ",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://evilwikipedia.org/wiki/X"
     }
   ],
   "lists": [

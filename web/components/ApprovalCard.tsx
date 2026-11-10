@@ -9,6 +9,7 @@ import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
 import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
+import { entryIsNc, licenceText } from "@/lib/sources";
 import {
   BADGE_CLASS,
   BADGE_LABEL,
@@ -231,7 +232,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         ))}
 
         {before && after ? (
-          after.source === "reference" && <SourceLine url={after.source_url} />
+          !entryHidden && <SourceLine draft={after} />
         ) : proposal.after ? (
           <div className="flex flex-col gap-3 rounded-[10px] border border-border px-3.5 py-3">
             <div>
@@ -241,7 +242,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
               <div className="font-heading text-lg font-semibold">
                 <SecretValue value={proposal.after.title} secret={entryHidden} revealable={false} />
               </div>
-              {proposal.after.source === "reference" && <SourceLine url={proposal.after.source_url} />}
+              {!entryHidden && <SourceLine draft={proposal.after} />}
               {proposal.after.body && (
                 <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-prose">
                   <SecretValue value={proposal.after.body} secret={entryHidden} revealable={false} />
@@ -385,15 +386,23 @@ function DeleteDependents({
   );
 }
 
-function SourceLine({ url }: { url?: string | null }) {
+/** Where a reference or official draft came from: its kind, page URL and licence, with NC when any source is non-commercial. */
+function SourceLine({ draft }: { draft: EntryDraft }) {
+  if (draft.source !== "reference" && draft.source !== "official") return null;
+  const url = draft.source_url ?? draft.sources?.[0]?.url;
+  const licence = licenceText({ licence: draft.licence ?? draft.sources?.[0]?.licence });
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      <span>Source: reference (Wikipedia)</span>
+      <span>{draft.source === "reference" ? "Source: reference (Wikipedia)" : "Source: official (fan wiki)"}</span>
       {url && /^https:\/\//.test(url) && (
         <a href={url} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline underline-offset-2">
           {url}
         </a>
       )}
+      <span>
+        Licence: {licence}
+        {entryIsNc(draft) && " · NC"}
+      </span>
     </div>
   );
 }
