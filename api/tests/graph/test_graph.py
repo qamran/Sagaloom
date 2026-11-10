@@ -1680,6 +1680,8 @@ async def test_agent_never_sees_page_text(store, tmp_path, aclose_later):
     for prompt in agent.seen:
         for m in prompt:
             assert SENTINEL not in json.dumps(m.model_dump(), default=str), m
+    assert SENTINEL not in json.dumps(agent.seen_kwargs, default=str)  # call params (temperature, …)
+    assert SENTINEL not in json.dumps(agent.bound, default=str)  # the bound tools
 
 
 async def test_import_wiki_does_not_taint_other_proposals(store, tmp_path, aclose_later):
@@ -1698,6 +1700,27 @@ async def test_import_wiki_does_not_taint_other_proposals(store, tmp_path, aclos
     assert set(by_title) == {"Gandalf", "Ostra"}
     assert (by_title["Ostra"].source, by_title["Ostra"].trusted) == ("user", True)
     assert (by_title["Gandalf"].source, by_title["Gandalf"].trusted) == ("official", False)
+
+
+async def test_import_wiki_does_not_taint_a_later_proposal_in_the_turn(store, tmp_path, aclose_later):
+    """The sequential leg: the import's wrapped result IS in the turn when the agent proposes
+    after the approval, so only a taint scan keyed on `real_world_reference` keeps it trusted."""
+    client, _ = seeded_wiki(tmp_path, aclose_later)
+    graph, agent, _ = make(
+        store,
+        [import_call(FIXTURE_URLS[1:2]), create_call(), AIMessage(content="ok")],
+        extractor=wiki_extractor(),
+        wiki=client,
+    )
+    cfg = run_config("t-wiki-taint-later", W)
+    await run(graph, start("Import Gandalf, then add Ostra."), cfg)
+    assert (await approve_all(graph, cfg))[-1] == "__interrupt__"  # commit -> agent -> Ostra -> gate
+    assert [e.title for e in store.list_entries(W)] == ["Gandalf"]
+    # The agent's second call saw the import's result in this turn.
+    assert any(isinstance(m, ToolMessage) and m.name == "import_wiki" for m in agent.seen[1])
+    [ostra] = (await graph.aget_state(cfg)).values["pending_proposals"]
+    assert ostra.after.title == "Ostra"
+    assert (ostra.after.source, ostra.after.trusted, ostra.after.sources) == ("user", True, [])
 
 
 async def test_import_wiki_can_be_switched_off(store, tmp_path, aclose_later):
