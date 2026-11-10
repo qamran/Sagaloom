@@ -42,7 +42,10 @@ export interface AgentStream {
   importNote: ImportNote | null;
   /** Decisions picked so far for the pending card(s), keyed by proposal_id. */
   chosen: Record<string, Decision>;
-  /** The set just sent for decision, with its choices, kept (while `pending` is null) until the next interrupt. */
+  /**
+   * The set just sent for decision, with its choices. Kept until the next interrupt, so it also survives a
+   * turn that ends with none. ReviewDetail reads it only while busy, to keep the cards up.
+   */
   sent: { pending: PendingInterrupt; chosen: Record<string, Decision> } | null;
   turnEvents: TurnEvents[];
   send: (content: string) => Promise<void>;

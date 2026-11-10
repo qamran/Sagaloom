@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/components/Header";
 import { getReviewThreads } from "@/lib/api";
@@ -43,6 +43,9 @@ describe("Header Review tab", () => {
     vi.mocked(getReviewThreads).mockResolvedValue([]);
     renderHeader();
     await waitFor(() => expect(getReviewThreads).toHaveBeenCalledWith("w1"));
+    // The fetch has resolved, and one more tick lets the query publish it to the DOM.
+    await vi.mocked(getReviewThreads).mock.results[0].value;
+    await act(async () => {});
     expect(await screen.findByRole("link", { name: "Review" })).toHaveTextContent(/^Review$/);
   });
 });
