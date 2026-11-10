@@ -8,7 +8,7 @@ import zipfile
 import yaml
 
 from sagaloom.export import entry_filename, export_markdown
-from sagaloom.models import Entry, Fact, Link
+from sagaloom.models import Entry, EntrySource, Fact, Link
 from sagaloom.seed import VELMAR_ID, load_seed
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.tools.export import make_export_tool
@@ -16,7 +16,7 @@ from sagaloom.web.app import SEED_DIR
 
 R2S = {
     "id", "world_id", "title", "type", "status", "source", "source_url", "licence", "trusted",
-    "aliases", "links", "facts", "version", "created_at", "updated_at",
+    "aliases", "links", "facts", "sources", "version", "created_at", "updated_at",
 }
 
 
@@ -136,3 +136,57 @@ def test_front_matter_round_trips_adversarial_text():
     assert meta["title"] == "a: b" and meta["aliases"] == ["--- x"]
     assert meta["facts"][0]["value"] == "x\n---\nevil: 1"
     assert body.strip() == "Body."
+
+
+# ---------- ATTRIBUTION.md (R-W3) ----------
+
+WP = "https://en.wikipedia.org/wiki/Gandalf"
+FD = "https://lotr.fandom.com/wiki/Gandalf"
+
+
+def test_attribution_lists_every_source_with_licence():
+    e = entry(
+        1, "Gandalf", source="official", trusted=False,
+        sources=[
+            EntrySource(
+                kind="official", url=FD, licence="CC BY-NC-SA 3.0",
+                licence_url="https://creativecommons.org/licenses/by-nc-sa/3.0/", nc=True,
+            ),
+            EntrySource(kind="reference", url=WP, licence=None),
+        ],
+    )
+    files = read_zip(export_markdown([e, entry(2, "Plain")], exclude_secrets=False))
+    text = files["ATTRIBUTION.md"]
+    assert text.startswith("# Attribution\n")
+    assert "## Gandalf (ent_0001)" in text and "Plain" not in text
+    assert (
+        f"- official: {FD} · CC BY-NC-SA 3.0 "
+        "[https://creativecommons.org/licenses/by-nc-sa/3.0/] · NC"
+    ) in text
+    assert f"- reference: {WP} · licence not reported" in text
+    assert "## Share-alike" in text
+    assert "## Non-commercial content" in text
+    assert "This content can't be used commercially." in text
+    assert text.index("## Share-alike") < text.index("## Non-commercial content")
+
+
+def test_no_attribution_without_sources():
+    files = read_zip(export_markdown([entry(1), entry(2, "Keep")], exclude_secrets=False))
+    assert "ATTRIBUTION.md" not in files
+
+
+def test_attribution_respects_leave_out_secrets():
+    src = [EntrySource(kind="official", url=FD, licence="CC BY-SA 3.0")]
+    secret = entry(1, "Hidden Vault", status="secret", trusted=False, sources=src)
+    plain = entry(2, "Keep")
+    files = read_zip(export_markdown([secret, plain], exclude_secrets=True))
+    assert "ATTRIBUTION.md" not in files
+    assert not any("Hidden Vault" in t for t in files.values())
+
+    public = entry(3, "Shire", trusted=False, sources=[EntrySource(kind="official", url=WP)])
+    files = read_zip(export_markdown([secret, public], exclude_secrets=True))
+    text = files["ATTRIBUTION.md"]
+    assert "## Shire (ent_0003)" in text and "Hidden Vault" not in text and FD not in text
+    assert "## Non-commercial content" not in text
+    full = read_zip(export_markdown([secret, public], exclude_secrets=False))["ATTRIBUTION.md"]
+    assert "## Hidden Vault (ent_0001)" in full

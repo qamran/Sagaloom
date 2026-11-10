@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from sagaloom.licence import is_nc
 
 EntryType = Literal["character", "place", "faction", "item", "rule", "event"]
 Status = Literal["canon", "myth", "rumour", "secret"]
 Source = Literal["user", "official", "reference"]
+SourceKind = Literal["official", "reference"]
 
 
 def _now() -> str:
@@ -20,6 +23,33 @@ class Fact(BaseModel):
     refs: list[str] = Field(default_factory=list)
     status: Status = "canon"
     told_by: str | None = None
+
+
+class EntrySource(BaseModel):
+    """One page an entry's content came from (R-W3-1). Set by the server, never by the agent."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    kind: SourceKind
+    url: str
+    licence: str | None = None
+    licence_url: str | None = None
+    nc: bool = False
+    added_at: str = Field(default_factory=_now)
+
+
+def _legacy_sources(m: "Entry | EntryDraft", added_at: str) -> None:
+    """An entry stored before `sources` existed reads its one primary source as a list (R-W3-1)."""
+    if not m.sources and m.source in ("official", "reference") and m.source_url:
+        m.sources = [
+            EntrySource(
+                kind=m.source,
+                url=m.source_url,
+                licence=m.licence,
+                nc=is_nc(m.licence, None),
+                added_at=added_at,
+            )
+        ]
 
 
 class Link(BaseModel):
@@ -43,9 +73,15 @@ class Entry(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     links: list[Link] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
+    sources: list[EntrySource] = Field(default_factory=list)
     version: int = Field(default=1, ge=1)
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
+
+    @model_validator(mode="after")
+    def _fill_legacy_sources(self) -> "Entry":
+        _legacy_sources(self, self.created_at)
+        return self
 
 
 class EntryDraft(BaseModel):
@@ -60,9 +96,15 @@ class EntryDraft(BaseModel):
     source_url: str | None = None
     licence: str | None = None
     trusted: bool = True
+    sources: list[EntrySource] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _fill_legacy_sources(self) -> "EntryDraft":
+        _legacy_sources(self, _now())
+        return self
 
 
-PROVENANCE_FIELDS = ("source", "source_url", "licence", "trusted")
+PROVENANCE_FIELDS = ("source", "source_url", "licence", "trusted", "sources")
 
 
 class World(BaseModel):

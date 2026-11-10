@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from sagaloom.models import Entry, Fact, Link
+from sagaloom.models import Entry, EntrySource, Fact, Link
 from sagaloom.store.canon import DuplicateTitleError, VersionConflictError, norm
 
 
@@ -202,3 +202,17 @@ def test_upsert_without_expected_version_unchanged(store):
     store.upsert_entry(mk(version=3))
     saved = store.upsert_entry(mk(body="Overwritten.", version=1))
     assert store.get_entry("w1", "ent_0001") == saved and saved.body == "Overwritten."
+
+
+def test_sources_round_trip_through_chroma(store):
+    sources = [
+        EntrySource(
+            kind="official", url="https://lotr.fandom.com/wiki/Gandalf", licence="CC BY-NC-SA 3.0",
+            licence_url="https://creativecommons.org/licenses/by-nc-sa/3.0/", nc=True,
+        ),
+        EntrySource(kind="reference", url="https://en.wikipedia.org/wiki/Wizard"),
+    ]
+    saved = store.upsert_entry(mk(source="official", trusted=False, sources=sources))
+    got = store.get_entry("w1", "ent_0001")
+    assert got == saved and got.sources == sources
+    assert store.list_entries("w1")[0].sources == sources

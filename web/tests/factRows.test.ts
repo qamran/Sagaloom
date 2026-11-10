@@ -10,7 +10,7 @@ const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fac
 const council = {
   id: "ent_0002", world_id: "w1", title: "Harbour Council", type: "faction",
   body: "Seven seats govern Velmar's harbour.", status: "canon", source: "user", source_url: null,
-  licence: null, trusted: true, aliases: [], links: [], version: 2, created_at: "", updated_at: "",
+  licence: null, trusted: true, aliases: [], links: [], sources: [], version: 2, created_at: "", updated_at: "",
   facts: [fact("Seats", "Seven"), fact("Meets at", "The Tidehall"), fact("Chaired by", "Mayor Elsbeth Varr")],
 } as Entry;
 

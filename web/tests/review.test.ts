@@ -148,7 +148,7 @@ describe("proposalSummary", () => {
     });
     const before = {
       id: "ent_0007", world_id: "w1", title: "House Varr", type: "faction", body: "", status: "canon", aliases: [],
-      links: [], facts: [heir("secret")], version: 1, created_at: "", updated_at: "",
+      links: [], facts: [heir("secret")], sources: [], version: 1, created_at: "", updated_at: "",
     } as unknown as Entry;
     const update: Proposal = {
       ...create, action: "update", entry_id: "ent_0007", before,

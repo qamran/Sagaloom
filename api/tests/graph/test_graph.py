@@ -1368,6 +1368,27 @@ async def test_edit_decision_cannot_reset_provenance(store, tmp_path):
     assert (e.body, e.source, e.trusted, e.source_url) == ("Edited.", "reference", False, REF_URLS[0])
 
 
+async def test_edit_decision_cannot_reset_sources(store, tmp_path):
+    graph, *_ = make(
+        store, [ref_call(), create_call(), AIMessage(content="ok")], wiki=fake_wiki(tmp_path)
+    )
+    cfg = run_config("t1", W)
+    await run(graph, start(), cfg)
+    pid = await only_pid(graph, cfg)
+    proposed = (await pending_after(graph, cfg)).sources
+    assert [(s.kind, s.url) for s in proposed] == [("reference", REF_URLS[0])]
+    edited = {
+        **EntryDraft(title="Ostra", type="place", body="Edited.").model_dump(),
+        "sources": [], "trusted": True,
+    }
+    await run(graph, resume({"proposal_id": pid, "action": "edit", "edited": edited}), cfg)
+    after = await pending_after(graph, cfg)
+    assert (after.sources, after.trusted) == (proposed, False)
+    await run(graph, resume({"proposal_id": pid, "action": "approve"}), cfg)
+    e = store.get_entry(W, "ent_0001")
+    assert (e.body, e.sources, e.trusted) == ("Edited.", proposed, False)
+
+
 def test_system_prompt_keeps_reference_out_of_canon():
     assert "real_world_reference" in SYSTEM
     assert "reference, not canon" in SYSTEM

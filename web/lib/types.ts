@@ -10,6 +10,7 @@ type Schemas = components["schemas"];
 
 export type Entry = Schemas["Entry"];
 export type Fact = Schemas["Fact-Output"];
+export type EntrySource = Schemas["EntrySource-Output"];
 export type Link = Schemas["Link"];
 export type World = Schemas["World"];
 export type MentionRef = Schemas["MentionRef"];

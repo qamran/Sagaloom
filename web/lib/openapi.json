@@ -207,6 +207,13 @@
             ],
             "title": "Source Url"
           },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EntrySource-Output"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
           "status": {
             "default": "canon",
             "enum": [
@@ -270,6 +277,7 @@
           "aliases",
           "links",
           "facts",
+          "sources",
           "version",
           "created_at",
           "updated_at"
@@ -330,6 +338,13 @@
             ],
             "title": "Source Url"
           },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EntrySource-Input"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
           "status": {
             "default": "canon",
             "enum": [
@@ -371,6 +386,118 @@
           "body"
         ],
         "title": "EntryDraft",
+        "type": "object"
+      },
+      "EntrySource-Input": {
+        "description": "One page an entry's content came from (R-W3-1). Set by the server, never by the agent.",
+        "properties": {
+          "added_at": {
+            "title": "Added At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "official",
+              "reference"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
+          },
+          "nc": {
+            "default": false,
+            "title": "Nc",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url"
+        ],
+        "title": "EntrySource",
+        "type": "object"
+      },
+      "EntrySource-Output": {
+        "description": "One page an entry's content came from (R-W3-1). Set by the server, never by the agent.",
+        "properties": {
+          "added_at": {
+            "title": "Added At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "official",
+              "reference"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
+          },
+          "nc": {
+            "default": false,
+            "title": "Nc",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url",
+          "licence",
+          "licence_url",
+          "nc",
+          "added_at"
+        ],
+        "title": "EntrySource",
         "type": "object"
       },
       "Fact-Input": {

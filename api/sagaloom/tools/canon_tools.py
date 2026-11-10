@@ -12,8 +12,8 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field, ValidationError
 
 from sagaloom.check.contradiction import check_proposal
-from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal, SearchHit, Status
-from sagaloom.provenance import merge_provenance
+from sagaloom.models import Entry, EntryDraft, EntrySource, EntryType, Fact, Proposal, SearchHit, Status
+from sagaloom.provenance import merge_provenance, provenance_fields
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
 from sagaloom.text import message_text
@@ -180,9 +180,11 @@ def _provenance(messages: list | None, source_url: str | None) -> dict[str, Any]
     else it names is ignored, and the first of the turn's URLs is stored instead."""
     called, urls = _reference_turn(messages)
     if not called:
-        return {"source": "user", "source_url": None, "licence": None, "trusted": True}
+        return provenance_fields([], trusted=True)
     url = source_url if source_url in urls else (urls[0] if urls else None)
-    return {"source": "reference", "source_url": url, "licence": None, "trusted": False}
+    if url is None:  # results without a URL: still tainted, with nothing to cite
+        return {**provenance_fields([], trusted=False), "source": "reference"}
+    return provenance_fields([EntrySource(kind="reference", url=url)], trusted=False)
 
 
 def make_tools(

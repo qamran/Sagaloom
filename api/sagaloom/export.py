@@ -1,4 +1,5 @@
-"""Markdown zip export (R11.5.1, R11.5.2): one .md per entry, YAML front matter, body after it."""
+"""Markdown zip export (R11.5.1, R11.5.2): one .md per entry, YAML front matter, body after it,
+and an `ATTRIBUTION.md` for imported content (R-W3)."""
 
 import io
 import re
@@ -7,7 +8,15 @@ import zipfile
 
 import yaml
 
-from sagaloom.models import Entry
+from sagaloom.models import Entry, EntrySource
+
+ATTRIBUTION_FILE = "ATTRIBUTION.md"
+NO_LICENCE = "licence not reported"
+SHARE_ALIKE = (
+    "Content under a share-alike (SA) licence may require the whole exported world to be shared "
+    "under the same licence."
+)
+NC_SENTENCE = "This content can't be used commercially."
 
 
 def slugify(text: str, fallback: str = "untitled", limit: int = 60) -> str:
@@ -48,10 +57,33 @@ def _scrub(e: Entry, hidden: set[str]) -> Entry:
     return e.model_copy(update={"facts": facts, "links": links})
 
 
+def _source_line(s: EntrySource) -> str:
+    line = f"- {s.kind}: {s.url} · {s.licence or NO_LICENCE}"
+    if s.licence_url:
+        line += f" [{s.licence_url}]"
+    return line + (" · NC" if s.nc else "")
+
+
+def attribution_md(entries: list[Entry]) -> str | None:
+    """Every source of every exported entry, with its licence; None when no entry has sources."""
+    sourced = [e for e in entries if e.sources]
+    if not sourced:
+        return None
+    parts = ["# Attribution", ""]
+    for e in sourced:
+        parts += [f"## {e.title} ({e.id})", "", *(_source_line(s) for s in e.sources), ""]
+    parts += ["## Share-alike", "", SHARE_ALIKE, ""]
+    nc = [e for e in sourced if any(s.nc for s in e.sources)]
+    if nc:
+        parts += ["## Non-commercial content", "", *(f"- {e.title}" for e in nc), "", NC_SENTENCE, ""]
+    return "\n".join(parts)
+
+
 def export_markdown(entries: list[Entry], *, exclude_secrets: bool) -> bytes:
     """The zip bytes. `exclude_secrets` drops secret entries AND secret facts of the rest."""
     hidden = {e.id for e in entries if e.status == "secret"} if exclude_secrets else set()
     taken: set[str] = set()
+    written: list[Entry] = []
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for e in entries:
@@ -60,4 +92,8 @@ def export_markdown(entries: list[Entry], *, exclude_secrets: bool) -> bytes:
                     continue
                 e = _scrub(e, hidden)
             z.writestr(entry_filename(e, taken), _render(e))
+            written.append(e)
+        # After the secret filter, so a left-out entry's sources are left out too.
+        if (attribution := attribution_md(written)) is not None:
+            z.writestr(ATTRIBUTION_FILE, attribution)
     return buf.getvalue()

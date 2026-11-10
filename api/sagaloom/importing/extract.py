@@ -322,7 +322,9 @@ def _proposal(world_id: str, g: _Group, label: str, today: date) -> tuple[Propos
         body = fit(excerpt, BODY_MAX - len(prefix))
         if body is None:
             return ENTRY_FULL
-        imported = EntryDraft.model_construct(source="user", source_url=None, licence=None, trusted=False)
+        imported = EntryDraft.model_construct(
+            source="user", source_url=None, licence=None, trusted=False, sources=[]
+        )
         after = EntryDraft(
             title=before.title,
             type=before.type,

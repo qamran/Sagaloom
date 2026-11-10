@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.models import Entry, Fact
-from sagaloom.tools.canon_tools import make_tools
+from sagaloom.tools.canon_tools import CreateOrUpdateArgs, make_tools
 from sagaloom.tools.facts import FactList
 
 W = "w1"
@@ -473,3 +473,9 @@ async def test_check_contradiction_adds_no_duplicate_note(store):
     ts, *_ = tools_for(store)
     out = await ts["check_contradiction"].ainvoke({"proposed_text": "Red rain falls.", "world_id": W})
     assert "Possible duplicate" not in out
+
+
+def test_tool_args_have_no_sources_field():
+    """Sources are set by the server, never by the agent (R-W3-1)."""
+    props = CreateOrUpdateArgs.model_json_schema()["properties"]
+    assert "sources" not in props and "trusted" not in props and "licence" not in props

@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => {
 const entry = (over: Partial<Entry>): Entry => ({
   id: "ent_0001", world_id: "w1", title: "Ister", type: "place", body: "A river city.", status: "canon",
   source: "user", source_url: null, licence: null, trusted: true, aliases: [], links: [], facts: [],
-  version: 1, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...over,
+  sources: [], version: 1, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...over,
 });
 const renderIt = () =>
   render(

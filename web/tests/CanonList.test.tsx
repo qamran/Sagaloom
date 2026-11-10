@@ -13,7 +13,7 @@ vi.mock("@/lib/world", () => ({
 
 const base = {
   world_id: "w1", body: "", source: "user", source_url: null, licence: null, trusted: true,
-  aliases: [], links: [], facts: [], version: 1, created_at: "", updated_at: "",
+  aliases: [], links: [], facts: [], sources: [], version: 1, created_at: "", updated_at: "",
 } as const;
 const entries = [
   { ...base, id: "ent_0001", title: "Sky of Velmar", type: "place", status: "canon" },

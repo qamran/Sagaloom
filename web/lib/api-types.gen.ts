@@ -413,6 +413,8 @@ export interface components {
             source: "user" | "official" | "reference";
             /** Source Url */
             source_url: string | null;
+            /** Sources */
+            sources: components["schemas"]["EntrySource-Output"][];
             /**
              * Status
              * @default canon
@@ -459,6 +461,8 @@ export interface components {
             source?: "user" | "official" | "reference";
             /** Source Url */
             source_url?: string | null;
+            /** Sources */
+            sources?: components["schemas"]["EntrySource-Input"][];
             /**
              * Status
              * @default canon
@@ -477,6 +481,54 @@ export interface components {
              * @enum {string}
              */
             type: "character" | "place" | "faction" | "item" | "rule" | "event";
+        };
+        /**
+         * EntrySource
+         * @description One page an entry's content came from (R-W3-1). Set by the server, never by the agent.
+         */
+        "EntrySource-Input": {
+            /** Added At */
+            added_at?: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "official" | "reference";
+            /** Licence */
+            licence?: string | null;
+            /** Licence Url */
+            licence_url?: string | null;
+            /**
+             * Nc
+             * @default false
+             */
+            nc?: boolean;
+            /** Url */
+            url: string;
+        };
+        /**
+         * EntrySource
+         * @description One page an entry's content came from (R-W3-1). Set by the server, never by the agent.
+         */
+        "EntrySource-Output": {
+            /** Added At */
+            added_at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "official" | "reference";
+            /** Licence */
+            licence: string | null;
+            /** Licence Url */
+            licence_url: string | null;
+            /**
+             * Nc
+             * @default false
+             */
+            nc: boolean;
+            /** Url */
+            url: string;
         };
         /** Fact */
         "Fact-Input": {

@@ -20,7 +20,7 @@ const fact = (key: string, value: string, status: Fact["status"] = "canon"): Fac
 const before = {
   id: "ent_0007", world_id: "w1", title: "Sky of Velmar", type: "place", body: "One red moon.",
   status: "canon", source: "user", source_url: null, licence: null, trusted: true, aliases: ["the sky"],
-  links: [], facts: [fact("Moons", "Just one")], version: 3, created_at: "", updated_at: "",
+  links: [], facts: [fact("Moons", "Just one")], sources: [], version: 3, created_at: "", updated_at: "",
 } as Entry;
 
 const update: Proposal = {
@@ -363,7 +363,7 @@ describe("ApprovalCard", () => {
 const entry = (over: Partial<Entry>): Entry =>
   ({
     world_id: "w1", type: "faction", body: "", status: "canon", source: "user", source_url: null, licence: null,
-    trusted: true, aliases: [], links: [], facts: [], version: 1, created_at: "", updated_at: "", ...over,
+    trusted: true, aliases: [], links: [], facts: [], sources: [], version: 1, created_at: "", updated_at: "", ...over,
   }) as Entry;
 
 const updateOf = (e: Entry, after: Partial<Proposal["after"] & object>): Proposal => ({
