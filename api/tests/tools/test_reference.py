@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sagaloom.tools.canon_tools import reference_urls_this_turn
 from sagaloom.tools.reference import make_reference_tool
 from sagaloom.wiki.client import WikiClient
+from sagaloom.wiki.pages import parse_page_url
 
 WRAP = '<untrusted_data source="real_world_reference (reference, not canon)">'
 LONG = ("word " * 400).strip()  # 1999 characters
@@ -40,6 +41,17 @@ async def test_reference_output_shape(tmp_path):
     assert silk["summary"][:-1].endswith("word")  # cut at a word boundary
     assert silk["url"] == "https://en.wikipedia.org/wiki/Silk_Road"
     assert venice["summary"] == "A city on a lagoon."
+
+
+async def test_reference_url_matches_an_imported_page_url(tmp_path):
+    """One encoder for page URLs, so a reference source and a wiki import of the same page
+    carry the same URL (and `union_sources` dedupes them)."""
+    client = wiki(tmp_path, {"Shire (Middle-earth)": "A region."})
+    out = await make_reference_tool(client).ainvoke({"query": "shire", "max_results": 1})
+    await client.aclose()
+    [shire] = unwrap(out)["results"]
+    assert shire["url"] == parse_page_url("https://en.wikipedia.org/wiki/Shire_(Middle-earth)").url
+    assert shire["url"] == "https://en.wikipedia.org/wiki/Shire_(Middle-earth)"
 
 
 async def test_reference_schema_limits(tmp_path):

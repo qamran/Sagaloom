@@ -37,7 +37,6 @@ def _version() -> str:
 USER_AGENT = f"Sagaloom/{_version()} (+https://github.com/qamran/Sagaloom)"
 API = "https://en.wikipedia.org/w/api.php"
 SUMMARY = "https://en.wikipedia.org/api/rest_v1/page/summary/"
-PAGE = "https://en.wikipedia.org/wiki/"
 SUMMARY_CAP = 1000
 MAX_REDIRECTS = 5
 MIN_INTERVAL = 1.0
@@ -270,16 +269,15 @@ def search_url(query: str, limit: int) -> str:
     return f"{API}?{urlencode(params)}"
 
 
-def _title_path(title: str) -> str:
-    return quote(title.replace(" ", "_"), safe="")
-
-
 def summary_url(title: str) -> str:
-    return SUMMARY + _title_path(title)
+    # A REST path segment, not a page URL: everything, "/" included, is percent-encoded.
+    return SUMMARY + quote(title.replace(" ", "_"), safe="")
 
 
 def page_url(title: str) -> str:
-    return PAGE + _title_path(title)
+    """The English Wikipedia page URL, encoded exactly as an imported page's (`pages.page_url`),
+    so one page always has one URL."""
+    return pages.page_url("en.wikipedia.org", "", title)
 
 
 def cap_summary(text: str, limit: int = SUMMARY_CAP) -> str:

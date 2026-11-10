@@ -45,6 +45,7 @@ _NAMESPACES = frozenset(
         "media",
     }
 )
+_NOT_A_LANGUAGE = frozenset({"www", "m"})
 _TITLE_SAFE = "()!*',:;@$"
 
 
@@ -82,8 +83,11 @@ def _wiki_label(host: str, domain: str) -> str | None:
     if not host.endswith(suffix):
         return None
     label = host[: -len(suffix)]
-    if domain == "wikipedia.org" and label.endswith(".m"):
-        label = label[:-2]  # the phone site names the same page (R-W3-12)
+    if domain == "wikipedia.org":
+        if label.endswith(".m"):
+            label = label[:-2]  # the phone site names the same page (R-W3-12)
+        if label in _NOT_A_LANGUAGE:
+            return None  # the portal and the bare phone site are not a wiki
     return label if _LABEL.fullmatch(label) else None
 
 

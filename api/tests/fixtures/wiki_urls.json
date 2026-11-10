@@ -41,6 +41,13 @@
       "host": "en.wikipedia.org",
       "lang_path": "",
       "title": "Star Wars: Episode IV"
+    },
+    {
+      "in": "   https://en.wikipedia.org/wiki/Gandalf  ",
+      "url": "https://en.wikipedia.org/wiki/Gandalf",
+      "host": "en.wikipedia.org",
+      "lang_path": "",
+      "title": "Gandalf"
     }
   ],
   "reject": [
@@ -111,6 +118,22 @@
     {
       "in": "https://en.wikipedia.org/wiki/Category:Elves_of_Middle-earth_Elves_of_Middle-earth_Elves_of_Middle-earth_Elves_of_Middle-earth_",
       "error": "Only article pages can be imported, not category, file or special pages: https://en.wikipedia.org/wiki/Category:Elves_of_Middle-earth_Elves_of_Middle-ear"
+    },
+    {
+      "in": "https://www.wikipedia.org/wiki/X",
+      "error": "Not a wiki page URL: https://www.wikipedia.org/wiki/X. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "https://m.wikipedia.org/wiki/X",
+      "error": "Not a wiki page URL: https://m.wikipedia.org/wiki/X. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "en.wikipedia.org/wiki/Gandalf",
+      "error": "Not a wiki page URL: en.wikipedia.org/wiki/Gandalf. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "javascript:alert(1)",
+      "error": "Not a wiki page URL: javascript:alert(1). Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
     }
   ],
   "lists": [

@@ -2,6 +2,7 @@
 httpx.MockTransport."""
 
 import importlib.metadata
+import json
 
 import httpx
 import pytest
@@ -105,8 +106,6 @@ async def test_cache_v2_holds_final_url_and_ignores_old_files(tmp_path):
     path.with_name(path.name.replace(".v2.json", ".json")).write_text('{"stale": true}', encoding="utf-8")
     assert await client.get_json_final(url) == ({"ok": 2}, url)
     assert len(seen) == 1
-    import json
-
     assert json.loads(path.read_text(encoding="utf-8")) == {"final_url": url, "body": {"ok": 2}}
     await client.aclose()
 
@@ -135,7 +134,9 @@ async def test_summary_path_is_encoded(tmp_path):
         return httpx.Response(200, json={"title": title, "extract": "A band."})
 
     transport, seen = counting(handler)
-    results = await search_and_summarise(quick(tmp_path, transport), "acdc", 1)
+    client = quick(tmp_path, transport)
+    results = await search_and_summarise(client, "acdc", 1)
+    await client.aclose()
     assert seen[1].url.raw_path == b"/api/rest_v1/page/summary/AC%2FDC%3F_%C3%9Cn%C3%AFcode"
     assert [r.title for r in results] == [title]
     assert results[0].url.startswith("https://en.wikipedia.org/wiki/")
@@ -148,6 +149,7 @@ async def test_timeout_raises(tmp_path):
     client = quick(tmp_path, httpx.MockTransport(boom))
     with pytest.raises(httpx.TimeoutException):
         await client.get_json(f"{SEARCH}?action=query")
+    await client.aclose()
     assert list(tmp_path.glob("*.json")) == []  # failures are never cached
 
 
@@ -161,6 +163,7 @@ async def test_failed_cache_write_leaves_no_temp_file(tmp_path, monkeypatch):
     transport, _ = counting(lambda r: httpx.Response(200, json={"ok": 1}))
     client = quick(tmp_path, transport)
     assert await client.get_json(f"{SEARCH}?action=query") == {"ok": 1}
+    await client.aclose()
     assert list(tmp_path.iterdir()) == []
 
 
@@ -440,3 +443,4 @@ async def test_site_licence_timeout_is_unreadable(tmp_path):
     client = quick(tmp_path, httpx.MockTransport(boom))
     with pytest.raises(LicenceUnreadable):
         await client.site_licence("en.wikipedia.org")
+    await client.aclose()
