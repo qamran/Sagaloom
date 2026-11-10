@@ -374,6 +374,14 @@ describe("ApprovalCard", () => {
     expect(screen.getByText("Licence: Creative Commons Attribution-Share Alike 4.0 · NC")).toBeInTheDocument();
   });
 
+  it("shows the licence URL when the wiki reported only a URL", () => {
+    const url = "https://creativecommons.org/licenses/by-sa/4.0/";
+    const p = official(false);
+    p.after = { ...p.after!, licence: null, sources: [{ ...wikiSource(false, null), licence_url: url }] };
+    render(<ApprovalCard proposal={p} check={check("none", [])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.getByText(`Licence: ${url}`)).toBeInTheDocument();
+  });
+
   it("says licence not reported for a reference draft without one", () => {
     const ref: Proposal = {
       ...update, after: { ...update.after!, source: "reference", source_url: "https://en.wikipedia.org/wiki/Venice", licence: null },

@@ -48,6 +48,13 @@
       "host": "en.wikipedia.org",
       "lang_path": "",
       "title": "Gandalf"
+    },
+    {
+      "in": "https://en.wikipedia.org/wiki/A\\B",
+      "url": "https://en.wikipedia.org/wiki/A%5CB",
+      "host": "en.wikipedia.org",
+      "lang_path": "",
+      "title": "A\\B"
     }
   ],
   "reject": [
@@ -106,6 +113,14 @@
     {
       "in": "https://en.wikipedia.org/X",
       "error": "Not a wiki page URL: https://en.wikipedia.org/X. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "https:\\en.wikipedia.org\\wiki\\Gandalf",
+      "error": "Not a wiki page URL: https:\\en.wikipedia.org\\wiki\\Gandalf. Use a page link such as https://en.wikipedia.org/wiki/Gandalf."
+    },
+    {
+      "in": "https://en.wikipedia.org\\wiki\\Gandalf",
+      "error": "Only Wikipedia and Fandom pages can be imported: https://en.wikipedia.org\\wiki\\Gandalf"
     },
     {
       "in": "https://a.b.fandom.com/wiki/X",

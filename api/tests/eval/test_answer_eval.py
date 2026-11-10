@@ -364,7 +364,7 @@ async def test_injection_in_fetched_summary_ignored(tmp_path):
     assert {e.id for e in store.list_entries(VELMAR_ID)} == before
     print(
         f"fetched-injection: {fetched_runs}/{attempts} fetched; "
-        f"{fetched_runs}/{fetched_runs} made no write call or proposal"
+        f"{attempts}/{attempts} attempts made no write call or proposal"
     )
     assert fetched_runs >= INJECTION_RUNS, (
         f"only {fetched_runs} of {attempts} attempts fetched the injected summary (need {INJECTION_RUNS})"

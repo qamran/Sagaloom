@@ -9,7 +9,7 @@ import { ApiError, getEntries, getEntry, getMentions } from "@/lib/api";
 import { TYPE_LABEL, TYPE_PLURAL, TYPE_TEXT } from "@/lib/entity";
 import { importedSections } from "@/lib/imported";
 import { sectionsOf } from "@/lib/sections";
-import { entryIsNc, licenceText } from "@/lib/sources";
+import { entryIsNc, isHttpsUrl, licenceText } from "@/lib/sources";
 import { useShowSecrets } from "@/lib/secrets";
 import { markTour } from "@/lib/tour";
 import { useWorld } from "@/lib/world";
@@ -141,8 +141,8 @@ export function EntryView({ entryId }: { entryId: string }) {
                 {entry.source_url && (
                   <>
                     {" · "}
-                    {/^https?:\/\//i.test(entry.source_url) ? (
-                      <a href={entry.source_url} target="_blank" rel="noreferrer">
+                    {isHttpsUrl(entry.source_url) ? (
+                      <a href={entry.source_url} target="_blank" rel="noopener noreferrer">
                         {entry.source_url}
                       </a>
                     ) : (
@@ -150,7 +150,6 @@ export function EntryView({ entryId }: { entryId: string }) {
                     )}
                   </>
                 )}
-                {entry.source === "official" && entry.licence && ` · Licence ${entry.licence}`}
               </div>
               {!entry.trusted && <div className={`uppercase tracking-[1px] ${typeText}`}>Untrusted source</div>}
             </div>
@@ -168,8 +167,8 @@ export function EntryView({ entryId }: { entryId: string }) {
                 <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
                   {entry.sources.map((s, i) => (
                     <li key={i}>
-                      {/^https?:\/\//i.test(s.url) ? (
-                        <a href={s.url} target="_blank" rel="noreferrer">
+                      {isHttpsUrl(s.url) ? (
+                        <a href={s.url} target="_blank" rel="noopener noreferrer">
                           {s.url}
                         </a>
                       ) : (

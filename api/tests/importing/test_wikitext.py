@@ -161,6 +161,15 @@ def test_unclosed_table_drops_only_its_opener():
     assert strip_wikitext("Before\n{| class=x\n| a\nAfter").text == "Before\n| a\nAfter"
 
 
+@pytest.mark.parametrize("closer", ["|}{{clear}}", "|}</div>"])
+def test_table_closed_with_a_trailing_token_is_dropped(closer):
+    """Fandom often closes a table with a token after `|}`: the rows must not leak (M4)."""
+    raw = "Before\n{| class=wikitable\n| secret cell\n|-\n| other cell\n" + closer + "\nAfter the table."
+    text = strip_wikitext(raw).text
+    assert "cell" not in text
+    assert text.startswith("Before") and text.endswith("After the table.")
+
+
 def test_nested_one_line_table_inside_a_table():
     assert strip_wikitext("A\n{|\n{| x |}\n|-\n|}\nB").text == "A\nB"
 

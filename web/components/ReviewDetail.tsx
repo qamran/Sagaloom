@@ -57,10 +57,10 @@ function LicenceNotice({ note, proposals }: { note: ImportNote | null; proposals
   const nc = proposals.flatMap((p) => p.after?.sources ?? []).find((s) => s.nc === true);
   return (
     <>
-      {note?.kind === "wiki" && <p className="m-0 text-[13px]">Licence: {licenceText({ licence: note.licence?.text })}</p>}
+      {note?.kind === "wiki" && <p className="m-0 text-[13px]">Licence: {licenceText({ licence: note.licence?.text, licence_url: note.licence?.url })}</p>}
       {anyNc && (
         <p role="note" className="m-0 rounded-[10px] border border-conflict-line bg-conflict-bg px-3.5 py-2.5 text-[13px] text-conflict-text">
-          {nonCommercial(licenceText({ licence: nc?.licence }))}
+          {nonCommercial(licenceText({ licence: nc?.licence, licence_url: nc?.licence_url }))}
         </p>
       )}
     </>
@@ -71,7 +71,8 @@ function LicenceNotice({ note, proposals }: { note: ImportNote | null; proposals
 function ImportProvenance({ note, current, canon }: { note: ImportNote | null; current: Proposal; canon: Entry[] | undefined }) {
   const worldShown = useWorldShowSecrets();
   if (note?.kind === "wiki") {
-    const url = current.after?.sources?.[0]?.url ?? current.after?.source_url;
+    // The primary source is the page being imported; sources[0] can be an earlier reference.
+    const url = current.after?.source_url ?? current.after?.sources?.[0]?.url;
     const hidden = entryIsSecret(current, canon) && !worldShown;
     return (
       <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">

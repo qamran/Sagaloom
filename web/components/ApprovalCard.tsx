@@ -9,7 +9,7 @@ import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
 import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
-import { entryIsNc, licenceText } from "@/lib/sources";
+import { entryIsNc, isHttpsUrl, licenceText } from "@/lib/sources";
 import {
   BADGE_CLASS,
   BADGE_LABEL,
@@ -390,11 +390,12 @@ function DeleteDependents({
 function SourceLine({ draft }: { draft: EntryDraft }) {
   if (draft.source !== "reference" && draft.source !== "official") return null;
   const url = draft.source_url ?? draft.sources?.[0]?.url;
-  const licence = licenceText({ licence: draft.licence ?? draft.sources?.[0]?.licence });
+  const primary = draft.sources?.find((s) => s.url === url) ?? draft.sources?.[0];
+  const licence = licenceText({ licence: draft.licence ?? primary?.licence, licence_url: primary?.licence_url });
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
       <span>{draft.source === "reference" ? "Source: reference (Wikipedia)" : "Source: official (fan wiki)"}</span>
-      {url && /^https:\/\//.test(url) && (
+      {isHttpsUrl(url) && (
         <a href={url} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline underline-offset-2">
           {url}
         </a>

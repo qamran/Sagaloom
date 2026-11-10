@@ -58,6 +58,14 @@ function isNamespaced(title: string): boolean {
 
 /** The wiki and the page of one line, for the "same wiki" and "listed twice" checks. */
 function parseLine(line: string): { wiki: string; page: string } {
+  // The browser's parser reads `\` as `/` (WHATWG); the server's does not. So refuse as it does:
+  // a `\` in place of `//` leaves no host, a `\` in the host is not an allowed host, and a `\`
+  // in the path (the title) the server accepts.
+  if (line.includes("\\")) {
+    const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/]*)/i.exec(line);
+    if (!authority) throw new Refused(NOT_A_PAGE(shown(line)));
+    if (authority[1].includes("\\")) throw new Refused(NOT_ALLOWED(shown(line)));
+  }
   let url: URL;
   try {
     url = new URL(line);

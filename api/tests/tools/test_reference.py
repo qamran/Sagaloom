@@ -110,6 +110,40 @@ async def test_reference_failure_is_soft(tmp_path):
     assert err.startswith("Wikipedia lookup unavailable: ")
 
 
+async def test_one_failed_summary_drops_that_title(tmp_path):
+    """R11.4.7 per title: one summary 503 loses that title, not the whole lookup."""
+    requests: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if is_rightsinfo(request):
+            return rightsinfo()
+        if request.url.path == "/w/api.php":
+            return httpx.Response(200, json={"query": {"search": [{"title": t} for t in ("Venice", "Genoa", "Pisa")]}})
+        title = request.url.path.rsplit("/", 1)[1]
+        if title == "Genoa":
+            return httpx.Response(503)
+        return httpx.Response(200, json={"title": title, "extract": f"{title} is a city."})
+
+    client = WikiClient(tmp_path, transport=httpx.MockTransport(handler), min_interval=0)
+    payload = unwrap(await make_reference_tool(client).ainvoke({"query": "ports", "max_results": 3}))
+    await client.aclose()
+    assert [r["title"] for r in payload["results"]] == ["Venice", "Pisa"]
+    summaries = [r.url.path.rsplit("/", 1)[1] for r in requests if "/page/summary/" in r.url.path]
+    assert sorted(summaries) == ["Genoa", "Pisa", "Venice"]  # one request each, no retry
+
+
+async def test_search_failure_with_working_licence_is_soft(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return rightsinfo() if is_rightsinfo(request) else httpx.Response(503)
+
+    client = WikiClient(tmp_path, transport=httpx.MockTransport(handler), min_interval=0)
+    out = await make_reference_tool(client).ainvoke({"query": "venice"})
+    await client.aclose()
+    assert not out.startswith("<untrusted_data")  # nothing wrapped, the licence unused
+    assert json.loads(out) == {"error": "Wikipedia lookup unavailable: HTTP 503"}
+
+
 async def test_reference_bad_json_is_soft(tmp_path):
     transport = httpx.MockTransport(lambda r: httpx.Response(200, text="<html>not json"))
     out = await make_reference_tool(WikiClient(tmp_path, transport=transport, min_interval=0)).ainvoke({"query": "x"})

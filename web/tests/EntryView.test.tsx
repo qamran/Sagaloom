@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryView } from "@/components/EntryView";
@@ -73,7 +73,17 @@ describe("EntryView sources", () => {
     const list = await screen.findByRole("region", { name: "Sources" });
     expect(list).toHaveTextContent("https://en.wikipedia.org/wiki/Gandalf · Creative Commons Attribution-Share Alike 4.0");
     expect(list).toHaveTextContent("https://lotr.fandom.com/wiki/Rivendell · CC BY-NC-SA 3.0 · NC");
-    expect(screen.getAllByText("NC").length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("heading", { name: /^Sources/ })).getByText("NC")).toBeInTheDocument();
+  });
+
+  it("shows the licence URL for a source whose wiki reported only a URL", async () => {
+    const url = "https://creativecommons.org/licenses/by-sa/4.0/";
+    vi.mocked(getEntry).mockResolvedValue(
+      entry({ source: "official", sources: [{ ...gandalf, licence: null, licence_url: url }] }),
+    );
+    renderIt();
+    const list = await screen.findByRole("region", { name: "Sources" });
+    expect(list).toHaveTextContent(`https://en.wikipedia.org/wiki/Gandalf · ${url}`);
   });
 
   it("says licence not reported for a source without one, and no NC label", async () => {
@@ -227,7 +237,7 @@ describe("EntryView full page", () => {
     );
     renderIt();
     const el = await screen.findByText(/Source: official canon/);
-    expect(el.textContent).toBe("Source: official canon · https://x.example/c · Licence CC-BY");
+    expect(el.textContent).toBe("Source: official canon · https://x.example/c");
   });
 
   it("shows a non-http source_url as text, never as a link", async () => {

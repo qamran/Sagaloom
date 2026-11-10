@@ -422,6 +422,24 @@ describe("ReviewDetail for a wiki import thread", () => {
     expect(screen.queryByText(/^Licence:/, { selector: "p" })).toBeNull();
   });
 
+  it("shows the licence URL when the wiki reported only a URL", () => {
+    const url = "https://creativecommons.org/licenses/by-sa/4.0/";
+    stream = wikiStream(one(), { importNote: { ...note, licence: { text: null, url, nc: false } } });
+    render(ui());
+    expect(screen.getByText(`Licence: ${url}`, { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("names the page being imported, not an earlier reference source, on a merge", () => {
+    const REF = "https://en.wikipedia.org/wiki/Wizard";
+    const reference = { ...source(false), kind: "reference" as const, url: REF };
+    const merged = wikiProposal("p_g", "Gandalf");
+    merged.after = { ...merged.after!, sources: [reference, source(false)] };
+    stream = wikiStream(pendingOf([merged, clean("p_g")]));
+    render(ui());
+    expect(screen.getByText(`From ${GANDALF}`)).toBeInTheDocument();
+    expect(screen.queryByText(`From ${REF}`)).toBeNull();
+  });
+
   it("does not show the URL of a hidden secret entry", () => {
     stream = wikiStream(one(false, "secret"));
     render(ui());

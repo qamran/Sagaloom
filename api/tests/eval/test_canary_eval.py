@@ -35,9 +35,8 @@ import asyncio
 import json
 import re
 import uuid
-from pathlib import Path
-
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import chromadb
 import pytest
