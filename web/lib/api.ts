@@ -17,7 +17,8 @@ import type {
 } from "./types";
 
 // The browser only ever talks to the Next.js proxy, which injects the shared secret.
-const BASE = "/api/proxy";
+// The API's export tool repeats this prefix; tests/proxyPrefix.test.ts keeps the two equal.
+export const PROXY_BASE = "/api/proxy";
 
 export class ApiError extends Error {
   constructor(
@@ -31,7 +32,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${PROXY_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
@@ -81,7 +82,7 @@ export const getGuardLog = (limit = 20) => request<GuardLogRow[]>(`/guard/log?li
 
 /** The Markdown zip download for a world (R11.5.4), through the proxy. */
 export function exportUrl(worldId: string, excludeSecrets: boolean): string {
-  const base = `${BASE}/worlds/${encodeURIComponent(worldId)}/export?format=md`;
+  const base = `${PROXY_BASE}/worlds/${encodeURIComponent(worldId)}/export?format=md`;
   return excludeSecrets ? `${base}&exclude_secrets=true` : base;
 }
 

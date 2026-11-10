@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"cd api && uv run uvicorn sagaloom.web.app:app --reload --port 8000\" \"cd web && pnpm dev\"",
-    "types:gen": "cd api && uv run python scripts/export_openapi.py && cd ../web && pnpm exec openapi-typescript --default-non-nullable=false lib/openapi.json -o lib/api-types.gen.ts",
+    "types:gen": "node scripts/types-gen.mjs",
     "types:check": "node scripts/types-check.mjs"
   },
   "devDependencies": {

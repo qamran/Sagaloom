@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getThread } from "./api";
+import { getThread, PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
@@ -225,7 +225,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
       try {
         let res: Response;
         try {
-          res = await fetch(`/api/proxy/threads/${encodeURIComponent(threadId)}/${path}`, {
+          res = await fetch(`${PROXY_BASE}/threads/${encodeURIComponent(threadId)}/${path}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
             body: JSON.stringify(body),

@@ -21,7 +21,7 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   const { path } = await ctx.params;
   // A dot segment would let a request climb out of /api (the URL parser resolves it).
   if (path.some((seg) => [".", ".."].includes(decodeSafe(seg)))) {
-    return new Response("bad path", { status: 400 });
+    return jsonError(400, "Bad path");
   }
   const secret = process.env.API_SHARED_SECRET;
   if (!secret) return jsonError(500, "API_SHARED_SECRET is not set on the web server");
@@ -33,22 +33,30 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   headers.set("x-sagaloom-secret", secret);
   const contentType = req.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
-  // The API rate-limits per client: pass the caller's address along when the platform set one.
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  // The API rate-limits per client. A route handler cannot tell an edge's X-Forwarded-For from
+  // one the browser made up, so it is passed on only when the deployment opts in (its edge
+  // overwrites or appends the caller's address); otherwise none is sent.
+  if (process.env.TRUST_FORWARDED_FOR === "true") {
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  }
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
 
-  const hasBody = req.method !== "GET" && req.method !== "HEAD";
+  let body: string | undefined;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    try {
+      body = await req.text();
+    } catch {
+      return jsonError(400, "Could not read the request body");
+    }
+  }
   let upstream: Response;
   try {
-    upstream = await fetch(url, {
-      method: req.method,
-      headers,
-      body: hasBody ? await req.text() : undefined,
-      cache: "no-store",
-    });
-  } catch {
+    upstream = await fetch(url, { method: req.method, headers, body, cache: "no-store" });
+  } catch (cause) {
+    // The target URL and the cause only: the headers carry the shared secret.
+    console.error("proxy: API fetch failed", url, cause);
     return jsonError(502, "The API is not reachable");
   }
 

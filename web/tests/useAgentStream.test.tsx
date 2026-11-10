@@ -7,7 +7,10 @@ import { TOUR_KEYS } from "@/lib/tour";
 import type { CheckResult, Decision, PendingInterrupt, Proposal, ThreadState } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
 
-vi.mock("@/lib/api", () => ({ getThread: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  getThread: vi.fn(),
+}));
 const getThreadMock = vi.mocked(getThread);
 
 const usage = (cost: number) => ({ prompt_tokens: 10, completion_tokens: 5, cost_usd: cost });

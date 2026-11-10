@@ -8,6 +8,8 @@ describe("secret-injecting proxy", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("forwards to the API with the secret and passes the body through", async () => {
@@ -49,7 +51,7 @@ describe("secret-injecting proxy", () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
   });
 
-  it("forwards the incoming x-forwarded-for header, and sends none when absent", async () => {
+  it("drops a browser-sent x-forwarded-for by default, and adds none", async () => {
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const ctx = { params: Promise.resolve({ path: ["worlds"] }) };
@@ -58,7 +60,21 @@ describe("secret-injecting proxy", () => {
     await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx);
 
     const [[, withIp], [, without]] = fetchMock.mock.calls as unknown as [string, RequestInit][];
-    expect(new Headers(withIp.headers).get("x-forwarded-for")).toBe("9.9.9.9");
+    expect(new Headers(withIp.headers).has("x-forwarded-for")).toBe(false);
+    expect(new Headers(without.headers).has("x-forwarded-for")).toBe(false);
+  });
+
+  it("forwards the incoming x-forwarded-for only when TRUST_FORWARDED_FOR is true", async () => {
+    vi.stubEnv("TRUST_FORWARDED_FOR", "true");
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = { params: Promise.resolve({ path: ["worlds"] }) };
+
+    await GET(new Request("http://localhost:3000/api/proxy/worlds", { headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } }), ctx);
+    await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx);
+
+    const [[, withIp], [, without]] = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(new Headers(withIp.headers).get("x-forwarded-for")).toBe("9.9.9.9, 10.0.0.1");
     expect(new Headers(without.headers).has("x-forwarded-for")).toBe(false);
   });
 
@@ -107,6 +123,8 @@ describe("proxy failure modes", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
   const ctx = () => ({ params: Promise.resolve({ path: ["worlds"] }) });
 
@@ -126,10 +144,38 @@ describe("proxy failure modes", () => {
 
   it("answers 502 JSON when the API is unreachable", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx());
     expect(res.status).toBe(502);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({ detail: "The API is not reachable" });
+  });
+
+  it("answers 400 JSON when the request body cannot be read", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const req = new Request("http://localhost:3000/api/proxy/worlds", { method: "POST", body: "{}" });
+    vi.spyOn(req, "text").mockRejectedValue(new TypeError("body stream aborted"));
+    const res = await POST(req, ctx());
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ detail: "Could not read the request body" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("logs the cause of an unreachable API", async () => {
+    const cause = new TypeError("fetch failed");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw cause; }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await GET(new Request("http://localhost:3000/api/proxy/worlds"), ctx());
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const args = errorSpy.mock.calls[0];
+    expect(args).toContain(cause);
+    expect(args).toContain("http://api.test/api/worlds");
+    for (const arg of args) {
+      const text = arg instanceof Error ? `${arg.message} ${arg.stack}` : `${String(arg)} ${JSON.stringify(arg)}`;
+      expect(text).not.toContain("s3cret-for-test");
+    }
   });
 
   it("passes a text/event-stream response through unbuffered", async () => {
@@ -168,6 +214,8 @@ describe("proxy path hardening", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it.each([["."], [".."], ["%2e%2e"], ["%2E"]])("rejects the dot segment %s with 400 for every method", async (seg) => {
@@ -180,6 +228,16 @@ describe("proxy path hardening", () => {
       expect(res.status).toBe(400);
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("answers the path guard in JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}")));
+    const res = await GET(new Request("http://localhost:3000/api/proxy/x"), {
+      params: Promise.resolve({ path: ["worlds", ".."] }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("application/json");
+    expect(await res.json()).toEqual({ detail: "Bad path" });
   });
 
   it("still rejects a dot segment", async () => {

@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import type { SseEvent } from "./types";
 
@@ -59,7 +60,7 @@ export function useImport(): ImportRun {
       try {
         let res: Response;
         try {
-          res = await fetch(`/api/proxy/worlds/${encodeURIComponent(worldId)}/imports`, {
+          res = await fetch(`${PROXY_BASE}/worlds/${encodeURIComponent(worldId)}/imports`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
             body: JSON.stringify(body),

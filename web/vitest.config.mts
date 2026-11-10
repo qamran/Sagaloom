@@ -13,5 +13,7 @@ export default defineConfig({
     maxWorkers: 2,
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
+    // Type assertions (expectTypeOf) fail the run only when vitest type-checks them.
+    typecheck: { enabled: true, include: ["tests/**/*.test-d.ts"] },
   },
 });
