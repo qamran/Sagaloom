@@ -331,7 +331,8 @@ def _proposal(world_id: str, g: _Group, label: str, today: date) -> tuple[Propos
                 trusted=False,
             )
             return Proposal(
-                proposal_id=pid, action="create", world_id=world_id, entry_id=None, before=None, after=after
+                proposal_id=pid, action="create", world_id=world_id, entry_id=None, before=None, after=after,
+                imported=True,
             ), body
         prefix = before.body.rstrip() + f"\n\n{IMPORTED_HEADING}{label} ({today:%Y-%m-%d})\n\n"
         body = fit(excerpt, BODY_MAX - len(prefix))
@@ -350,7 +351,8 @@ def _proposal(world_id: str, g: _Group, label: str, today: date) -> tuple[Propos
             **merge_provenance(before, imported),
         )
         return Proposal(
-            proposal_id=pid, action="update", world_id=world_id, entry_id=before.id, before=before, after=after
+            proposal_id=pid, action="update", world_id=world_id, entry_id=before.id, before=before, after=after,
+            imported=True,
         ), body
     except ValidationError:
         log.warning("import candidate %r is not a valid entry", g.title[:TITLE_CHARS], exc_info=True)

@@ -879,7 +879,10 @@ async def test_save_as_myth_keeps_a_merge_shaped_body_only_on_an_import_thread(s
         await run(graph, start("Velmar has three moons"), cfg)
     else:
         graph, _, _ = make(store, [], judge_reply=conflict_on_moons())
-        p = Proposal(proposal_id="p_1", action="update", world_id=W, entry_id="ent_0001", before=stored, after=after)
+        p = Proposal(
+            proposal_id="p_1", action="update", world_id=W, entry_id="ent_0001", before=stored, after=after,
+            imported=True,
+        )
         await run(graph, import_input(p), cfg)
     pid = await only_pid(graph, cfg)
     [proposal] = (await interrupt_payload(graph, cfg))["proposals"]
@@ -890,6 +893,31 @@ async def test_save_as_myth_keeps_a_merge_shaped_body_only_on_an_import_thread(s
     [rechecked] = (await interrupt_payload(graph, cfg))["proposals"]
     expected = MERGE_SHAPED if entry == "import" else stored.body
     assert rechecked["after"]["body"] == expected
+
+
+async def test_import_wiki_merge_survives_save_as_myth_in_chat(store, tmp_path, aclose_later):
+    """The second entry point (R-W5-11, R3.5): an `import_wiki` merge on a chat thread keeps its
+    imported section under Save as myth, because the proposal, not the thread, says it is an import."""
+    stored = seed(store, title="The Shire", body="A green land of hobbits.")
+    graph, *_ = make(
+        store,
+        [import_call(FIXTURE_URLS[2:3]), AIMessage(content="ok")],
+        judge_reply=conflict_on_moons(),
+        extractor=page_extractor(other=FactList(facts=[Fact(key="moons", value="Three")])),
+        wiki=seeded_wiki(tmp_path, aclose_later)[0],
+    )
+    cfg = run_config("t-wiki-myth", W)
+    await run(graph, start("Import the Shire page."), cfg)
+    pid = await only_pid(graph, cfg)
+    [proposal] = (await interrupt_payload(graph, cfg))["proposals"]
+    section = "## Imported from https://en.wikipedia.org/wiki/The_Shire"
+    assert proposal["entry_id"] == stored.id and section in proposal["after"]["body"]
+
+    nodes = await run(graph, resume({"proposal_id": pid, "action": "save_as_myth", "told_by": None}), cfg)
+    assert nodes == ["approval_gate", "check", "__interrupt__"]
+    [rechecked] = (await interrupt_payload(graph, cfg))["proposals"]
+    assert rechecked["after"]["body"] == proposal["after"]["body"]
+    assert rechecked["after"]["body"].startswith(stored.body) and section in rechecked["after"]["body"]
 
 
 async def test_delete_runs_dependency_check_and_lists_dependents(store):

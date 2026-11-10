@@ -186,6 +186,11 @@ class Proposal(BaseModel):
     entry_id: str | None
     before: Entry | None
     after: EntryDraft | None
+    # Set only by the import builders (`importing/extract.py`, `importing/wiki.py`), never from a
+    # tool argument: it tells Save as myth that a merge section in `after.body` is the server's, so
+    # the imported passage is kept (R-W5-11, R3.5). A pending proposal from a checkpoint written
+    # before this field existed reads as False, so a myth save on it restores the stored body.
+    imported: bool = False
 
 
 class Decision(BaseModel):

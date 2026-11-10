@@ -219,7 +219,8 @@ def _proposal(
                 **provenance_fields([source], trusted=False),
             )
             return Proposal(
-                proposal_id=pid, action="create", world_id=world_id, entry_id=None, before=None, after=after
+                proposal_id=pid, action="create", world_id=world_id, entry_id=None, before=None, after=after,
+                imported=True,
             ), body
         merged = _merged_body(before, p.url, excerpt, today)
         if merged is None:
@@ -238,7 +239,8 @@ def _proposal(
             **merge_provenance(before, imported),
         )
         return Proposal(
-            proposal_id=pid, action="update", world_id=world_id, entry_id=before.id, before=before, after=after
+            proposal_id=pid, action="update", world_id=world_id, entry_id=before.id, before=before, after=after,
+            imported=True,
         ), fitted
     except ValidationError:
         log.warning("wiki page %r is not a valid entry", p.title[:TITLE_CHARS], exc_info=True)

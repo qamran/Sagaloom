@@ -36,6 +36,8 @@ export interface Proposal {
   entry_id: string | null;
   before: Entry | null;
   after: EntryDraft | null;
+  // Server-set: the proposal came from an import (paste or fan wiki). Absent on older payloads.
+  imported?: boolean;
 }
 
 export interface Flag {

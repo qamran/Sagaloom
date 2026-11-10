@@ -458,9 +458,9 @@ def approval_gate(state: SagaState) -> Command[Literal["check", "commit"]]:
             replaced.append(p.model_copy(update={"after": d.edited.model_copy(update=keep)}))
             stale[p.proposal_id] = None
         elif d.action == "save_as_myth":
-            after = apply_save_as_myth(
-                p, checks[p.proposal_id], d.told_by, imported=state.get("entry") == "import"
-            )
+            # The proposal, not the thread, says whether it came from an import: an `import_wiki`
+            # merge on a chat thread keeps its section, an agent-written body never does.
+            after = apply_save_as_myth(p, checks[p.proposal_id], d.told_by, imported=p.imported)
             replaced.append(p.model_copy(update={"after": after}))
             stale[p.proposal_id] = None
         else:

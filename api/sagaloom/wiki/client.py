@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import importlib.metadata
 import json
+import logging
 import os
 import time
 import uuid
@@ -25,6 +26,8 @@ from pydantic import BaseModel
 from sagaloom.licence import is_nc
 from sagaloom.wiki import pages
 from sagaloom.wiki.pages import WikiPage, host_allowed
+
+log = logging.getLogger(__name__)
 
 
 def _version() -> str:
@@ -292,19 +295,32 @@ def cap_summary(text: str, limit: int = SUMMARY_CAP) -> str:
 
 
 async def search_and_summarise(client: WikiClient, query: str, max_results: int) -> list[RefResult]:
-    """Search English Wikipedia, then fetch each hit's REST summary. Any failure raises."""
+    """Search English Wikipedia, then fetch each hit's REST summary. A failed search raises; a
+    failed summary drops that title, and only when every summary failed does the first failure
+    raise (R11.4.7: the lookup is lost only when nothing came back)."""
     found = await client.get_json(search_url(query, max_results))
     titles = [
         h["title"]
         for h in (found.get("query") or {}).get("search") or []
         if isinstance(h, dict) and isinstance(h.get("title"), str)
     ][:max_results]
-    summaries = await asyncio.gather(*(client.get_json(summary_url(t)) for t in titles))
+    summaries = await asyncio.gather(
+        *(client.get_json(summary_url(t)) for t in titles), return_exceptions=True
+    )
+    for s in summaries:
+        if isinstance(s, BaseException) and not isinstance(s, Exception):
+            raise s  # cancellation is not a failed summary
+    kept = [(t, s) for t, s in zip(titles, summaries, strict=True) if not isinstance(s, Exception)]
+    failed = [(t, s) for t, s in zip(titles, summaries, strict=True) if isinstance(s, Exception)]
+    for t, e in failed:
+        log.warning("real_world_reference: summary of %r failed: %s", t, type(e).__name__)
+    if failed and not kept:
+        raise failed[0][1]
     return [
         RefResult(
             title=t,
             summary=cap_summary(str(s.get("extract") or "")),
             url=page_url(t),  # built here, never taken from the response
         )
-        for t, s in zip(titles, summaries, strict=True)
+        for t, s in kept
     ]

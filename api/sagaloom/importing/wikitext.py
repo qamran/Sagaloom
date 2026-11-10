@@ -73,7 +73,7 @@ def _remove_tables(text: str) -> str:
         for i in range(first, len(lines)):
             head = lines[i].strip()
             depth += head.startswith("{|")
-            depth -= head.endswith("|}")
+            depth -= head.startswith("|}") or head.endswith("|}")  # `|}{{clear}}`, `|}</div>`
             if depth <= 0:
                 drop.update(range(first, i + 1))
                 break

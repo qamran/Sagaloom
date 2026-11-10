@@ -480,6 +480,7 @@ def test_tool_args_have_no_sources_field():
     """Sources are set by the server, never by the agent (R-W3-1)."""
     props = CreateOrUpdateArgs.model_json_schema()["properties"]
     assert "sources" not in props and "trusted" not in props and "licence" not in props
+    assert "imported" not in props  # only the import builders mark a proposal as imported
 
 
 # ---------- reference provenance records the licence (R-W3-1, R11.4.6) ----------

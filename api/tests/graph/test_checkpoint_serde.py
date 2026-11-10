@@ -92,6 +92,21 @@ def test_memory_models_roundtrip_through_the_strict_serde(caplog):
     assert "not in the allowed" not in caplog.text.lower() and "blocked" not in caplog.text.lower()
 
 
+def test_proposal_imported_flag_roundtrips_and_defaults_false(caplog):
+    """`Proposal.imported` survives the strict serde; a pending proposal from a checkpoint written
+    before the field existed has no `imported` key and reads as False (a myth save restores the body)."""
+    from sagaloom.graph.build import checkpoint_serde
+    from sagaloom.models import Proposal
+
+    serde = checkpoint_serde()
+    p = Proposal(proposal_id="p1", action="create", world_id=W, entry_id=None, before=None, after=None, imported=True)
+    assert serde.loads_typed(serde.dumps_typed([p])) == [p]
+    old = p.model_dump(mode="json")
+    del old["imported"]
+    assert Proposal.model_validate(old).imported is False
+    assert "not in the allowed" not in caplog.text.lower() and "blocked" not in caplog.text.lower()
+
+
 SAVERS = ("InMemorySaver", "MemorySaver", "AsyncSqliteSaver", "SqliteSaver")
 
 
