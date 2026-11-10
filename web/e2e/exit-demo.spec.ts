@@ -1,12 +1,23 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-// The exit demo (M1, then Waves 1 to 5, 7 and 8), end to end, against the real seed and real models.
+// The exit demo (M1, then Waves 1 to 5, 7 and 8, then M3 Wave 3), end to end, against the real seed and real models.
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
 const scripted: { name: string; draft: { body: string } }[] = JSON.parse(fs.readFileSync(SEED, "utf-8"));
 const SORN_TEXT = scripted.find((s) => s.name === "captain_sorn")!.draft.body;
 const THREE_MOONS = "Velmar has three moons that rise together at the solstice.";
+// Step 35: the committed Wikipedia fixtures (pages and licence) and the demo API's wiki cache, which
+// playwright.config.ts seeds from them in DATA_DIR.
+const WIKI_MANIFEST: {
+  licence: { text: string; url: string; nc: boolean };
+  pages: { in: string; title: string; url: string }[];
+} = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../api/tests/fixtures/wiki/manifest.json"), "utf-8"));
+const WIKI_PAGES = WIKI_MANIFEST.pages;
+const WIKI_LICENCE = WIKI_MANIFEST.licence;
+const WIKI_WORLD = "Middle-earth (demo)";
+const WIKI_CACHE = path.join(os.tmpdir(), "sagaloom-e2e-data", "cache", "wiki"); // DATA_DIR in playwright.config.ts
 
 const card = (page: Page, title: string) => page.getByRole("region", { name: `Review proposal: ${title}` });
 const log = (page: Page) => page.getByRole("log", { name: "Conversation" });
@@ -593,4 +604,103 @@ test("M1 exit demo", async ({ page }) => {
   await expect(deleteCard).not.toContainText("Elsbeth");
   await rejectAll(page);
   await expect(page.getByLabel("Message Sagaloom")).toBeEnabled();
+
+  // ---- M3 Wave 3: fan-wiki import, in its own world ----
+  // 35. Pages from another franchise go into a new world (as Kanka and World Anvil keep campaigns apart), so
+  // Velmar is untouched. The cache is seeded from the committed fixtures (playwright.config.ts), so no request
+  // reaches Wikipedia: the cache folder holds the same files afterwards. Titles, URLs and the licence come from
+  // the fixture manifest, never hard-coded.
+  const cacheFiles = () => fs.readdirSync(WIKI_CACHE).sort();
+  const cachedBefore = cacheFiles();
+  const worldPicker = page.getByRole("banner").getByLabel("World", { exact: true });
+  await page.goto("/canon");
+  await expect(worldPicker).toHaveValue("velmar");
+  await expect(headerSecrets).toHaveAttribute("aria-pressed", "false");
+  await expect(entryLinks.filter({ hasText: "Sky of Velmar" })).toHaveCount(1);
+  const velmarEntries = await entryLinks.count();
+
+  await worldPicker.selectOption({ label: "+ New world" });
+  await page.getByRole("banner").getByLabel("New world name").fill(WIKI_WORLD);
+  await page.getByRole("banner").getByRole("button", { name: "Create", exact: true }).click();
+  await expect(worldPicker.locator("option:checked")).toHaveText(WIKI_WORLD);
+  await expect(entryLinks).toHaveCount(0);
+
+  await nav.getByRole("link", { name: "Import", exact: true }).click();
+  await expect(page).toHaveURL(/\/import$/);
+  const fanWiki = page.getByRole("region", { name: "Fan wiki" });
+  await fanWiki.getByLabel("Page URLs, one per line").fill(WIKI_PAGES.map((p) => p.in).join("\n"));
+  await fanWiki.getByRole("button", { name: "Extract entries" }).click();
+  await expect(page).toHaveURL(/\/review\/[^/]+$/, { timeout: 180_000 });
+
+  // Three cards under the wiki's licence, each with an official source line, and no non-commercial box.
+  const wikiQueue = page.getByRole("complementary", { name: "Pending proposals" });
+  const wikiRows = wikiQueue.getByRole("listitem");
+  await expect(wikiRows).toHaveCount(WIKI_PAGES.length);
+  await expect(wikiQueue.getByText(`Licence: ${WIKI_LICENCE.text}`, { exact: true })).toBeVisible();
+  await expect(wikiQueue.getByRole("note")).toHaveCount(0);
+  const wikiTitles: string[] = [];
+  for (let i = 0; i < WIKI_PAGES.length; i++) {
+    const button = wikiRows.nth(i).getByRole("button");
+    await button.click();
+    await expect(button).toHaveAttribute("aria-current", "true");
+    await expect(shownCard.getByText("Source: official (fan wiki)", { exact: true })).toBeVisible();
+    wikiTitles.push(((await shownCard.getAttribute("aria-label")) ?? "").replace(/^Review proposal: /, ""));
+  }
+  expect([...wikiTitles].sort()).toEqual(WIKI_PAGES.map((p) => p.title).sort());
+
+  // Approve all three: in bulk when none has an issue. A judge flag is legitimate (Ruling R17): a card with a
+  // note is approved, a conflict or retcon is saved as myth when the card offers it (the re-checked card is
+  // approved next), else rejected. The world is empty, so a flag can only come from the batch itself.
+  const bulk = page.getByRole("button", { name: `Approve ${WIKI_PAGES.length} with no issues` });
+  let myths = 0;
+  if ((await bulk.count()) > 0) {
+    await bulk.click();
+  } else {
+    for (let i = 0; i < WIKI_PAGES.length; i++) {
+      await wikiRows.nth(i).getByRole("button").click();
+      const approve = shownCard.getByRole("button", { name: "Approve", exact: true });
+      const saveMyth = shownCard.getByRole("button", { name: "Save as myth" });
+      const choice = (await approve.count()) > 0 ? "Approve" : (await saveMyth.count()) > 0 ? "Save as myth" : "Reject";
+      console.log(`demo step 35: ${wikiTitles[i] ?? i} is not clean: ${choice}`);
+      if (choice === "Save as myth") myths++;
+      await shownCard.getByRole("button", { name: choice, exact: true }).click();
+    }
+  }
+  await page.getByRole("button", { name: `Submit ${WIKI_PAGES.length} decisions` }).click();
+  if (myths > 0) {
+    await expect(page.getByText(new RegExp(`^${myths} proposals? · nothing enters canon`))).toBeVisible({ timeout: 120_000 });
+    for (let i = 0; i < myths; i++) {
+      await wikiRows.nth(i).getByRole("button").click();
+      await shownCard.getByRole("button", { name: /^Approve/ }).click();
+    }
+    await page.getByRole("button", { name: `Submit ${myths} ${myths === 1 ? "decision" : "decisions"}` }).click();
+  }
+  await expect(page.getByRole("link", { name: "Back to Import" })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole("list", { name: "Decision notes" })).toContainText(/committed as ent_\d{4}/, { timeout: 120_000 });
+  const wikiErrors = await page.locator('[role="alert"]:not(#__next-route-announcer__)').allTextContents();
+  expect(wikiErrors, `the wiki import decisions ended in an error: ${wikiErrors.join(" | ")}`).toEqual([]);
+
+  // The Rivendell entry lists its page URL and the licence under Sources.
+  const rivendell = WIKI_PAGES.find((p) => p.title === "Rivendell")!;
+  await page.goto("/canon");
+  await expect(worldPicker.locator("option:checked")).toHaveText(WIKI_WORLD);
+  await expect(entryLinks.filter({ hasText: rivendell.title }), "Rivendell was not committed").toHaveCount(1);
+  await entryLinks.filter({ hasText: rivendell.title }).click();
+  const sources = page.getByRole("region", { name: "Sources" });
+  await expect(sources.getByRole("link", { name: rivendell.url, exact: true })).toBeVisible();
+  await expect(sources).toContainText(WIKI_LICENCE.text);
+
+  // The world's Markdown export carries ATTRIBUTION.md (its contents are pinned by the API's unit tests).
+  await page.goto("/canon");
+  const wikiHref = await page.getByRole("link", { name: "Download as Markdown" }).getAttribute("href");
+  const wikiZip = await page.request.get(new URL(wikiHref!, page.url()).toString());
+  expect(wikiZip.status()).toBe(200);
+  expect((await wikiZip.body()).includes(Buffer.from("ATTRIBUTION.md"))).toBe(true);
+  expect(cacheFiles(), "the fan-wiki import sent a request past the seeded cache").toEqual(cachedBefore);
+
+  // Back in Velmar, nothing changed.
+  await worldPicker.selectOption({ label: "Velmar" });
+  await expect(worldPicker).toHaveValue("velmar");
+  await expect(headerSecrets).toHaveAttribute("aria-pressed", "false");
+  await expect(entryLinks).toHaveCount(velmarEntries);
 });

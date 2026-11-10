@@ -4,17 +4,21 @@
 Wave 1 (input guard), Wave 2 (reference tool, Markdown export, tool toggles) and Wave 3 (long-term memory,
 the router mode chip, the highlighted agent graph), Wave 4 (the Review tab: a two-proposal batch, the
 complete fact table, one submit), Wave 5 (the Import page: paste notes, review the extracted proposals, the
-imported-text marker), Wave 7 (hidden secrets, the entry page, the drawer mask, `@` suggestions) and Wave 8 (the delete
-card's linked-entry count). Wave 6 moved to M3.
+imported-text marker), Wave 7 (hidden secrets, the entry page, the drawer mask, `@` suggestions), Wave 8 (the delete
+card's linked-entry count) and M3 Wave 3 (fan-wiki import into its own world, step 35).
 
 Run it from `web/`:
 
     pnpm exec playwright test
 
 It starts its own API (port 8100) and web app (port 3100) on a throwaway data folder, so it never touches
-your dev servers or `data/`.
+your dev servers or `data/`. Before uvicorn starts, the API command runs `uv run python scripts/seed_wiki_cache.py
+"<data dir>"`, which copies the committed Wikipedia fixtures (`api/tests/fixtures/wiki/`: Rivendell, Gandalf, The
+Shire and the `en.wikipedia.org` licence) into `<data dir>/cache/wiki/` (R-W3-10), so the fan-wiki step is served
+from the cache.
 
-It makes **real OpenRouter calls** (and real Wikipedia calls). Expect about 6 minutes and a few cents.
+It makes **real OpenRouter calls** (and real Wikipedia calls for the reference tool in step 13; the fan-wiki step
+sends none). Expect about 7 to 8 minutes and a few cents.
 The API key comes from `api/.env`; the shared secret from `api/.env` and `web/.env.local`.
 
 If the demo fails, **copy `web/test-results/` somewhere safe before you run it again**. Playwright wipes the
@@ -59,3 +63,25 @@ her link is secret, so with secrets hidden the delete card must contain `and 1 l
 `Secret entry` (The Choir Ledger) but not `Elsbeth`. Entries that name the Choir in their text are listed (The Choir
 Ledger as a `Secret entry` chip). The header's **Show secrets** makes the card name `Mayor Elsbeth Varr`; the step
 hides secrets again and clicks **Reject**. It asserts text, not layout.
+
+The M3 Wave 3 step (35) imports from a fan wiki, in its own world so Velmar is untouched (user decision, 2026-11-10):
+1. On **Canon** in Velmar it counts the entry links (secrets hidden), then picks **+ New world** in the header's World
+   picker, names it `Middle-earth (demo)`, clicks **Create** and checks that the new, empty world is selected.
+2. On **Import** it fills the **Fan wiki** card (scoped by `getByRole("region", { name: "Fan wiki" })`) with
+   `https://en.wikipedia.org/wiki/Rivendell`, `https://en.wikipedia.org/wiki/Gandalf` and
+   `https://en.wikipedia.org/wiki/Shire_(Middle-earth)`, one per line, clicks that card's **Extract entries** and waits
+   up to 180 s for `/review/<id>`.
+3. It asserts 3 queue rows; `Licence: <licence text>` above the queue; no NC box (no `note` in the queue column); and on
+   each card `Source: official (fan wiki)`. The card titles must be the manifest's titles: the Shire URL redirects, so
+   that card is `The Shire`. The input URLs, titles, URLs and licence text are read from
+   `api/tests/fixtures/wiki/manifest.json`, never hard-coded.
+4. It approves all three with **Approve 3 with no issues** when it is offered. Otherwise it approves each card whose
+   button reads **Approve**, saves a conflict or retcon card as myth when the card offers it (and approves the
+   re-checked card next), or else rejects it (extra judge flags are legitimate, Ruling R17), and logs
+   `demo step 35: <title> is not clean: <choice>`. It waits for **Back to Import** and a `committed as ent_…` note.
+5. On **Canon** it opens **Rivendell** and checks that its **Sources** list links the manifest URL and shows the licence.
+6. It fetches the world's Markdown export through the proxy (as step 14 does) and checks that the zip bytes contain the
+   file name `ATTRIBUTION.md` (its contents are pinned by the API's unit tests).
+7. It checks that `<data dir>/cache/wiki/` holds the same files as before the import, so no request went past the
+   seeded cache to Wikipedia.
+8. It switches back to Velmar and checks that its entry count is unchanged.

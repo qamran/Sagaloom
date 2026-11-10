@@ -152,7 +152,7 @@ Sizes: S = 1–2 tasks, M = 3–4 tasks, L = 5+ tasks (M1 was 13 tasks). Each ta
 3. The `import_wiki` agent tool (returns `Command` adding proposals, like `create_or_update_entry`) and the Import page's Fan wiki card (same core through `POST /imports` with `kind: "wiki"`). Both reach `commit` only via `check` and `approval_gate` (structure test).
 4. Pre-cached demo set (R11.6.11) from **Wikipedia** (see F1), `ATTRIBUTION.md` in exports with the share-alike notice and NC flag.
 
-**Demo step:** Import → Fan wiki → "en.wikipedia.org", pages "Rivendell, Gandalf, Shire (Middle-earth)" (served from the cache) → Review shows 3 official entries with licence "CC BY-SA 4.0"; approve; export now contains `ATTRIBUTION.md`.
+**Demo step:** Import → Fan wiki → "en.wikipedia.org", pages "Rivendell, Gandalf, Shire (Middle-earth)" (served from the cache) → Review shows 3 official entries with licence "Creative Commons Attribution-Share Alike 4.0" (the text Wikipedia's `rightsinfo` reports; amended in M3 Wave 3, which also runs this step in its own world, `Middle-earth (demo)`); approve; export now contains `ATTRIBUTION.md`.
 
 **Size:** L. **If M2 needs to be shortened, this wave moves to M3 whole**: no course points depend on it (Medium 3 and Hard 5 are already covered by Wave 2).
 

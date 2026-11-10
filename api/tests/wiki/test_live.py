@@ -14,5 +14,6 @@ async def test_live_wikipedia_page_and_licence(tmp_path):
         assert "Rivendell" in fetched.wikitext
         licence = await client.site_licence("en.wikipedia.org")
         assert licence.text
+        print(f"live licence: text={licence.text!r} url={licence.url!r} nc={licence.nc}")
     finally:
         await client.aclose()

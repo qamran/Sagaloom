@@ -29,7 +29,9 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `uv run uvicorn sagaloom.web.app:app --port ${API_PORT}`,
+      // Seed the wiki cache first (R-W3-10): the fan-wiki step's pages and licence come from the committed
+      // fixtures, so that step sends no request to Wikipedia.
+      command: `uv run python scripts/seed_wiki_cache.py "${DATA_DIR}" && uv run uvicorn sagaloom.web.app:app --port ${API_PORT}`,
       cwd: "../api",
       env: { DATA_DIR, WEB_ORIGIN: `http://localhost:${WEB_PORT}` },
       url: `http://localhost:${API_PORT}/api/health`,
