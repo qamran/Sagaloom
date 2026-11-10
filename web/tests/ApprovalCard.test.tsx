@@ -2,7 +2,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ApprovalCard, CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
-import { SHOW_SECRETS_KEY } from "@/lib/secrets";
+import { ReviewQueue } from "@/components/ReviewQueue";
+import { SecretsWorldProvider, SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { CheckResult, Entry, Fact, Flag, Proposal } from "@/lib/types";
 
 vi.mock("@/lib/world", () => ({ useWorld: () => ({ world: { id: "w1", name: "Velmar" } }) }));
@@ -66,6 +67,9 @@ const cellOf = (table: HTMLElement, key: string, col: number) => {
   const row = within(table).getAllByRole("row").find((r) => within(r).queryByText(key)) as HTMLElement;
   return within(row).getAllByRole("cell")[col];
 };
+
+/** The citation (chip or mask, then the ID) of entry `id` inside the fact table. */
+const citationOf = (id: string) => within(screen.getByRole("table")).getByText(id).parentElement as HTMLElement;
 
 // A loaded, non-secret Ister: cited values may be shown.
 const ister = {
@@ -546,8 +550,10 @@ describe("ApprovalCard complete table", () => {
     };
     render(<ApprovalCard proposal={create} check={check("none", [])} onDecide={vi.fn()} />);
     expect(screen.queryByText(/hidden moon of glass/)).toBeNull();
+    // The body has no Show of its own: the card's one Show reveals it with the entry.
     const body = screen.getAllByText("hidden secret").map((e) => e.closest("p")).find(Boolean) as HTMLElement;
-    await userEvent.click(within(body).getByRole("button", { name: /show secret fact/i }));
+    expect(within(body).queryByRole("button")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
     expect(screen.getByText("A hidden moon of glass.")).toBeInTheDocument();
   });
 
@@ -581,7 +587,7 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     expect(within(drafted).queryByText("The Mayor")).toBeNull();
     expect(within(drafted).queryByText("Holder")).toBeNull();
     expect(within(drafted).getAllByText("Secret fact")).toHaveLength(2);
-    await userEvent.click(within(drafted).getAllByRole("button", { name: /show secret fact/i })[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
     expect(within(drafted).getByText("The Mayor")).toBeInTheDocument();
   });
 
@@ -641,13 +647,13 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
     const ui = <ApprovalCard proposal={proposal} check={check("none", [ownRetcon])} canon={[]} onDecide={vi.fn()} />;
     render(ui);
     expect(screen.queryByText("Old Ledger")).toBeNull();
-    // The header's Show comes first; the Cite has its own. The card-level one reveals both.
-    await userEvent.click(screen.getAllByRole("button", { name: "Show secret entry" })[0]);
-    expect(screen.getAllByText("Old Ledger").length).toBeGreaterThanOrEqual(2);
+    // The header's Show is the one reveal; the own citation has none of its own.
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
+    expect(within(citationOf("ent_0007")).getByText("Old Ledger")).toBeInTheDocument();
     cleanup();
     sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
     render(ui);
-    expect(screen.getAllByText("Old Ledger").length).toBeGreaterThanOrEqual(2);
+    expect(within(citationOf("ent_0007")).getByText("Old Ledger")).toBeInTheDocument();
   });
 
   it("names a secret dependent of a delete as Secret entry, with no link", () => {
@@ -693,10 +699,12 @@ describe("ApprovalCard secret entries (Wave 7)", () => {
   it("the edit form hides every fact value of a secret entry draft, canon-status ones too", async () => {
     render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "password");
-    expect(screen.getByLabelText("Fact 2 value")).toHaveAttribute("type", "password");
+    for (const n of [1, 2]) {
+      expect(screen.getByLabelText(`Fact ${n} value`)).toBeDisabled();
+      expect(screen.getByLabelText(`Fact ${n} value`)).toHaveValue("");
+    }
     await userEvent.click(screen.getByRole("button", { name: "Show secret fact 1" }));
-    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Fact 1 value")).toHaveValue("The Mayor");
   });
 });
 
@@ -769,6 +777,25 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
     const links = screen.getAllByRole("link", { name: /The Salt Guild|The Mayor/ });
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["/canon/ent_0011", "/canon/ent_0003"]);
     expect(screen.queryByText(/linked entr/)).toBeNull();
+  });
+
+  it("delete card lists link-only dependents on their own line while shown", () => {
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    const varr = { ...mayorRef, title: "Mayor Elsbeth Varr" };
+    render(<ApprovalCard proposal={del} check={delCheck([saltRef, varr])} canon={[choir, mayor, salt]} onDecide={vi.fn()} />);
+    const mention = screen.getByText("These entries mention it:");
+    const linkLine = screen.getByText("These entries link to it:");
+    const salted = screen.getByRole("link", { name: /The Salt Guild/ });
+    const linked = screen.getByRole("link", { name: /Mayor Elsbeth Varr/ });
+    const follows = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(mention, salted)).toBe(true);
+    expect(follows(salted, linkLine)).toBe(true);
+    expect(follows(linkLine, linked)).toBe(true);
+    cleanup();
+    // Only link-only dependents: no "mention it" line at all.
+    render(<ApprovalCard proposal={del} check={delCheck([varr])} canon={[choir, mayor]} onDecide={vi.fn()} />);
+    expect(screen.queryByText("These entries mention it:")).toBeNull();
+    expect(screen.getByText("These entries link to it:")).toBeInTheDocument();
   });
 
   const secretUpdate: Proposal = {
@@ -845,14 +872,14 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByLabelText("Title")).toBeDisabled();
     expect(screen.getByLabelText("Fact 1 key")).toBeDisabled();
-    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Fact 1 value")).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Show secret entry to edit" }));
     expect(screen.getByLabelText("Title")).toHaveValue("The Choir Ledger");
     expect(screen.getByLabelText("Fact 1 key")).toHaveValue("Holder");
-    expect(screen.getByLabelText("Fact 1 value")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Fact 1 value")).toHaveValue("The Mayor");
     // A fact that is secret in its own right still needs its own Show.
     expect(screen.getByLabelText("Fact 2 key")).toBeDisabled();
-    expect(screen.getByLabelText("Fact 2 value")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Fact 2 value")).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Show secret fact 2" }));
     expect(screen.getByLabelText("Fact 2 key")).toHaveValue("Contents");
   });
@@ -865,5 +892,130 @@ describe("ApprovalCard secret leftovers (Wave 8)", () => {
     expect(onDecide).toHaveBeenCalledWith({
       proposal_id: "p_1", action: "edit", edited: { ...secretUpdate.after!, facts: [] },
     });
+  });
+});
+
+describe("ApprovalCard one Show per secret entry (M3 Wave 2)", () => {
+  const mayor = entry({
+    id: "ent_0003", title: "Mayor Elsbeth Varr", type: "character",
+    facts: [fact("Holder", "Yes, at every full Ister", "secret"), fact("Age", "54")],
+  });
+  const older = updateOf(mayor, { facts: [fact("Holder", "Yes, at every full Ister", "secret"), fact("Age", "55")] });
+
+  it("edit form puts no hidden value in the DOM", async () => {
+    const { container } = render(<ApprovalCard proposal={older} check={check("none", [])} canon={[mayor]} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(container.innerHTML).not.toContain("Yes, at every full Ister");
+    expect(container.querySelector('input[type="password"]')).toBeNull();
+    const value = screen.getByLabelText("Fact 1 value");
+    expect(value).toBeDisabled();
+    expect(value).toHaveAttribute("placeholder", "Secret fact");
+    await userEvent.click(screen.getByRole("button", { name: "Show secret fact 1" }));
+    expect(screen.getByLabelText("Fact 1 value")).toHaveValue("Yes, at every full Ister");
+  });
+
+  it("edit form locks a hidden row's status", async () => {
+    render(<ApprovalCard proposal={older} check={check("none", [])} canon={[mayor]} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Fact 1 status")).toBeDisabled();
+    expect(screen.getByLabelText("Fact 2 status")).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Show secret fact 1" }));
+    expect(screen.getByLabelText("Fact 1 status")).toBeEnabled();
+  });
+
+  it("submitting without Show keeps hidden facts exactly", async () => {
+    const onDecide = vi.fn();
+    // Padded and blank on purpose: a hidden row is sent as drafted, never trimmed or dropped.
+    const told: Fact = {
+      key: " Holder ", value: " Yes, at every full Ister ", refs: ["ent_0004"], status: "secret", told_by: "The Ashen Choir",
+    };
+    const blank: Fact = { key: "Unsaid", value: "", refs: [], status: "secret", told_by: null };
+    const drafted = updateOf(mayor, { facts: [told, fact("Age", "55"), blank] });
+    render(<ApprovalCard proposal={drafted} check={check("none", [])} canon={[mayor]} onDecide={onDecide} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Submit edit" }));
+    expect(onDecide.mock.calls[0][0].edited.facts).toEqual(drafted.after!.facts);
+  });
+
+  it("a stored secret hides the card and the queue row", async () => {
+    // before and after are canon; only the stored entry in canon is secret now.
+    const stored = { ...before, title: "The Choir Ledger", status: "secret" } as Entry;
+    const proposal: Proposal = {
+      ...update, before: { ...before, title: "The Choir Ledger" } as Entry,
+      after: { ...update.after!, title: "The Choir Ledger", facts: [fact("Moons", "Three")] },
+    };
+    const ownRetcon = flag({
+      kind: "retcon", entry_id: "ent_0007", title: "The Choir Ledger", fact_key: "Moons",
+      existing_fact: "Just one", new_fact: "Three", explanation: "Changes this entry's own fact.",
+    });
+    const result = check("none", [ownRetcon]);
+    render(<ApprovalCard proposal={proposal} check={result} canon={[stored]} onDecide={vi.fn()} />);
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByRole("region", { name: "Review proposal: secret entry" })).toBeInTheDocument();
+    expect(within(citationOf("ent_0007")).queryByRole("button")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Title")).toBeDisabled();
+    cleanup();
+    render(
+      <SecretsWorldProvider worldId="w1">
+        <ReviewQueue
+          pending={{ proposals: [proposal], checks: { p_1: result } }}
+          canon={[stored]}
+          selectedId="p_1"
+          chosen={{}}
+          onSelect={vi.fn()}
+        />
+      </SecretsWorldProvider>,
+    );
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+  });
+
+  it("one Show reveals a secret create", async () => {
+    const secretCreate: Proposal = {
+      ...update, action: "create", entry_id: null, before: null,
+      after: {
+        title: "The Choir Ledger", type: "item", body: "Names of the Choir.", status: "secret", aliases: [],
+        facts: [fact("Holder", "The Mayor"), fact("Contents", "Names", "secret")],
+      },
+    };
+    render(<ApprovalCard proposal={secretCreate} check={check("none", [])} onDecide={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Show secret entry" })).toHaveLength(1);
+    expect(screen.queryAllByRole("button", { name: /show secret fact/i })).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
+    expect(screen.getAllByText("The Choir Ledger").length).toBeGreaterThan(0);
+    expect(screen.getByText("Names of the Choir.")).toBeInTheDocument();
+    expect(screen.getByText("The Mayor")).toBeInTheDocument();
+    // The fact that is secret in its own right keeps its own Show.
+    expect(screen.queryByText("Names")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /show secret fact/i })).toHaveLength(1);
+  });
+
+  it("own citation has no Show of its own", async () => {
+    const secretBefore = { ...before, title: "Old Ledger", status: "secret", facts: [fact("Moons", "Just one")] } as Entry;
+    const proposal: Proposal = { ...update, before: secretBefore, after: { ...update.after!, title: "Old Ledger", status: "secret" } };
+    const ownRetcon = flag({
+      kind: "retcon", entry_id: "ent_0007", title: "Old Ledger", fact_key: "Moons",
+      existing_fact: "Just one", new_fact: "Three", explanation: "Changes this entry's own fact.",
+    });
+    render(<ApprovalCard proposal={proposal} check={check("none", [ownRetcon])} canon={[]} onDecide={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Show secret entry" })).toHaveLength(1);
+    expect(within(citationOf("ent_0007")).queryByRole("button")).toBeNull();
+    expect(within(citationOf("ent_0007")).queryByText("Old Ledger")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
+    expect(within(citationOf("ent_0007")).getByText("Old Ledger")).toBeInTheDocument();
+  });
+
+  it("own prose-flag citation hides with the entry", async () => {
+    const secretBefore = { ...before, title: "Old Ledger", status: "secret" } as Entry;
+    const proposal: Proposal = { ...update, before: secretBefore, after: { ...update.after!, title: "Old Ledger", status: "secret" } };
+    const ownNote = flag({ kind: "note", severity: "note", entry_id: "ent_0007", title: "Old Ledger", explanation: "Worth a look." });
+    render(<ApprovalCard proposal={proposal} check={check("none", [ownNote])} canon={[]} onDecide={vi.fn()} />);
+    const prose = screen.getByText("Note", { selector: "strong" }).parentElement as HTMLElement;
+    expect(screen.queryByText("Old Ledger")).toBeNull();
+    expect(within(prose).getByText("ent_0007")).toBeInTheDocument();
+    expect(within(prose).queryByRole("button", { name: "Show secret entry" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Show secret entry" }));
+    expect(within(prose).getByText("Old Ledger")).toBeInTheDocument();
   });
 });

@@ -70,10 +70,15 @@ describe("FactList hideAll and the world toggle", () => {
     expect(screen.getByText("Secretly a Choir member")).toBeInTheDocument();
   });
 
-  it("per-item Show still works with the toggle off", async () => {
-    render(<FactList facts={facts} hideAll />);
-    await userEvent.click(screen.getAllByRole("button", { name: /show secret fact/i })[0]);
+  it("hideAll rows have no Show of their own; a secret fact gets its own once hideAll lifts", async () => {
+    const { rerender } = render(<FactList facts={facts} hideAll />);
+    expect(screen.queryAllByRole("button", { name: /show secret fact/i })).toHaveLength(0);
+    // The caller's reveal (the card's one Show) lifts hideAll.
+    rerender(<FactList facts={facts} />);
     expect(screen.getByText("One")).toBeInTheDocument();
+    expect(screen.queryByText("Secretly a Choir member")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /show secret fact/i }));
+    expect(screen.getByText("Secretly a Choir member")).toBeInTheDocument();
   });
 
   it("without hideAll, only secret facts are hidden", () => {

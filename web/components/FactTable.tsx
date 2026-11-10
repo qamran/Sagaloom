@@ -7,8 +7,24 @@ import type { FactResult, FactRow } from "@/lib/factRows";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { EntryType, Fact, Flag } from "@/lib/types";
 
-/** An entry cited by a flag: a chip when its type is known, then its ID (R4.3). */
-export function Cite({ id, title, type, secret }: { id: string; title: string; type?: EntryType; secret?: boolean }) {
+/**
+ * An entry cited by a flag: a chip when its type is known, then its ID (R4.3). A secret title is
+ * masked; `revealable={false}` drops its Show, for a title another control reveals (the card's
+ * one Show for its own entry).
+ */
+export function Cite({
+  id,
+  title,
+  type,
+  secret,
+  revealable = true,
+}: {
+  id: string;
+  title: string;
+  type?: EntryType;
+  secret?: boolean;
+  revealable?: boolean;
+}) {
   const [shown, setShown] = useState(false);
   const worldShown = useWorldShowSecrets();
   if (!id) return null;
@@ -21,14 +37,16 @@ export function Cite({ id, title, type, secret }: { id: string; title: string; t
           <span aria-hidden="true">••••••</span>
           <span className="sr-only">hidden secret</span>
         </span>
-        <button
-          type="button"
-          onClick={() => setShown(true)}
-          aria-label="Show secret entry"
-          className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
-        >
-          Show
-        </button>
+        {revealable && (
+          <button
+            type="button"
+            onClick={() => setShown(true)}
+            aria-label="Show secret entry"
+            className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
+          >
+            Show
+          </button>
+        )}
       </span>
     );
   else if (type) chip = <EntityChip type={type} name={title} href={href} />;
@@ -51,16 +69,19 @@ export function Cite({ id, title, type, secret }: { id: string; title: string; t
 
 /**
  * A value that may be secret: hidden until Show, like FactList (R12.12). `children` (a status
- * tag, a teller) render after the value and stay hidden with it.
+ * tag, a teller) render after the value and stay hidden with it. `revealable={false}` drops the
+ * Show, for a value hidden with its entry and revealed by the card's one Show.
  */
 export function SecretValue({
   value,
   secret,
+  revealable = true,
   className,
   children,
 }: {
   value: string;
   secret: boolean;
+  revealable?: boolean;
   className?: string;
   children?: ReactNode;
 }) {
@@ -81,14 +102,16 @@ export function SecretValue({
         <span aria-hidden="true">••••••</span>
         <span className="sr-only">hidden secret</span>
       </span>
-      <button
-        type="button"
-        onClick={() => setShown(true)}
-        aria-label="Show secret fact"
-        className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
-      >
-        Show
-      </button>
+      {revealable && (
+        <button
+          type="button"
+          onClick={() => setShown(true)}
+          aria-label="Show secret fact"
+          className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
+        >
+          Show
+        </button>
+      )}
     </span>
   );
 }
@@ -118,6 +141,8 @@ export interface SecretOf {
   text: (f: Flag) => boolean;
   /** The cited entry's title. */
   cite: (id: string) => boolean;
+  /** The cited entry is the proposal's own: its title has no Show, the card's one Show reveals it. */
+  ownEntry: (id: string) => boolean;
 }
 
 const RESULT_TEXT: Record<FactResult, string> = {
@@ -192,11 +217,13 @@ function Values({
   empty,
   typeOf,
   citeSecret,
+  ownEntry,
 }: {
   items: Item[];
   empty: string;
   typeOf: (id: string) => EntryType | undefined;
   citeSecret: (id: string) => boolean;
+  ownEntry: (id: string) => boolean;
 }) {
   const list = unique(items);
   if (list.length === 0) return <span className="text-muted-foreground">{empty}</span>;
@@ -208,7 +235,13 @@ function Values({
           {it.cite && (
             <>
               {it.value !== null && DOT}
-              <Cite id={it.cite.id} title={it.cite.title} type={typeOf(it.cite.id)} secret={citeSecret(it.cite.id)} />
+              <Cite
+                id={it.cite.id}
+                title={it.cite.title}
+                type={typeOf(it.cite.id)}
+                secret={citeSecret(it.cite.id)}
+                revealable={!ownEntry(it.cite.id)}
+              />
             </>
           )}
         </li>
@@ -269,7 +302,7 @@ export function FactTable({
             // added values), so it is masked when either side is.
             const draftSecret = row.proposed.some((f) => secretOf.proposed(f));
             const textSecret = (f: Flag) => secretOf.text(f) || secretOf.incoming(f) || draftSecret;
-            const cells = { typeOf, citeSecret: secretOf.cite };
+            const cells = { typeOf, citeSecret: secretOf.cite, ownEntry: secretOf.ownEntry };
             return (
               <Fragment key={`${row.key}-${i}`}>
                 <tr className="border-t border-border">
@@ -295,7 +328,13 @@ export function FactTable({
                               {f.kind === "retcon" && f.entry_id && (
                                 <>
                                   {DOT}
-                                  <Cite id={f.entry_id} title={f.title} type={typeOf(f.entry_id)} secret={secretOf.cite(f.entry_id)} />
+                                  <Cite
+                                    id={f.entry_id}
+                                    title={f.title}
+                                    type={typeOf(f.entry_id)}
+                                    secret={secretOf.cite(f.entry_id)}
+                                    revealable={!secretOf.ownEntry(f.entry_id)}
+                                  />
                                 </>
                               )}
                               {f.explanation && (

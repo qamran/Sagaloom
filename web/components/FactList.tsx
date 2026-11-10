@@ -22,7 +22,8 @@ function FactRow({
 }: {
   fact: Fact;
   hidden: boolean;
-  onShow: () => void;
+  /** Reveals this row; absent when the row is hidden with its entry and has no Show of its own. */
+  onShow?: () => void;
   entries?: Named[];
   showSecrets: boolean;
 }) {
@@ -41,14 +42,16 @@ function FactRow({
               <span aria-hidden="true">••••••••</span>
               <span className="sr-only">hidden secret</span>
             </span>
-            <button
-              type="button"
-              onClick={onShow}
-              aria-label="Show secret fact"
-              className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
-            >
-              Show
-            </button>
+            {onShow && (
+              <button
+                type="button"
+                onClick={onShow}
+                aria-label="Show secret fact"
+                className="min-h-11 rounded-md border border-border-strong px-3 text-xs text-foreground hover:bg-panel-3 sm:min-h-8"
+              >
+                Show
+              </button>
+            )}
           </>
         ) : (
           <span>{fact.value}</span>
@@ -74,7 +77,9 @@ const factId = (f: Fact) => JSON.stringify([f.key, f.value]);
 
 /**
  * key: value rows with a status badge. Secret facts stay hidden until Show is clicked or the
- * world toggle is on (R12.12); `hideAll` hides every fact, for a secret entry's draft.
+ * world toggle is on (R12.12). `hideAll` means "hidden for the entry's sake" (a secret entry's
+ * draft, before the card's one Show): every row is hidden and has no Show of its own. Once it is
+ * false, a fact that is secret in its own right keeps its own Show.
  */
 export function FactList({
   facts,
@@ -82,6 +87,7 @@ export function FactList({
   entries,
 }: {
   facts: Fact[];
+  /** Every row is hidden with its entry; the caller folds in the world toggle and its own reveal. */
   hideAll?: boolean;
   /** The world's entries: refs and told_by become chips. */
   entries?: Named[];
@@ -99,8 +105,8 @@ export function FactList({
           fact={f}
           entries={entries}
           showSecrets={worldShown}
-          hidden={(hideAll || f.status === "secret") && !worldShown && !shown.has(factId(f))}
-          onShow={() => setShown((s) => new Set(s).add(factId(f)))}
+          hidden={!worldShown && (hideAll || (f.status === "secret" && !shown.has(factId(f))))}
+          onShow={hideAll ? undefined : () => setShown((s) => new Set(s).add(factId(f)))}
         />
       ))}
     </div>

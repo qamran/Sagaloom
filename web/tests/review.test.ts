@@ -173,14 +173,24 @@ describe("proposalSummary", () => {
     expect(proposalSummary(create, check([dup]), () => true)).toBe("Possible duplicate of ent_0002");
     const del: Proposal = { ...create, action: "delete", after: null };
     const refs = [{ id: "ent_0003", title: "Mayor", type: "character" as const }];
-    expect(proposalSummary(del, check([], { dependents: refs }), open)).toBe("Deletes this entry · 1 entry mentions it");
+    expect(proposalSummary(del, check([], { dependents: refs }), open)).toBe("Deletes this entry · 1 entry depends on it");
     // A link-only dependent counts too: the number reveals no title.
     const linked = [...refs, { ...refs[0], id: "ent_0019", via: "link" as const }];
-    expect(proposalSummary(del, check([], { dependents: linked }), open)).toBe("Deletes this entry · 2 entries mention it");
+    expect(proposalSummary(del, check([], { dependents: linked }), open)).toBe("Deletes this entry · 2 entries depend on it");
     expect(proposalSummary(del, check([], { dependents: [...refs, ...refs] }), open)).toBe(
-      "Deletes this entry · 2 entries mention it",
+      "Deletes this entry · 2 entries depend on it",
     );
     expect(proposalSummary(create, check([]), open)).toBe("No conflicts found");
+  });
+
+  it("delete summary says depend on it", () => {
+    const del: Proposal = { ...create, action: "delete", after: null };
+    const ref = (id: string) => ({ id, title: "Mayor", type: "character" as const });
+    expect(proposalSummary(del, check([], { dependents: [ref("ent_0003")] }), open)).toBe(
+      "Deletes this entry · 1 entry depends on it",
+    );
+    const three = [ref("ent_0003"), ref("ent_0011"), { ...ref("ent_0019"), via: "link" as const }];
+    expect(proposalSummary(del, check([], { dependents: three }), open)).toBe("Deletes this entry · 3 entries depend on it");
   });
 });
 

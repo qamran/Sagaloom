@@ -143,14 +143,21 @@ export function proposalSummary(
   if (p.action === "delete") {
     // Every dependent counts, link-only ones too: a number names no entry.
     const n = c.dependents.length;
-    return `Deletes this entry · ${n === 1 ? "1 entry mentions" : `${n} entries mention`} it`;
+    return `Deletes this entry · ${n === 1 ? "1 entry depends" : `${n} entries depend`} on it`;
   }
   const note = c.flags.find((f) => f.kind === "note");
   return note ? proseLine(note) : "No conflicts found";
 }
 
-function secretIndex(proposal: Proposal, canon: Entry[] | undefined) {
-  const byId = new Map<string, Pick<Entry, "status" | "facts">>();
+type EntryIndex = ReturnType<typeof entryIndex>;
+
+/**
+ * The entries a proposal's flags can cite, by ID: this world's `canon` with the proposal's own
+ * `before` on top (the version the check ran against). `unknown` fails closed: until `canon` has
+ * loaded, any other entry may be secret (R12.12).
+ */
+export function entryIndex(proposal: Proposal, canon: Entry[] | undefined) {
+  const byId = new Map<string, Pick<Entry, "status" | "facts" | "type" | "title">>();
   for (const e of canon ?? []) byId.set(e.id, e);
   if (proposal.before) byId.set(proposal.before.id, proposal.before);
   const unknown = (id: string) => !!id && id !== proposal.entry_id && canon === undefined;
@@ -158,13 +165,30 @@ function secretIndex(proposal: Proposal, canon: Entry[] | undefined) {
 }
 
 /**
+ * Whether the proposal's own entry is secret: either side of the change, or the entry as it is
+ * stored in canon now (it may have turned secret after the proposal was drafted). `canon` is read
+ * directly, because `entryIndex` lets `before` shadow the stored entry.
+ */
+export function entryIsSecret(proposal: Proposal, canon: Entry[] | undefined): boolean {
+  return (
+    proposal.before?.status === "secret" ||
+    proposal.after?.status === "secret" ||
+    (!!proposal.entry_id && !!canon?.some((e) => e.id === proposal.entry_id && e.status === "secret"))
+  );
+}
+
+const existingWith =
+  ({ byId, unknown }: EntryIndex) =>
+  (f: Flag) =>
+    f.existing_secret || unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
+
+/**
  * Whether a flag's existing side is secret, as the card masks it: the server's mark, a secret fact
  * or entry among `canon` (plus the proposal's own `before`), and fail closed: until `canon` has
  * loaded, any flag citing another entry counts as secret (R12.12).
  */
 export function existingSecretOf(proposal: Proposal, canon: Entry[] | undefined): (f: Flag) => boolean {
-  const { byId, unknown } = secretIndex(proposal, canon);
-  return (f) => f.existing_secret || unknown(f.entry_id) || isSecretFact(byId.get(f.entry_id), f.fact_key, f.existing_fact);
+  return existingWith(entryIndex(proposal, canon));
 }
 
 /**
@@ -173,8 +197,9 @@ export function existingSecretOf(proposal: Proposal, canon: Entry[] | undefined)
  * holds any secret.
  */
 export function textSecretOf(proposal: Proposal, canon: Entry[] | undefined): (f: Flag) => boolean {
-  const { byId, unknown } = secretIndex(proposal, canon);
-  const existing = existingSecretOf(proposal, canon);
+  const index = entryIndex(proposal, canon);
+  const { byId, unknown } = index;
+  const existing = existingWith(index);
   return (f) => {
     if (f.fact_key) return existing(f);
     if (f.existing_secret || unknown(f.entry_id)) return true;

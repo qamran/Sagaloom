@@ -75,6 +75,27 @@ describe("ReviewQueue", () => {
     expect(screen.getByText("Motto: Salt → Tide")).toBeInTheDocument();
   });
 
+  it("hides the title of an entry stored as secret after its proposal was drafted", () => {
+    const drafted = { id: "ent_0019", title: "The Choir Ledger", type: "item", status: "canon", facts: [] } as unknown as Entry;
+    const update: Proposal = {
+      proposal_id: "p_u", action: "update", world_id: "w1", entry_id: "ent_0019", before: drafted,
+      after: { title: "The Choir Ledger", type: "item", body: "", status: "canon", aliases: [], facts: [] },
+    };
+    const one: PendingInterrupt = { proposals: [update], checks: { p_u: check("p_u") } };
+    const view = () => (
+      <SecretsWorldProvider worldId="w1">
+        <ReviewQueue pending={one} canon={[{ ...drafted, status: "secret" }]} selectedId="p_u" chosen={{}} onSelect={vi.fn()} />
+      </SecretsWorldProvider>
+    );
+    const { unmount } = render(view());
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(screen.getByText("Secret entry")).toBeInTheDocument();
+    unmount();
+    sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
+    render(view());
+    expect(screen.getByText("The Choir Ledger")).toBeInTheDocument();
+  });
+
   it("follows the provider's world, not the active one", () => {
     sessionStorage.setItem(SHOW_SECRETS_KEY("w1"), "true");
     render(

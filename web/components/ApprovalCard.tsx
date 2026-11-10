@@ -9,7 +9,18 @@ import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
 import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, draftHoldsSecret, existingSecretOf, isSecretFact, proseSecretOf, textSecretOf } from "@/lib/review";
+import {
+  BADGE_CLASS,
+  BADGE_LABEL,
+  badgeOf,
+  draftHoldsSecret,
+  entryIndex,
+  entryIsSecret,
+  existingSecretOf,
+  isSecretFact,
+  proseSecretOf,
+  textSecretOf,
+} from "@/lib/review";
 import type { Badge, CheckResult, Decision, Entry, EntryDraft, EntryType, Fact, Proposal, Status } from "@/lib/types";
 
 export const CHECK_FAILED_TEXT =
@@ -62,25 +73,22 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   const [entryRevealed, setEntryRevealed] = useState(false);
   const worldShown = useWorldShowSecrets();
   const pid = proposal.proposal_id;
-  // A secret entry's title is hidden on the card like its body and facts (R12.12, ruling R8). Either
-  // side counts, as in the line diff, so an update that un-secrets an entry stays masked until approved.
-  const entrySecret = proposal.before?.status === "secret" || proposal.after?.status === "secret";
+  // A secret entry is hidden on the card, title, body and facts (R12.12, ruling R8). Either side
+  // counts, as in the line diff, so an update that un-secrets an entry stays masked until approved,
+  // and so does the entry as stored now (it may have turned secret after this proposal was drafted).
+  // The header's Show is the one reveal for everything hidden for the entry's sake.
+  const entrySecret = entryIsSecret(proposal, canon);
+  const entryHidden = entrySecret && !worldShown && !entryRevealed;
 
-  const byId = new Map<string, Pick<Entry, "status" | "facts" | "type" | "title">>();
-  for (const e of canon ?? []) byId.set(e.id, e);
-  if (proposal.before) byId.set(proposal.before.id, proposal.before);
+  // Fail closed: until this world's entries have loaded, any other entry cited by a flag may be
+  // secret, so its title, value and quotes stay hidden behind Show (R12.12).
+  const { byId, unknown } = entryIndex(proposal, canon);
   const typeOf = (id: string): EntryType | undefined =>
     byId.get(id)?.type ?? check.dependents.find((d) => d.id === id)?.type ??
     (id && id === proposal.entry_id ? (proposal.after?.type ?? proposal.before?.type) : undefined);
-  // Fail closed: until this world's entries have loaded, any other entry cited by a flag may be
-  // secret, so its title, value and quotes stay hidden behind Show (R12.12).
-  const canonLoaded = canon !== undefined;
-  const unknown = (id: string) => !!id && id !== proposal.entry_id && !canonLoaded;
-  // A flag citing this entry itself (a retcon) follows the card-level reveal of its title.
-  const citeSecret = (id: string) =>
-    id && id === proposal.entry_id
-      ? entrySecret && !entryRevealed
-      : unknown(id) || byId.get(id)?.status === "secret";
+  const ownEntry = (id: string) => !!id && id === proposal.entry_id;
+  // A flag citing this entry itself (a retcon) is hidden with the entry and has no Show of its own.
+  const citeSecret = (id: string) => (ownEntry(id) ? entryHidden : unknown(id) || byId.get(id)?.status === "secret");
   const existingSecret = existingSecretOf(proposal, canon);
   // The existing side of a flag, and the judge's free text about it (explanation, suggested
   // fix), may restate a secret: the server marks such flags (existing_secret), and the client
@@ -119,6 +127,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
     incoming: (f) => isSecretFact(after, f.fact_key, f.new_fact),
     text: textSecret,
     cite: citeSecret,
+    ownEntry,
   };
 
   const tone =
@@ -129,15 +138,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         : { box: "border-border", head: "bg-panel-3 border-border" };
 
   const title = proposal.after?.title ?? proposal.before?.title ?? "Untitled";
-  const titleHidden = entrySecret && !worldShown && !entryRevealed;
-  const shownTitle = titleHidden ? "Secret entry" : title;
-  // The Edit form also counts the stored entry as it is now in canon: it may have turned secret
-  // after this proposal was drafted, so `before` alone is not enough.
-  const storedSecret =
-    entrySecret ||
-    (!!proposal.entry_id &&
-      (byId.get(proposal.entry_id)?.status === "secret" ||
-        canon?.some((e) => e.id === proposal.entry_id && e.status === "secret") === true));
+  const shownTitle = entryHidden ? "Secret entry" : title;
   const dependentSecret = (id: string) => !worldShown && (unknown(id) || byId.get(id)?.status === "secret");
   const type = proposal.after?.type ?? proposal.before?.type;
   const version =
@@ -149,7 +150,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
   };
 
   return (
-    <section aria-label={`Review proposal: ${titleHidden ? "secret entry" : title}`} className={`overflow-hidden rounded-[14px] border bg-panel-2 ${tone.box}`}>
+    <section aria-label={`Review proposal: ${entryHidden ? "secret entry" : title}`} className={`overflow-hidden rounded-[14px] border bg-panel-2 ${tone.box}`}>
       <div className={`flex flex-wrap items-center gap-2.5 border-b px-[18px] py-3 ${tone.head}`}>
         <ul aria-label="Check result" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
           {shownBadges.map((b) => (
@@ -163,7 +164,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground sm:ml-auto">
           {ACTION_LABEL[proposal.action]} ·{" "}
           {type ? <EntityChip type={type} name={shownTitle} /> : <span className="text-foreground">{shownTitle}</span>}
-          {titleHidden && (
+          {entryHidden && (
             <button
               type="button"
               onClick={() => setEntryRevealed(true)}
@@ -206,7 +207,13 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
             <div className="flex flex-wrap items-center gap-1.5">
               <strong className="text-foreground">{KIND_LABEL[f.kind]}</strong>
               <span aria-hidden="true">·</span>
-              <Cite id={f.entry_id} title={f.title} type={typeOf(f.entry_id)} secret={citeSecret(f.entry_id)} />
+              <Cite
+                id={f.entry_id}
+                title={f.title}
+                type={typeOf(f.entry_id)}
+                secret={citeSecret(f.entry_id)}
+                revealable={!ownEntry(f.entry_id)}
+              />
               {f.explanation && <SecretValue value={f.explanation} secret={proseSecret(f)} />}
             </div>
             {f.existing_quote && (
@@ -234,18 +241,18 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
                 {type ? TYPE_LABEL[type] : "Entry"} · {proposal.after.status}
               </div>
               <div className="font-heading text-lg font-semibold">
-                <SecretValue value={proposal.after.title} secret={entrySecret && !entryRevealed} />
+                <SecretValue value={proposal.after.title} secret={entryHidden} revealable={false} />
               </div>
               {proposal.after.source === "reference" && <SourceLine url={proposal.after.source_url} />}
               {proposal.after.body && (
                 <p className="m-0 mt-1 line-clamp-4 whitespace-pre-line font-heading text-[15px] text-prose">
-                  <SecretValue value={proposal.after.body} secret={proposal.after.status === "secret"} />
+                  <SecretValue value={proposal.after.body} secret={entryHidden} revealable={false} />
                 </p>
               )}
             </div>
             <section aria-label="Drafted facts" className="flex flex-col gap-2">
               <h4 className="m-0 text-xs font-semibold uppercase tracking-[1px]">Facts to commit</h4>
-              <FactList facts={proposal.after.facts} entries={canon} hideAll={proposal.after.status === "secret"} />
+              <FactList facts={proposal.after.facts} entries={canon} hideAll={entryHidden} />
             </section>
           </div>
         ) : (
@@ -269,7 +276,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
         ) : editing && proposal.after ? (
           <EditForm
             draft={proposal.after}
-            secretEntry={storedSecret}
+            secretEntry={entrySecret}
             disabled={disabled}
             onCancel={() => setEditing(false)}
             onSubmit={(edited) => onDecide({ proposal_id: pid, action: "edit", edited })}
@@ -324,9 +331,9 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
 const linkedCount = (n: number) => (n === 1 ? "1 linked entry" : `${n} linked entries`);
 
 /**
- * What a delete touches: entries naming it in their text, then entries tied to it only by a link.
- * A link may be secret (the Mayor's to the Choir), so while the world hides secrets those are a
- * count only: no title, ID, type or link.
+ * What a delete touches: entries naming it in their text, then entries tied to it only by a link,
+ * each under its own line. A link may be secret (the Mayor's to the Choir), so while the world
+ * hides secrets link-only entries are a count only: no title, ID, type or link.
  */
 function DeleteDependents({
   dependents,
@@ -338,32 +345,44 @@ function DeleteDependents({
   secret: (id: string) => boolean;
 }) {
   const text = dependents.filter((d) => d.via !== "link");
-  const linked = dependents.filter((d) => d.via === "link");
-  const named = worldShown ? [...text, ...linked] : text;
-  const counted = worldShown ? 0 : linked.length;
-  if (named.length === 0 && counted === 0) return <div className="text-muted-foreground">No other entries mention it.</div>;
-  if (named.length === 0)
+  const linked = worldShown ? dependents.filter((d) => d.via === "link") : [];
+  const counted = worldShown ? 0 : dependents.length - text.length;
+  if (text.length === 0 && linked.length === 0 && counted === 0)
+    return <div className="text-muted-foreground">No other entries mention it.</div>;
+  if (text.length === 0 && linked.length === 0)
     return (
       <div className="text-muted-foreground">
         {linkedCount(counted)} {counted === 1 ? "depends" : "depend"} on it
       </div>
     );
+  const chips = (list: CheckResult["dependents"]) =>
+    list.map((d) =>
+      secret(d.id) ? (
+        <EntityChip key={d.id} type={d.type} name="Secret entry" />
+      ) : (
+        <span key={d.id} className="inline-flex items-center gap-1.5">
+          <EntityChip type={d.type} name={d.title} href={`/canon/${encodeURIComponent(d.id)}`} />
+          <span className="text-xs text-muted-foreground">{d.id}</span>
+        </span>
+      ),
+    );
   return (
     <>
-      <div className="text-muted-foreground">These entries mention it:</div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {named.map((d) =>
-          secret(d.id) ? (
-            <EntityChip key={d.id} type={d.type} name="Secret entry" />
-          ) : (
-            <span key={d.id} className="inline-flex items-center gap-1.5">
-              <EntityChip type={d.type} name={d.title} href={`/canon/${encodeURIComponent(d.id)}`} />
-              <span className="text-xs text-muted-foreground">{d.id}</span>
-            </span>
-          ),
-        )}
-        {counted > 0 && <span className="text-muted-foreground">and {linkedCount(counted)}</span>}
-      </div>
+      {text.length > 0 && (
+        <>
+          <div className="text-muted-foreground">These entries mention it:</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {chips(text)}
+            {counted > 0 && <span className="text-muted-foreground">and {linkedCount(counted)}</span>}
+          </div>
+        </>
+      )}
+      {linked.length > 0 && (
+        <>
+          <div className="text-muted-foreground">These entries link to it:</div>
+          <div className="flex flex-wrap items-center gap-1.5">{chips(linked)}</div>
+        </>
+      )}
     </>
   );
 }
@@ -404,6 +423,9 @@ function EditForm({
   // Hidden fields are never bound to the draft's text, so it is not in the DOM; submitting without
   // Show sends the draft's own title and body (the state below is never edited while hidden).
   const entryHidden = (secretEntry || draft.status === "secret") && !worldShown && !entryShown;
+  // A fact row is hidden for the entry's sake until Show to edit, or for its own until its Show.
+  // A hidden row's inputs are disabled, so it still holds exactly what was drafted.
+  const rowHidden = (f: Fact, i: number) => !worldShown && !revealed.has(i) && (f.status === "secret" || entryHidden);
 
   const setFact = (i: number, patch: Partial<Fact>) =>
     setFacts((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
@@ -414,7 +436,14 @@ function EditForm({
       ...draft,
       title: title.trim() || draft.title,
       body,
-      facts: facts.filter((f) => f.key.trim() && f.value.trim()).map((f) => ({ ...f, key: f.key.trim(), value: f.value.trim() })),
+      // A never-revealed row goes back as drafted (no trim, no empty-row filter): the author has
+      // not seen it, so the form must not change it. Visible rows are trimmed, and blank ones dropped.
+      facts: facts.flatMap((f, i) => {
+        if (rowHidden(f, i)) return [f];
+        const key = f.key.trim();
+        const value = f.value.trim();
+        return key && value ? [{ ...f, key, value }] : [];
+      }),
     });
   }
 
@@ -450,26 +479,28 @@ function EditForm({
         <legend className="mb-1 text-xs font-semibold uppercase tracking-[1px]">Facts</legend>
         {facts.map((f, i) => {
           const n = i + 1;
-          // Hidden for the entry's sake until Show to edit, or for the fact's own until its row's Show.
-          const hide =
-            !worldShown && !revealed.has(i) && (f.status === "secret" || ((secretEntry || draft.status === "secret") && !entryShown));
+          const hide = rowHidden(f, i);
           return (
             <div key={i} className="flex flex-wrap items-center gap-2">
               {hide ? (
-                // Like the title: a hidden key is not bound to its text, so it is not in the DOM.
-                <input aria-label={`Fact ${n} key`} disabled value="" maxLength={40} placeholder="Secret fact" className={`${INPUT} flex-[1_1_120px]`} />
+                // Like the title: a hidden key and value are not bound to their text, so neither is in the DOM.
+                <>
+                  <input aria-label={`Fact ${n} key`} disabled value="" maxLength={40} placeholder="Secret fact" className={`${INPUT} flex-[1_1_120px]`} />
+                  <input aria-label={`Fact ${n} value`} disabled value="" maxLength={200} placeholder="Secret fact" className={`${INPUT} flex-[2_1_180px]`} />
+                </>
               ) : (
-                <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />
+                <>
+                  <input aria-label={`Fact ${n} key`} value={f.key} onChange={(e) => setFact(i, { key: e.target.value })} maxLength={40} placeholder="Key" className={`${INPUT} flex-[1_1_120px]`} />
+                  <input
+                    aria-label={`Fact ${n} value`}
+                    value={f.value}
+                    onChange={(e) => setFact(i, { value: e.target.value })}
+                    maxLength={200}
+                    placeholder="Value"
+                    className={`${INPUT} flex-[2_1_180px]`}
+                  />
+                </>
               )}
-              <input
-                aria-label={`Fact ${n} value`}
-                type={hide ? "password" : "text"}
-                value={f.value}
-                onChange={(e) => setFact(i, { value: e.target.value })}
-                maxLength={200}
-                placeholder="Value"
-                className={`${INPUT} flex-[2_1_180px]`}
-              />
               {hide && (
                 <button type="button" onClick={() => setRevealed((s) => new Set(s).add(i))} aria-label={`Show secret fact ${n}`} className={BTN_SECONDARY}>
                   Show
@@ -477,6 +508,7 @@ function EditForm({
               )}
               <select
                 aria-label={`Fact ${n} status`}
+                disabled={hide}
                 value={f.status}
                 onChange={(e) => setFact(i, { status: e.target.value as Status })}
                 className={`${INPUT} w-auto`}

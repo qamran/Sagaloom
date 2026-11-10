@@ -1,6 +1,6 @@
 import { CHECK_FAILED_TEXT } from "@/components/ApprovalCard";
 import { TYPE_DOT } from "@/lib/entity";
-import { BADGE_CLASS, BADGE_LABEL, badgeOf, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
+import { BADGE_CLASS, BADGE_LABEL, badgeOf, entryIsSecret, existingSecretOf, proposalSummary, proseSecretOf } from "@/lib/review";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Decision, Entry, PendingInterrupt, Proposal } from "@/lib/types";
 
@@ -31,7 +31,8 @@ export function ReviewQueue({ pending, canon, selectedId, chosen, onSelect }: Pr
         const check = pending.checks[p.proposal_id];
         if (!check) return null;
         const draft = p.after ?? p.before;
-        const titleHidden = (p.before?.status === "secret" || p.after?.status === "secret") && !worldShown;
+        // Stored-aware like the card: the entry may have turned secret after the proposal was drafted.
+        const titleHidden = entryIsSecret(p, canon) && !worldShown;
         const badge = badgeOf(check);
         const selected = p.proposal_id === selectedId;
         const decision = chosen[p.proposal_id];

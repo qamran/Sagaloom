@@ -230,4 +230,24 @@ describe("EntryView fact refs", () => {
     renderIt();
     expect(await screen.findByRole("link", { name: /Ashen Choir/ })).toHaveAttribute("href", "/canon/ent_0004");
   });
+
+  it("a locally revealed secret entry still masks a secret ref", async () => {
+    vi.mocked(getEntries).mockResolvedValue([
+      entry({ id: "ent_0004", title: "Ashen Choir", type: "faction" }),
+      entry({ id: "ent_0019", title: "The Choir Ledger", type: "item", status: "secret" }),
+    ]);
+    vi.mocked(getEntry).mockResolvedValue(
+      entry({
+        status: "secret",
+        facts: [{ key: "Keeps", value: "A ledger", refs: ["ent_0004", "ent_0019"], status: "canon", told_by: null }],
+      }),
+    );
+    renderIt();
+    await userEvent.click(await screen.findByRole("button", { name: "Show" }));
+    expect(screen.getByRole("heading", { name: "Ister" })).toBeInTheDocument();
+    // The page's own Show reveals this entry only: the other secret entry's ref stays out.
+    expect(await screen.findByRole("link", { name: /Ashen Choir/ })).toBeInTheDocument();
+    expect(screen.queryByText("The Choir Ledger")).toBeNull();
+    expect(document.querySelector('a[href="/canon/ent_0019"]')).toBeNull();
+  });
 });
