@@ -700,6 +700,8 @@ export interface components {
             is_demo: boolean;
             /** Name */
             name: string;
+            /** Owner Id */
+            owner_id: string | null;
         };
     };
     responses: never;

@@ -114,6 +114,21 @@ class World(BaseModel):
     name: str
     is_demo: bool = False
     divergent: bool = False
+    owner_id: str | None = None
+
+
+class User(BaseModel):
+    """A Clerk user as the API stores them. `is_admin` is never stored: the caller sets it per
+    request from `admin_flag`."""
+
+    id: str
+    email: str
+    email_verified: bool
+    display_name: str
+    last_world_id: str | None = None
+    created_at: str
+    profile_checked_at: str
+    is_admin: bool = False
 
 
 class HitFact(BaseModel):

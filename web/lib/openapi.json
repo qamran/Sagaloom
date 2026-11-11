@@ -928,13 +928,25 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
           }
         },
         "required": [
           "id",
           "name",
           "is_demo",
-          "divergent"
+          "divergent",
+          "owner_id"
         ],
         "title": "World",
         "type": "object"
