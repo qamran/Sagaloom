@@ -4,10 +4,12 @@ month (UTC), `monthly_budget_usd` in developer settings. The admin has no limit.
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import HTTPException
-
 from sagaloom.models import User
 from sagaloom.promptlog import next_month_start
+
+class OverBudget(Exception):
+    """The account has spent this month's budget; `str(exc)` is the message shown to the user."""
+
 
 OVER_BUDGET = "You've used this month's AI budget (${budget:.2f}). It resets on {reset}."
 
@@ -28,12 +30,11 @@ def over_budget(deps: Any, user: User, now: datetime | None = None) -> bool:
 
 
 def check_budget(deps: Any, user: User, now: datetime | None = None) -> None:
-    """402 when `user` is `over_budget`. Called before a new turn, a resumed graph or an import
+    """Raise `OverBudget` when `user` is `over_budget`. Called before a new turn, a resumed graph or an import
     starts, so a turn already running finishes even if it crosses the line."""
     now = now or deps.now()
     if over_budget(deps, user, now):
         budget = deps.dev_settings.get().monthly_budget_usd
-        raise HTTPException(
-            status_code=402,
-            detail=OVER_BUDGET.format(budget=budget, reset=budget_reset_date(now).isoformat()),
+        raise OverBudget(
+            OVER_BUDGET.format(budget=budget, reset=budget_reset_date(now).isoformat())
         )

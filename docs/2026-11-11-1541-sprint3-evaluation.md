@@ -2,7 +2,7 @@
 
 As of 2026-11-11, updated after M5 (accounts). Evaluated against the Sprint 3 brief (`135.md`).
 
-Sagaloom meets all five core requirements of the Sprint 3 brief and 13 of the 18 optional tasks (7 medium, 3 hard), well past the bonus target of 2 medium + 1 hard. Three more are partly done (Easy 1, Easy 2, Hard 4). Missing: response ratings (Medium 5) and a Ragas/DeepEval report (Hard 3). User accounts (Medium 4) were added in M5.
+Sagaloom meets all five core requirements of the Sprint 3 brief and 13 of the 18 optional tasks (7 medium, 3 hard), well past the bonus target of 2 medium + 1 hard. Three more are partly done (Easy 1, Easy 2, Hard 4). Missing: response ratings (Medium 5) and a Ragas/DeepEval report (Hard 3). User accounts (Medium 4) were built in M5 (built and unit/integration-tested; the real Clerk sign-in check, the Playwright demo run and the eval run are pending).
 
 ## Meet Sagaloom
 
@@ -71,7 +71,7 @@ Every item from the brief, in brief order. Details for each follow in the next t
 | Medium 1 — Token usage and cost | Done | Per turn, per step, per session and overall |
 | Medium 2 — Short- and long-term memory | Done | SQLite checkpointer + LangGraph Store of author preferences |
 | Medium 3 — External API tool | Done | `real_world_reference` (Wikipedia) and `import_wiki` (MediaWiki API) |
-| Medium 4 — Authentication | Done | Clerk sign-in, own worlds per account, monthly AI budget, public home page |
+| Medium 4 — Authentication | Built (verification pending) | Clerk sign-in, own worlds per account, monthly AI budget, public home page. Unit/integration-tested; the real Clerk sign-in check, the Playwright demo run and the eval run are pending |
 | Medium 5 — Rate responses / feedback loop | Missing | No rating buttons |
 | Medium 6 — 5 tools + on/off UI | Done | 7 tools, 4 switchable in Studio → Tools |
 | Medium 7 — Multi-model support | Done | OpenAI / Anthropic / Google models via OpenRouter, per role |

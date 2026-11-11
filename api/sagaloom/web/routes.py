@@ -10,7 +10,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
-from sagaloom.budget import budget_reset_date, check_budget, over_budget
+from sagaloom import budget
+from sagaloom.budget import OverBudget, budget_reset_date, over_budget
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import CHECKPOINT_FILE, run_config
 from sagaloom.graph.nodes import RoleModel
@@ -39,6 +40,14 @@ from sagaloom.web.thread_list import (
 from sagaloom.wiki.pages import BadWikiUrl, parse_page_urls
 
 router = APIRouter()
+
+
+def check_budget(deps: Any, user: Any) -> None:
+    """The budget check as HTTP: 402 with the budget message when the account is over it."""
+    try:
+        budget.check_budget(deps, user)
+    except OverBudget as e:
+        raise HTTPException(status_code=402, detail=str(e)) from e
 
 
 class NewWorld(BaseModel):
