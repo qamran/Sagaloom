@@ -44,6 +44,16 @@ class PromptRecord(BaseModel):
     started_at: str
 
 
+def _amounts(response: dict | None) -> tuple[int, int, float]:
+    """A call's (prompt tokens, completion tokens, cost); zeros for a call with no response."""
+    r = response or {}
+    return (
+        int(r.get("prompt_tokens") or 0),
+        int(r.get("completion_tokens") or 0),
+        float(r.get("cost_usd") or 0.0),
+    )
+
+
 class PromptLog:
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -133,11 +143,10 @@ class PromptLog:
         prompt = completion = 0
         cost = 0.0
         for (raw,) in rows:
-            r = PromptRecord.model_validate_json(raw).response
-            if r:
-                prompt += int(r.get("prompt_tokens") or 0)
-                completion += int(r.get("completion_tokens") or 0)
-                cost += float(r.get("cost_usd") or 0.0)
+            p, c, usd = _amounts(PromptRecord.model_validate_json(raw).response)
+            prompt += p
+            completion += c
+            cost += usd
         return Usage(prompt_tokens=prompt, completion_tokens=completion, cost_usd=cost)
 
     def usage_by_turn(self, thread_id: str) -> "builtins.list[TurnUsage]":
@@ -152,19 +161,19 @@ class PromptLog:
         totals: dict[str, Usage] = {}  # summed in record order, as `usage()` does
         for (raw,) in rows:
             rec = PromptRecord.model_validate_json(raw)
-            r = rec.response or {}
+            p, c, usd = _amounts(rec.response)
             a = turns.setdefault(rec.run_id, {}).setdefault(
                 rec.role,
                 {"role": rec.role, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
             )
             a["calls"] += 1
-            a["prompt_tokens"] += int(r.get("prompt_tokens") or 0)
-            a["completion_tokens"] += int(r.get("completion_tokens") or 0)
-            a["cost_usd"] += float(r.get("cost_usd") or 0.0)
+            a["prompt_tokens"] += p
+            a["completion_tokens"] += c
+            a["cost_usd"] += usd
             t = totals.setdefault(rec.run_id, Usage())
-            t.prompt_tokens += int(r.get("prompt_tokens") or 0)
-            t.completion_tokens += int(r.get("completion_tokens") or 0)
-            t.cost_usd += float(r.get("cost_usd") or 0.0)
+            t.prompt_tokens += p
+            t.completion_tokens += c
+            t.cost_usd += usd
         return [
             TurnUsage(
                 turn_id=run_id,
