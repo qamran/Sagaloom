@@ -1,19 +1,20 @@
+import { STEPS, stepOf } from "@/lib/steps";
 import type { StudioData } from "@/lib/types";
 
-const ROLE_SHORT: Record<string, string> = { agent: "Agent", judge: "Judge", extractor: "Extractor", guard: "Guard", router: "Router" };
-
-/** "Judge (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
+/** "Check (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
 export function usageLabel(role: string | null | undefined, model: string): string {
   const bare = model.split("/").pop() ?? model;
   const gpt = /^gpt-[\d.]+-/.test(bare); // "gpt-6-luna" reads as "Luna"; other vendors keep their id
   const short = gpt ? bare.replace(/^gpt-[\d.]+-/, "") : bare;
   const name = gpt ? short.charAt(0).toUpperCase() + short.slice(1) : short;
-  return role && ROLE_SHORT[role] ? `${ROLE_SHORT[role]} (${name})` : model;
+  if (!role) return model;
+  const key = stepOf(role);
+  return key === "other" ? model : `${STEPS.find((s) => s.key === key)!.name} (${name})`;
 }
 
 const n = (v: number) => v.toLocaleString("en-US");
 
-/** Usage (R20.4): totals over every recorded model call, and the cost split by model. */
+/** Usage (R20.4): totals over every recorded model call, and the cost split by step. */
 export function UsagePanel({ usage }: { usage: StudioData["usage"] }) {
   const max = Math.max(0, ...usage.by_model.map((m) => m.cost_usd));
   return (
@@ -37,7 +38,7 @@ export function UsagePanel({ usage }: { usage: StudioData["usage"] }) {
       </dl>
       <div className="flex flex-col gap-2">
         <h3 className="m-0 text-[11px] font-medium uppercase tracking-[0.9px] text-muted-foreground">
-          Cost by model
+          Cost by step
         </h3>
         {usage.by_model.length === 0 && (
           <p className="m-0 text-[13px] text-muted-foreground">No model calls yet. Send a chat message first.</p>

@@ -106,10 +106,10 @@ describe("ProvidersPanel", () => {
 
 describe("UsagePanel", () => {
   it("groups cost by role and model", () => {
-    expect(usageLabel("judge", "openai/gpt-6-luna")).toBe("Judge (Luna)");
+    expect(usageLabel("judge", "openai/gpt-6-luna")).toBe("Check (Luna)");
     expect(usageLabel(null, "openai/gpt-6-luna")).toBe("openai/gpt-6-luna");
     expect(usageLabel("router", "openai/gpt-6-luna")).toBe("Router (Luna)");
-    expect(usageLabel("judge", "anthropic/claude-sonnet-5-5")).toBe("Judge (claude-sonnet-5-5)");
+    expect(usageLabel("judge", "anthropic/claude-sonnet-5-5")).toBe("Check (claude-sonnet-5-5)");
     render(
       <UsagePanel
         usage={{
@@ -117,11 +117,14 @@ describe("UsagePanel", () => {
           by_model: [
             { role: "judge", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 2, completion_tokens: 1, cost_usd: 0.0006 },
             { role: "agent", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 1, completion_tokens: 0, cost_usd: 0.0004 },
+            { role: "weird", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
           ],
         }}
       />,
     );
-    expect(screen.getByText("Judge (Luna)")).toBeInTheDocument();
-    expect(screen.getByText("Agent (Luna)")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Cost by step" })).toBeInTheDocument();
+    expect(screen.getByText("Check (Luna)")).toBeInTheDocument();
+    expect(screen.getByText("Chat (Luna)")).toBeInTheDocument();
+    expect(screen.getByText("openai/gpt-6-luna")).toBeInTheDocument(); // unknown role: bare model id
   });
 });

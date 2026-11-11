@@ -131,6 +131,24 @@ export interface ChatMessage {
   /** On an "import" message: the import's source, first lines and left-out candidates. */
   import?: ImportNote;
   tool_calls?: { id: string | null; name: string; args: Record<string, unknown> }[];
+  /** The turn this message belongs to (M4); absent on messages from before M4. */
+  turn_id?: string;
+}
+
+/** One role's model calls within a turn (GET /threads/{id}, from PromptLog). */
+export interface RoleUsage {
+  role: string | null;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+}
+
+/** What one turn cost, in total and by role (M4). */
+export interface TurnUsage {
+  turn_id: string;
+  usage: { prompt_tokens: number; completion_tokens: number; cost_usd: number };
+  by_role: RoleUsage[];
 }
 
 export interface PendingInterrupt {
@@ -146,6 +164,8 @@ export interface ThreadState {
   messages: ChatMessage[];
   pending_interrupt: PendingInterrupt | null;
   usage: Usage;
+  /** Per-turn usage, oldest first (M4); absent from older servers. */
+  turns?: TurnUsage[];
   kind: "chat" | "import";
   title: string | null;
 }
