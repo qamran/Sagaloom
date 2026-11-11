@@ -159,6 +159,14 @@ export interface PendingInterrupt {
   error?: string;
 }
 
+/** GET /api/public/preview (M5 §5.7): the home page's recorded Velmar example, in the shapes of
+ * GET /threads/{id} (messages, pending interrupt) and GET /worlds/{id}/entries. */
+export interface PublicPreview {
+  messages: ChatMessage[];
+  pending_interrupt: PendingInterrupt;
+  entries: Entry[];
+}
+
 export interface ThreadState {
   thread_id: string;
   world_id: string;

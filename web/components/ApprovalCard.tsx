@@ -6,6 +6,7 @@ import { EntityChip } from "@/components/EntityChip";
 import { FactList } from "@/components/FactList";
 import { BodyDiff, LineDiff } from "@/components/DiffView";
 import { Cite, FactTable, FlagFix, KIND_LABEL, SecretValue, type SecretOf } from "@/components/FactTable";
+import { AppLinksProvider } from "@/lib/appLinks";
 import { TYPE_LABEL } from "@/lib/entity";
 import { buildFactRows, lineDiff } from "@/lib/factRows";
 import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
@@ -53,18 +54,25 @@ interface Props {
   disabled?: boolean;
   /** Over the monthly budget: Approve, Edit and Save as myth are off; Reject stays (the API allows it). */
   approvalsBlocked?: boolean;
+  /** The public home page's recorded example: every action off with a caption, no links into the app. */
+  readOnly?: boolean;
 }
+
+export const READ_ONLY_CAPTION = "Sign up to try it on your own world";
 
 /** "Commit to canon?" (R5.2, R5.3, R5.6, R12.3): one proposal as a card; its secrets follow the proposal's own world's toggle. */
 export function ApprovalCard(props: Props) {
   return (
     <SecretsWorldProvider worldId={props.proposal.world_id}>
-      <ApprovalCardBody {...props} />
+      <AppLinksProvider value={!props.readOnly}>
+        <ApprovalCardBody {...props} />
+      </AppLinksProvider>
     </SecretsWorldProvider>
   );
 }
 
-function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, disabled, approvalsBlocked }: Props) {
+function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, disabled: off, approvalsBlocked, readOnly }: Props) {
+  const disabled = off || readOnly;
   const [editing, setEditing] = useState(false);
   const [toldBy, setToldBy] = useState("");
   const [entryRevealed, setEntryRevealed] = useState(false);
@@ -284,7 +292,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
           />
         ) : (
           <div className="flex flex-col gap-2.5">
-            {canMyth && (
+            {canMyth && !readOnly && (
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor={`told-by-${pid}`} className="text-xs text-muted-foreground">
                   Told by (optional)
@@ -322,6 +330,7 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
                 Reject
               </button>
             </div>
+            {readOnly && <p className="m-0 text-[13px] text-muted-foreground">{READ_ONLY_CAPTION}</p>}
           </div>
         )}
       </div>

@@ -1171,3 +1171,43 @@ describe("ApprovalCard one Show per secret entry (M3 Wave 2)", () => {
     expect(within(prose).getByText("Old Ledger")).toBeInTheDocument();
   });
 });
+
+describe("ApprovalCard readOnly (M5 home page preview)", () => {
+  // No secret facts: a secret's Show is a reveal, not an action, and the preview holds none.
+  const open: Proposal = { ...update, after: { ...update.after!, facts: [fact("Moons", "Three")] } };
+  const card = (onDecide = vi.fn()) =>
+    render(
+      <ApprovalCard
+        proposal={open}
+        check={check("conflict", [conflict, retcon])}
+        canon={[before, ister]}
+        onDecide={onDecide}
+        readOnly
+      />,
+    );
+
+  it("disables every action and says why", () => {
+    card();
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(
+      expect.arrayContaining(["Save as myth", "Edit", "Approve anyway", "Reject"]),
+    );
+    for (const b of buttons) expect(b).toBeDisabled();
+    expect(screen.getByText("Sign up to try it on your own world")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("links nowhere: no course chip, citations are plain chips", () => {
+    card();
+    expect(document.querySelectorAll("a")).toHaveLength(0);
+    expect(within(citationOf("ent_0012")).getByText("Ister")).toBeInTheDocument();
+  });
+
+  it("never calls onDecide", async () => {
+    const onDecide = vi.fn();
+    card(onDecide);
+    for (const b of screen.getAllByRole("button")) await userEvent.click(b);
+    expect(onDecide).not.toHaveBeenCalled();
+    expect(screen.queryByRole("form", { name: "Edit proposal" })).toBeNull();
+  });
+});

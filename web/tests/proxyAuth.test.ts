@@ -65,20 +65,13 @@ describe("API proxy route: Clerk token forwarding", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("public preview path forwarded without token", async () => {
-    signedIn();
-    const res = await GET(
-      new Request("http://localhost:3000/api/proxy/public/preview", { headers: { authorization: "Bearer from-browser" } }),
-      ctx("public", "preview"),
-    );
+  it("public/* is not special: the home page reads the preview on the server, so the proxy needs a session", async () => {
+    signedOut();
+    const res = await GET(new Request("http://localhost:3000/api/proxy/public/preview"), ctx("public", "preview"));
 
-    expect(res.status).toBe(200);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://api.test/api/public/preview");
-    const sent = new Headers(init.headers);
-    expect(sent.has("authorization")).toBe(false);
-    expect(sent.get("x-sagaloom-secret")).toBe("s3cret-for-test");
-    expect(authMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ detail: "sign in required" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("never copies the cookie header upstream", async () => {
@@ -132,7 +125,7 @@ describe("web/proxy.ts: which requests need a signed-in user", () => {
     expect(redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it.each(["/", "/sign-in", "/sign-in/factor-one", "/sign-up", "/sign-up/verify-email-address", "/api/proxy/public/preview"])(
+  it.each(["/", "/sign-in", "/sign-in/factor-one", "/sign-up", "/sign-up/verify-email-address"])(
     "lets a signed-out visitor through to the public %s",
     async (path) => {
       const redirectToSignIn = signedOut();
@@ -142,6 +135,13 @@ describe("web/proxy.ts: which requests need a signed-in user", () => {
       expect(redirectToSignIn).not.toHaveBeenCalled();
     },
   );
+
+  it("answers 401 to a signed-out request for the old public proxy path", async () => {
+    signedOut();
+    const res = await call("/api/proxy/public/preview");
+
+    expect(res?.status).toBe(401);
+  });
 
   it("lets a signed-in user through to app pages and the API proxy", async () => {
     signedIn();

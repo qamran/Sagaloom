@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { EntityChip } from "@/components/EntityChip";
 import { EntityText } from "@/components/EntityText";
+import { useAppLinks } from "@/lib/appLinks";
 import type { Named } from "@/lib/mentions";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { Fact, Status } from "@/lib/types";
@@ -27,6 +28,7 @@ function FactRow({
   entries?: Named[];
   showSecrets: boolean;
 }) {
+  const links = useAppLinks();
   // A ref to a secret entry is left out while hidden, so its title never appears.
   const refs = (fact.refs ?? [])
     .map((id) => entries?.find((e) => e.id === id))
@@ -61,12 +63,12 @@ function FactRow({
         )}
         {fact.told_by && !hidden && (
           <span className="text-xs text-muted-foreground">
-            told by <EntityText text={fact.told_by} entries={entries} showSecrets={showSecrets} />
+            told by <EntityText text={fact.told_by} entries={links ? entries : undefined} showSecrets={showSecrets} />
           </span>
         )}
         {!hidden &&
           refs.map((e) => (
-            <EntityChip key={e.id} type={e.type} name={e.title} href={`/canon/${e.id}`} />
+            <EntityChip key={e.id} type={e.type} name={e.title} href={links ? `/canon/${e.id}` : undefined} />
           ))}
       </div>
     </div>

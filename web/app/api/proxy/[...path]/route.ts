@@ -34,13 +34,11 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   const headers = new Headers();
   headers.set("x-sagaloom-secret", secret);
   // The user's Clerk session token, read on the server from the session cookie. Headers are built
-  // from scratch, so an Authorization or Cookie the browser sent is never passed on. Only
-  // /api/public/* goes without one.
-  if (path[0] !== "public") {
-    const token = await (await auth()).getToken();
-    if (!token) return jsonError(401, "sign in required");
-    headers.set("authorization", `Bearer ${token}`);
-  }
+  // from scratch, so an Authorization or Cookie the browser sent is never passed on. Every path
+  // needs one: the home page reads /api/public/preview on the server (lib/preview.ts), not through here.
+  const token = await (await auth()).getToken();
+  if (!token) return jsonError(401, "sign in required");
+  headers.set("authorization", `Bearer ${token}`);
   const contentType = req.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
   // The API rate-limits per client. A route handler cannot tell an edge's X-Forwarded-For from

@@ -2,7 +2,8 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // Next.js 16 calls request interception "Proxy" (this file); not to be confused with the API proxy
 // route at app/api/proxy/[...path]/route.ts, which this file also guards.
-const isPublic = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/api/proxy/public/(.*)"]);
+// The home page's preview is fetched on the server (lib/preview.ts), so no API proxy path is public.
+const isPublic = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
 const isApiProxy = createRouteMatcher(["/api/proxy/(.*)"]);
 
 export default clerkMiddleware(

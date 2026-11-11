@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useState, type ReactNode } from "react";
 import { EntityChip } from "@/components/EntityChip";
+import { useAppLinks } from "@/lib/appLinks";
 import type { FactResult, FactRow } from "@/lib/factRows";
 import { useWorldShowSecrets } from "@/lib/secrets";
 import type { EntryType, Fact, Flag } from "@/lib/types";
@@ -27,8 +28,9 @@ export function Cite({
 }) {
   const [shown, setShown] = useState(false);
   const worldShown = useWorldShowSecrets();
+  const links = useAppLinks();
   if (!id) return null;
-  const href = `/canon/${encodeURIComponent(id)}`;
+  const href = links ? `/canon/${encodeURIComponent(id)}` : undefined;
   let chip: ReactNode;
   if (secret && !worldShown && !shown)
     chip = (
@@ -50,15 +52,16 @@ export function Cite({
       </span>
     );
   else if (type) chip = <EntityChip type={type} name={title} href={href} />;
-  else
-    chip = (
-      <Link
-        href={href}
-        className="inline-flex items-center rounded-md border border-border-strong bg-panel-3 px-2 py-0.5 text-[13px] text-foreground no-underline hover:brightness-125"
-      >
+  else {
+    const cls = "inline-flex items-center rounded-md border border-border-strong bg-panel-3 px-2 py-0.5 text-[13px] text-foreground no-underline";
+    chip = href ? (
+      <Link href={href} className={`${cls} hover:brightness-125`}>
         {title}
       </Link>
+    ) : (
+      <span className={cls}>{title}</span>
     );
+  }
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {chip}

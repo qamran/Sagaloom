@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useAppLinks } from "@/lib/appLinks";
 import { useCourseNotes, type FeatureCardId } from "@/lib/courseNotes";
 
 /** A small course annotation (R20.8) that links to the matching Studio feature card. */
 export function CourseChip({ card, label }: { card: FeatureCardId; label: string }) {
   const [on] = useCourseNotes();
-  if (!on) return null;
+  const links = useAppLinks();
+  if (!on || !links) return null;
   return (
     <Link
       href={`/studio?card=${card}#feature-map`}
