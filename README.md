@@ -14,7 +14,7 @@ A chatbot answers from whatever it remembers, and it will cheerfully invent lore
 - **It cannot write on its own.** `create_or_update_entry` only *proposes* a change. The proposal is contradiction-checked against canon, then the graph stops at a LangGraph `interrupt()` until you approve, edit, reject, or save it as a myth.
 - **It remembers the conversation and survives a refresh.** State lives in a SQLite checkpointer, so a pending approval card is still there after a reload or a restart.
 - **It remembers what you tell it to, across threads.** Author preferences (tone, genre, banned tropes, notes) live in a per-world LangGraph Store, and only the `remember` node writes them.
-- **Cost by step:** each turn's cost split by Guard, Router, Chat, Check and Extraction, under the reply and in Under the hood.
+- **It shows what each step costs.** Each turn's tokens and cost, split by Guard, Router, Chat, Check and Extraction, sit under the turn and in Under the hood.
 
 ## Setup
 
@@ -137,8 +137,8 @@ Open **Chat** and try these on the Velmar world.
 
 1. Open <http://localhost:3000/studio>.
 2. Read the **Feature map**: one card per brief requirement and bonus task, each with a **Live**, **Configured** or **Off** status worked out from the running config. Follow a card's **Try it** link into Chat (it fills the composer; you press send).
-3. In Chat, use **Under the hood** on any turn. It shows the graph path with timings, each tool call, and **every prompt sent to OpenRouter** (messages by role, tool schemas, response, tokens, cost, model and provider). Retrieved canon appears inside its `<untrusted_data>` wrapper. API keys are never recorded.
-4. Back on Studio, see the providers (OpenRouter live, Gemini demo only), the running token and cost totals, the graph diagram, and per-role model switching. Switching applies from the next turn and is limited to the allowlist, each model pinned to its provider.
+3. In Chat, use **Under the hood** on any turn. It shows the graph path with timings, each tool call, and **every prompt sent to OpenRouter**, grouped by step with a subtotal for each (messages by role, tool schemas, response, tokens, cost, model and provider). Retrieved canon appears inside its `<untrusted_data>` wrapper. API keys are never recorded.
+4. Back on Studio, see the providers (OpenRouter live, Gemini demo only), the overall token and cost totals across all worlds, broken down by step (**Cost by step**), the graph diagram, and per-role model switching. Switching applies from the next turn and is limited to the allowlist, each model pinned to its provider.
 
 ### Course bonus tasks
 
@@ -251,7 +251,7 @@ The Playwright run starts both servers itself, on ports 8100 and 3100 with a thr
 
 ## Known limitations
 
-- **M1, M2 and M3 are built.** M2 is Waves 1 to 5, 7 and 8; fan-wiki import (the former M2 Wave 6) was built as M3 Wave 3. Wave 8 was cut to its Standard scope, and the rest of its review list was carried to M3.
+- **M1, M2, M3 and M4 are built.** M4 is cost by step. M2 is Waves 1 to 5, 7 and 8; fan-wiki import (the former M2 Wave 6) was built as M3 Wave 3. Wave 8 was cut to its Standard scope, and the rest of its review list was carried to M3.
 - **Fandom's terms of use (risk K1).** Fandom's terms reportedly limit automated access without permission. Sagaloom reads Fandom only at the author's request, a few pages at a time, about one request per second, with an honest User-Agent, cached, and never retries around a block. That is accepted for this non-commercial project; any commercial use needs it revisited (see the risk register in `docs/requirements.md`).
 - **Fan-wiki import is selective.** Only article pages, 1 to 10 per import, all from one wiki (Wikipedia or Fandom). Category, file, special and other namespaced pages, whole wikis and the `www`/`m` portals of wikipedia.org are refused (a phone link such as `en.m.wikipedia.org` is accepted).
 - **Only part of a page is imported.** The extractor reads a page's lead section (the text before its first heading, infobox lines included), and the stored body is the one passage it points at there, word for word. Later sections are not imported.

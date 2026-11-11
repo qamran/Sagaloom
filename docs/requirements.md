@@ -615,6 +615,10 @@ Fan-wiki import, the former M2 Wave 6, moved here whole on 2026-11-09 and was bu
 - Help panel and tone (R12.5, R12.6), Ctrl+K, card grid and floating assistant (R12.13)
 - LLM critique of the solution (R12.8)
 
+### M4: cost by step (R14.3), done 2026-11-11
+
+Each turn's cost is split by Guard, Router, Chat, Check and Extraction under the turn, in Under the hood (grouped by step with subtotals) and in Studio's "Cost by step" panel. Design: `docs/superpowers/specs/2026-11-11-0916-sagaloom-m4-cost-by-step-design.md`.
+
 (The tool toggle R11.G3 moved from M3 into M2, Wave 2; the data statement R13.5 moved into M2, Wave 8.)
 
 ---
