@@ -196,10 +196,15 @@ class PromptLog:
     def month_spend(self, user_id: str, now: datetime) -> float:
         """`user_id`'s cost in US$ over the calendar month (UTC) that holds `now` (spec §5.5a).
         `started_at` is stored as a UTC ISO time, so the window compares as text."""
-        return self._sum(
-            "SELECT record FROM prompt_log WHERE user_id = ? AND started_at >= ? AND started_at < ?",
-            [user_id, _month_start(now).isoformat(), next_month_start(now).isoformat()],
-        ).cost_usd
+        # Summed in SQL over the `(user_id, started_at)` index: it runs before every AI action.
+        # A call with no response (or no cost) counts 0, as in `_amounts`.
+        with closing(self._connect()) as conn:
+            (total,) = conn.execute(
+                "SELECT TOTAL(CAST(json_extract(record, '$.response.cost_usd') AS REAL)) "
+                "FROM prompt_log WHERE user_id = ? AND started_at >= ? AND started_at < ?",
+                [user_id, _month_start(now).isoformat(), next_month_start(now).isoformat()],
+            ).fetchone()
+        return float(total)
 
     def _sum(self, sql: str, args: "builtins.list") -> Usage:
         """The summed amounts of the records `sql` selects."""

@@ -624,6 +624,8 @@ export interface components {
             month_spend_usd: number;
             /** Monthly Budget Usd */
             monthly_budget_usd: number | null;
+            /** Over Budget */
+            over_budget: boolean;
         };
         /** MePatch */
         MePatch: {

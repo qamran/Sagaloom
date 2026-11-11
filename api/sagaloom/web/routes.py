@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
-from sagaloom.budget import budget_reset_date, check_budget
+from sagaloom.budget import budget_reset_date, check_budget, over_budget
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import CHECKPOINT_FILE, run_config
 from sagaloom.graph.nodes import RoleModel
@@ -205,9 +205,14 @@ def _stream_run(
     input_or_command: Any,
     release: Callable[[], None],
     turn_id: str | None = None,
+    no_agent: bool = False,
 ):
+    """Streams one graph run. `no_agent` ends a chat run after `commit` (the graph's
+    `route_after_commit`), so no model is called: rejections resumed over budget."""
     d = _deps(request)
     queue, cfg, usage_fn = _turn(request, thread, turn_id)
+    if no_agent:
+        cfg["configurable"]["no_agent"] = True
     # Shielded: a client that goes away does not cancel the run; the lock is released when the
     # run itself ends (Review Focus 5).
     return sse_response(
@@ -498,9 +503,12 @@ async def post_message(thread_id: str, body: NewMessage, request: Request):
 @router.post("/threads/{thread_id}/decisions")
 async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
     t = thread_for(request, thread_id)
-    # Decisions that only reject stay available over budget (spec §5.5a); any other decision
-    # is checked before the lock, so a refusal changes nothing.
-    if any(d.action != "reject" for d in body.decisions):
+    # Decisions that only reject stay available over budget (spec §5.5a), but then the run ends
+    # after the commit: the agent's reply would be unpaid spend. Any other decision is checked
+    # before the lock, so a refusal changes nothing.
+    reject_only = all(d.action == "reject" for d in body.decisions)
+    no_agent = reject_only and over_budget(_deps(request), user_of(request))
+    if not reject_only:
         check_budget(_deps(request), user_of(request))
     release = await _take_turn(request, thread_id)
     try:
@@ -520,6 +528,7 @@ async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
             t,
             Command(resume={"decisions": [d.model_dump(mode="json") for d in body.decisions]}),
             release,
+            no_agent=no_agent,
         )
     except BaseException:
         release()
@@ -663,6 +672,7 @@ class Me(BaseModel):
     month_spend_usd: float  # this calendar month (UTC), from the prompt log
     monthly_budget_usd: float | None  # None: no limit (the admin)
     budget_resets_on: str  # the first day of next month (UTC), YYYY-MM-DD
+    over_budget: bool  # spend >= budget, the 402 rule (never the admin)
 
 
 class MePatch(BaseModel):
@@ -684,6 +694,7 @@ def _me(request: Request, last_world_id: str | None) -> Me:
         month_spend_usd=d.promptlog.month_spend(user.id, now),
         monthly_budget_usd=None if user.is_admin else d.dev_settings.get().monthly_budget_usd,
         budget_resets_on=budget_reset_date(now).isoformat(),
+        over_budget=over_budget(d, user, now),
     )
 
 

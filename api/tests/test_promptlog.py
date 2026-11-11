@@ -419,3 +419,9 @@ def test_month_spend_window(tmp_path):
     assert log.month_spend("user_a", datetime(2026, 12, 15, tzinfo=UTC)) == pytest.approx(0.5)
     assert log.month_spend("user_a", datetime(2027, 1, 2, tzinfo=UTC)) == pytest.approx(1.0)
     assert log.month_spend("nobody", now) == 0.0
+    # A call still running (no response) or with no cost counts 0, as in `usage`.
+    log.add(_turn_rec("open", "R", "agent", "2026-11-12T00:00:00+00:00", response=None), user_id="user_a")
+    free = _turn_rec("free", "R", "agent", "2026-11-12T00:00:01+00:00")
+    free.response = {"prompt_tokens": 1, "completion_tokens": 1}
+    log.add(free, user_id="user_a")
+    assert log.month_spend("user_a", now) == pytest.approx(0.75)

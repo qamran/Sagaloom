@@ -17,16 +17,22 @@ def budget_reset_date(now: datetime) -> date:
     return next_month_start(now).date()
 
 
-def check_budget(deps: Any, user: User, now: datetime | None = None) -> None:
-    """402 when `user` (not the admin) has spent this month's budget or more; a budget of 0
-    blocks every AI action. Called before a new turn, a resumed graph or an import starts, so a
-    turn already running finishes even if it crosses the line. `now` defaults to `deps.now()`,
-    the clock the prompt records are stamped with."""
+def over_budget(deps: Any, user: User, now: datetime | None = None) -> bool:
+    """Whether `user` has spent this month's budget or more (never the admin); a budget of 0
+    is always spent. `now` defaults to `deps.now()`, the clock the prompt records are stamped
+    with."""
     if user.is_admin:
-        return
+        return False
     now = now or deps.now()
-    budget = deps.dev_settings.get().monthly_budget_usd
-    if deps.promptlog.month_spend(user.id, now) >= budget:
+    return deps.promptlog.month_spend(user.id, now) >= deps.dev_settings.get().monthly_budget_usd
+
+
+def check_budget(deps: Any, user: User, now: datetime | None = None) -> None:
+    """402 when `user` is `over_budget`. Called before a new turn, a resumed graph or an import
+    starts, so a turn already running finishes even if it crosses the line."""
+    now = now or deps.now()
+    if over_budget(deps, user, now):
+        budget = deps.dev_settings.get().monthly_budget_usd
         raise HTTPException(
             status_code=402,
             detail=OVER_BUDGET.format(budget=budget, reset=budget_reset_date(now).isoformat()),

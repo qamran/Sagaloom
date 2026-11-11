@@ -104,8 +104,13 @@ def route_entry(state: SagaState) -> Literal["guard", "check"]:
     return "check" if state.get("entry") == "import" else "guard"
 
 
-def route_after_commit(state: SagaState) -> Literal["agent", "check", "__end__"]:
-    """A chat turn tells the agent (it reads the refused note itself). An import thread has no
+def route_after_commit(
+    state: SagaState, config: RunnableConfig | None = None
+) -> Literal["agent", "check", "__end__"]:
+    """A chat turn tells the agent (it reads the refused note itself), unless the run says
+    `configurable["no_agent"]` (rejections resumed over the monthly budget, M5 spec §5.5a): then
+    it ends after the commit, and the agent reads the review notes on the next paid turn. An
+    import thread has no
     agent: it ends once nothing is pending, but a proposal `commit` refused stays pending and
     would be stranded, so it goes back through `check` and the gate asks again.
 
@@ -114,7 +119,7 @@ def route_after_commit(state: SagaState) -> Literal["agent", "check", "__end__"]
     kept check. A proposal refused for a world mismatch is refused again on every cycle, so each
     cycle needs a human decision; it never loops on its own."""
     if state.get("entry") != "import":
-        return "agent"
+        return END if ((config or {}).get("configurable") or {}).get("no_agent") else "agent"
     return "check" if state.get("pending_proposals") else END
 
 

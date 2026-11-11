@@ -40,6 +40,7 @@ async def test_me_shape(make_env):
         "last_world_id": None,
         "monthly_budget_usd": 1.0,
         "budget_resets_on": "2026-12-01",
+        "over_budget": False,
     }
     env.deps.now = lambda: datetime(2026, 12, 31, 23, 59, tzinfo=UTC)
     body = (await env.client.get("/api/me")).json()
@@ -85,3 +86,22 @@ async def test_me_needs_sign_in(make_env):
     env.client.headers.pop("Authorization")
     assert (await env.client.get("/api/me")).status_code == 401
     assert (await env.client.put("/api/me", json={"last_world_id": W})).status_code == 401
+
+
+async def test_me_over_budget_flag(make_env):
+    """`over_budget` is the server's `spend >= budget` rule (M5 spec §5.5a): the UI swaps the
+    composer for the 402 message without doing the sum itself. Never true for the admin."""
+    from sagaloom.settings_store import DevSettingsPatch
+
+    env = make_env(admin=True)
+    env.deps.now = lambda: datetime(2026, 11, 11, 16, 37, tzinfo=UTC)
+    _spend(env, "a", "2026-11-02T10:00:00+00:00", 50.0)  # the admin's spend: no limit
+    _spend(env, "b1", "2026-11-02T10:00:00+00:00", 0.6, user=USER_B)
+    b = env.as_user(TOKEN_B)
+    assert (await env.client.get("/api/me")).json()["over_budget"] is False
+    assert (await b.get("/api/me")).json()["over_budget"] is False
+    _spend(env, "b2", "2026-11-03T10:00:00+00:00", 0.4, user=USER_B)  # exactly the budget
+    assert (await b.get("/api/me")).json()["over_budget"] is True
+    assert (await b.put("/api/me", json={"last_world_id": None})).json()["over_budget"] is True
+    env.deps.dev_settings.update(DevSettingsPatch(monthly_budget_usd=2))
+    assert (await b.get("/api/me")).json()["over_budget"] is False

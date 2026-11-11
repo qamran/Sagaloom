@@ -3,13 +3,19 @@ new chat turn, a decision that resumes the graph, or an import; reading stays op
 never limited, and a turn already running finishes."""
 
 from datetime import UTC, date, datetime
+from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import RunnableLambda
 
 from fakes import USER_A, W, create_call, names
 from sagaloom.budget import budget_reset_date
+from sagaloom.guard import GuardVerdict
 from sagaloom.models import Entry
 from sagaloom.promptlog import PromptRecord
+from sagaloom.router import RouteDecision
 from sagaloom.settings_store import DevSettingsPatch
 
 NOW = datetime(2026, 11, 20, 9, 30, tzinfo=UTC)
@@ -97,20 +103,42 @@ async def test_over_budget_402_on_decisions(make_env):
     assert env.deps.store.list_entries(W) == []
 
 
-async def test_rejection_only_decisions_stay_available_over_budget(make_env):
-    """Spec §5.5a: Review decisions that only reject stay available over budget."""
-    env = _env(make_env, [two_creates()])
-    tid = await _pending(env)
+async def _reject_all(env, tid: str):
     pending = (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"]
-    _spend(env, 5.0)
-    r, events = await env.decide(
+    return await env.decide(
         tid, *({"proposal_id": p["proposal_id"], "action": "reject"} for p in pending["proposals"])
     )
+
+
+async def test_rejection_only_decisions_stay_available_over_budget(make_env):
+    """Spec §5.5a: Review decisions that only reject stay available over budget. The commit
+    records them, but the agent does not run (no unpaid model call): it reads the review notes
+    on the next paid turn."""
+    env = _env(make_env, [two_creates(), AIMessage(content="Noted, dropping both.")])
+    tid = await _pending(env)
+    calls, records = len(env.agent.seen), len(env.deps.promptlog.list(tid))
+    _spend(env, 5.0)
+    r, events = await _reject_all(env, tid)
     assert r.status_code == 200 and names(events)[-1] == "done", names(events)
-    assert (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"] is None
+    thread = (await env.client.get(f"/api/threads/{tid}")).json()
+    assert thread["pending_interrupt"] is None
     assert env.deps.store.list_entries(W) == []
     row = next(t for t in (await env.client.get("/api/threads")).json() if t["thread_id"] == tid)
     assert (row["rejected"], row["approved"], row["pending"]) == (2, 0, 0)
+    assert [m["role"] for m in thread["messages"]][-2:] == ["review", "review"]
+    assert len(env.agent.seen) == calls  # no agent call
+    assert len(env.deps.promptlog.list(tid)) == records  # and no prompt record
+
+
+async def test_rejection_only_decisions_under_budget_tell_the_agent(make_env):
+    env = _env(make_env, [two_creates(), AIMessage(content="Noted, dropping both.")])
+    tid = await _pending(env)
+    calls = len(env.agent.seen)
+    r, events = await _reject_all(env, tid)
+    assert r.status_code == 200 and names(events)[-1] == "done", names(events)
+    assert len(env.agent.seen) == calls + 1
+    messages = (await env.client.get(f"/api/threads/{tid}")).json()["messages"]
+    assert messages[-1] == {**messages[-1], "role": "assistant", "content": "Noted, dropping both."}
 
 
 async def test_over_budget_402_on_import(make_env):
@@ -225,3 +253,38 @@ async def test_turn_records_use_the_app_clock(make_env):
     assert env.deps.promptlog.month_spend(USER_A, nov) == 0
     assert env.deps.promptlog.month_spend(USER_A, env.deps.now()) > 0
 
+
+
+class StructuredChat(BaseChatModel):
+    """A structured-output role model that IS a chat model, so its call is prompt-logged."""
+
+    reply: Any
+
+    @property
+    def _llm_type(self) -> str:
+        return "structured-fake"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        msg = AIMessage(content="{}", usage_metadata={"input_tokens": 40, "output_tokens": 8, "total_tokens": 48})
+        return ChatResult(generations=[ChatGeneration(message=msg)])
+
+    def with_structured_output(self, schema, **kwargs):
+        return self | RunnableLambda(lambda _: self.reply)
+
+
+async def test_guard_and_router_calls_are_the_users_spend(make_env):
+    """Every model call of a turn is logged under the user, the guard's and router's too: an
+    unlogged call would be spend the budget never sees."""
+    env = make_env(
+        [AIMessage(content="Hello.")],
+        guard=StructuredChat(reply=GuardVerdict(verdict="safe", reason="ok"), metadata={"role": "guard"}),
+        router=StructuredChat(reply=RouteDecision(mode="edit"), metadata={"role": "router"}),
+    )
+    tid = await env.new_thread(W)
+    r, events = await env.send(tid, "hi")
+    assert r.status_code == 200 and names(events)[-1] == "done"
+    log = env.deps.promptlog
+    assert len(log.list(tid)) == 3  # guard, router and the agent (whose fake has no role)
+    for role in ("guard", "router"):
+        assert len(log.list_by_role(role, 10, USER_A)) == 1, role
+    assert log.usage(user_id=USER_A) == log.usage() and log.usage().cost_usd > 0

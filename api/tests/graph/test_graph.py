@@ -431,6 +431,16 @@ def test_route_after_commit_import_done():
     assert route_after_commit({"entry": "import", "pending_proposals": []}) == "__end__"
 
 
+def test_route_after_commit_no_agent_ends_a_chat_run_only():
+    """Rejections resumed over the monthly budget (M5 §5.5a): a chat run ends after commit; an
+    import thread routes as before."""
+    off = {"configurable": {"no_agent": True}}
+    assert route_after_commit({"entry": "chat"}, off) == "__end__"
+    assert route_after_commit({"entry": "chat"}, {"configurable": {}}) == "agent"
+    assert route_after_commit({"entry": "import", "pending_proposals": [P("p_1")]}, off) == "check"
+    assert route_after_commit({"entry": "import", "pending_proposals": []}, off) == "__end__"
+
+
 async def test_import_refused_proposal_is_asked_again(store):
     """commit refuses a proposal it cannot write (here: another world's). On an import thread
     there is no agent to tell, so it must come back to the gate instead of being stranded."""

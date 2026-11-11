@@ -63,7 +63,9 @@ class AppDeps:
     verifier: TokenVerifier | None = None  # Clerk session tokens -> claims
     directory: ProfileDirectory | None = None  # Clerk profiles; built at startup from the secret key
     user_locks: KeyedLocks = field(default_factory=KeyedLocks)  # one account write per user
-    now: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))  # tests move the clock
+    # Must return a timezone-aware datetime: it stamps prompt records and sets the budget month
+    # (both UTC; a naive time would be read as local time). Tests move the clock.
+    now: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))
     refresh_failures: dict[str, datetime] = field(default_factory=dict)  # user id -> last failed Clerk refresh
 
 

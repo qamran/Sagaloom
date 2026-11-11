@@ -696,6 +696,10 @@
               }
             ],
             "title": "Monthly Budget Usd"
+          },
+          "over_budget": {
+            "title": "Over Budget",
+            "type": "boolean"
           }
         },
         "required": [
@@ -706,7 +710,8 @@
           "last_world_id",
           "month_spend_usd",
           "monthly_budget_usd",
-          "budget_resets_on"
+          "budget_resets_on",
+          "over_budget"
         ],
         "title": "Me",
         "type": "object"
