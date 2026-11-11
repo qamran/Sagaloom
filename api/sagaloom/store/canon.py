@@ -35,6 +35,12 @@ def _mentions(text_norm: str, name: str) -> bool:
     return bool(n) and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text_norm) is not None
 
 
+def _record_id(world_id: str, entry_id: str) -> str:
+    """The Chroma record id: entry ids are unique per world, so the world is part of the key.
+    The entry id itself (`Entry.id`) stays `ent_NNNN`, kept in metadata as `entry_id`."""
+    return f"{world_id}/{entry_id}"
+
+
 def _and(*clauses: dict) -> dict:
     return clauses[0] if len(clauses) == 1 else {"$and": list(clauses)}
 
@@ -51,19 +57,22 @@ class CanonStore:
             collection_name, metadata={"hnsw:space": "cosine"}
         )
 
-    def next_entry_id(self) -> str:
-        ids = self.col.get(include=[])["ids"]
+    def next_entry_id(self, world_id: str) -> str:
+        """The id after the highest `ent_NNNN` in this world (ids are unique per world)."""
+        rids = self.col.get(where={"world_id": world_id}, include=[])["ids"]
+        ids = [r.rsplit("/", 1)[-1] for r in rids]
         nums = [int(i[4:]) for i in ids if re.fullmatch(r"ent_\d{4}", i)]
         return f"ent_{max(nums, default=0) + 1:04d}"
 
-    def has_id(self, entry_id: str) -> bool:
-        """Whether any world holds this id (ids are global, like next_entry_id)."""
-        return bool(self.col.get(ids=[entry_id], include=[])["ids"])
+    def has_id(self, world_id: str, entry_id: str) -> bool:
+        """Whether this world holds an entry with this id."""
+        return bool(self.col.get(ids=[_record_id(world_id, entry_id)], include=[])["ids"])
 
     def get_entry(self, world_id: str, entry_id: str) -> Entry | None:
-        res = self.col.get(
-            ids=[entry_id], where={"world_id": world_id}, include=["metadatas"]
-        )
+        return self._read(world_id, entry_id)
+
+    def _read(self, world_id: str, entry_id: str) -> Entry | None:
+        res = self.col.get(ids=[_record_id(world_id, entry_id)], include=["metadatas"])
         if not res["ids"]:
             return None
         return Entry.model_validate_json(res["metadatas"][0]["entry_json"])
@@ -86,16 +95,11 @@ class CanonStore:
         clash = self.col.get(
             where=_and({"world_id": entry.world_id}, {"title_norm": tn}), include=[]
         )["ids"]
-        if any(i != entry.id for i in clash):
+        rid = _record_id(entry.world_id, entry.id)
+        if any(i != rid for i in clash):
             raise DuplicateTitleError(entry.title)
-        existing = self.col.get(ids=[entry.id], include=["metadatas"])
-        prev = (
-            Entry.model_validate_json(existing["metadatas"][0]["entry_json"])
-            if existing["ids"]
-            else None
-        )
-        if prev is not None and prev.world_id != entry.world_id:
-            raise ValueError(f"Entry id {entry.id} belongs to another world")
+        # Its own read, not get_entry: callers may wrap get_entry (the race tests do).
+        prev = self._read(entry.world_id, entry.id)
         if expected_version is not None:
             actual = prev.version if prev is not None else None
             if (0 if actual is None else actual) != expected_version:
@@ -103,12 +107,13 @@ class CanonStore:
         entry = entry.model_copy(update={"updated_at": datetime.now(UTC).isoformat()})
         doc = f"{entry.title}\n\n{entry.body}"
         self.col.upsert(
-            ids=[entry.id],
+            ids=[rid],
             documents=[doc],
             embeddings=[self.embeddings.embed_documents([doc])[0]],
             metadatas=[
                 {
                     "world_id": entry.world_id,
+                    "entry_id": entry.id,
                     "type": entry.type,
                     "status": entry.status,
                     "title_norm": tn,
@@ -119,7 +124,25 @@ class CanonStore:
         return entry
 
     def delete_entry(self, world_id: str, entry_id: str) -> None:
-        self.col.delete(ids=[entry_id], where={"world_id": world_id})
+        self.col.delete(ids=[_record_id(world_id, entry_id)])
+
+    def migrate_record_ids(self) -> int:
+        """Re-key records stored before ids were per world (record id == entry id) to
+        `{world_id}/{entry_id}`, copying their stored embedding, document and metadata (no
+        re-embed). Returns the number re-keyed; a second run finds none and returns 0."""
+        res = self.col.get(include=["embeddings", "documents", "metadatas"])
+        legacy = [i for i, rid in enumerate(res["ids"]) if "/" not in rid]
+        if not legacy:
+            return 0
+        metas = [{**res["metadatas"][i], "entry_id": res["ids"][i]} for i in legacy]
+        self.col.upsert(
+            ids=[_record_id(m["world_id"], m["entry_id"]) for m in metas],
+            embeddings=[res["embeddings"][i] for i in legacy],
+            documents=[res["documents"][i] for i in legacy],
+            metadatas=metas,
+        )
+        self.col.delete(ids=[res["ids"][i] for i in legacy])
+        return len(legacy)
 
     def search(
         self,

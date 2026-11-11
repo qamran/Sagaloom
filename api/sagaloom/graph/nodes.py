@@ -524,7 +524,7 @@ def _apply_locked(store, p: Proposal) -> str:
     if p.action == "create":
         if p.after is None:
             raise _CommitFailed("the proposal has no entry")
-        entry_id = store.next_entry_id()
+        entry_id = store.next_entry_id(p.world_id)
         entry = Entry(id=entry_id, world_id=p.world_id, version=1, **p.after.model_dump())
         saved = store.upsert_entry(entry, expected_version=0)
         return f"Review: {pid} approved, committed as {saved.id} (v{saved.version})."

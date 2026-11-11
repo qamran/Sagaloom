@@ -192,12 +192,12 @@ def test_seed_missing_re_ids_a_seed_entry_whose_id_is_taken_in_the_world(store, 
     assert seed_missing(store, SEED).added == []  # the title match finds the re-id'd ledger
 
 
-def test_seed_missing_re_ids_a_seed_entry_whose_id_another_world_owns(store, worlds):
+def test_seed_missing_keeps_the_seed_id_when_only_another_world_holds_it(store, worlds):
+    """Ids are per world (M5): another world's ent_0019 does not move the seed entry."""
     mine = _velmar_with_sorn_at_0019(store, worlds, world_id="mine")
     [(seed_id, ledger)] = seed_missing(store, SEED).added
-    assert seed_id == "ent_0019" and ledger.id == "ent_0020"
-    assert store.get_entry("velmar", "ent_0020").title == "The Choir Ledger"
-    assert store.get_entry("velmar", "ent_0019") is None
+    assert seed_id == "ent_0019" and ledger.id == "ent_0019"
+    assert store.get_entry("velmar", "ent_0019").title == "The Choir Ledger"
     assert store.get_entry("mine", "ent_0019") == mine
     assert seed_missing(store, SEED).added == []
 

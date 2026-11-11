@@ -63,11 +63,11 @@ def seed_missing(store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID) -
         earlier run added under a fresh id; or
     (b) the entry at the seed id in this world has the seed entry's type (a renamed seed
         entry).
-    Otherwise it is missing. It is added at its seed id if no world holds that id, or under
-    `next_entry_id()` if the id is taken (ids are global; Captain Sorn, a character, may hold
-    ent_0019 while the ledger is an item). A fresh id is safe only for a seed entry nothing
-    links to, such as the Choir Ledger. Returns a SeedReport: the additions and the rule (b)
-    entries kept."""
+    Otherwise it is missing. It is added at its seed id if this world does not hold that id,
+    or under `next_entry_id(world_id)` if the id is taken (ids are unique per world; Captain
+    Sorn, a character, may hold ent_0019 while the ledger is an item). A fresh id is safe only
+    for a seed entry nothing links to, such as the Choir Ledger. Returns a SeedReport: the
+    additions and the rule (b) entries kept."""
     names: set[str] = set()
     for existing in store.list_entries(world_id):
         names |= _names(existing)
@@ -80,8 +80,8 @@ def seed_missing(store: CanonStore, seed_dir: Path, world_id: str = VELMAR_ID) -
             report.kept.append((e.id, at_id))
             continue
         seed_id = e.id
-        if store.has_id(seed_id):
-            e = e.model_copy(update={"id": store.next_entry_id()})
+        if store.has_id(world_id, seed_id):
+            e = e.model_copy(update={"id": store.next_entry_id(world_id)})
         stored = store.upsert_entry(e)
         names |= _names(stored)
         log.info("added %s as %s (%s)", seed_id, stored.id, stored.title)

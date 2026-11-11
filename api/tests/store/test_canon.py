@@ -1,8 +1,12 @@
+import uuid
+
+import chromadb
 import pytest
+from langchain_core.embeddings import DeterministicFakeEmbedding
 from pydantic import ValidationError
 
 from sagaloom.models import Entry, EntrySource, Fact, Link
-from sagaloom.store.canon import DuplicateTitleError, VersionConflictError, norm
+from sagaloom.store.canon import CanonStore, DuplicateTitleError, VersionConflictError, norm
 
 
 def mk(id="ent_0001", world="w1", title="Ister", type="place", body="A moon.", **kw):
@@ -41,10 +45,90 @@ def test_id_stable_across_update_and_version_increments(store):
 
 
 def test_next_entry_id_continues_after_highest(store):
-    assert store.next_entry_id() == "ent_0001"
-    store.upsert_entry(mk(id="ent_0020", world="w2"))
+    assert store.next_entry_id("w1") == "ent_0001"
+    store.upsert_entry(mk(id="ent_0020"))
     store.upsert_entry(mk(id="ent_0003", title="Other"))
-    assert store.next_entry_id() == "ent_0021"
+    assert store.next_entry_id("w1") == "ent_0021"
+
+
+# ---------- per-world entry ids (M5) ----------
+
+
+def test_same_entry_id_in_two_worlds(store):
+    store.upsert_entry(mk(id="ent_0001", world="a", title="X"))
+    store.upsert_entry(mk(id="ent_0001", world="b", title="Y"))
+    assert store.get_entry("a", "ent_0001").title == "X"
+    assert store.get_entry("b", "ent_0001").title == "Y"
+    assert [e.id for e in store.list_entries("a")] == ["ent_0001"]
+    assert [h.id for h in store.search("b", "Y")] == ["ent_0001"]
+
+
+def test_next_entry_id_is_per_world(store):
+    store.upsert_entry(mk(id="ent_0005", world="a"))
+    assert store.next_entry_id("b") == "ent_0001"
+    assert store.next_entry_id("a") == "ent_0006"
+
+
+def test_has_id_is_per_world(store):
+    store.upsert_entry(mk(id="ent_0002", world="a"))
+    assert store.has_id("a", "ent_0002")
+    assert not store.has_id("b", "ent_0002")
+
+
+def test_delete_only_touches_its_world(store):
+    store.upsert_entry(mk(id="ent_0001", world="a", title="X"))
+    store.upsert_entry(mk(id="ent_0001", world="b", title="Y"))
+    store.delete_entry("a", "ent_0001")
+    assert store.get_entry("a", "ent_0001") is None
+    assert store.get_entry("b", "ent_0001").title == "Y"
+
+
+class CountingEmbeddings(DeterministicFakeEmbedding):
+    """Counts the texts embedded, so a test can tell a copy from a re-embed."""
+
+    calls: int = 0
+
+    def embed_documents(self, texts):
+        self.calls += len(texts)
+        return super().embed_documents(texts)
+
+    def embed_query(self, text):
+        self.calls += 1
+        return super().embed_query(text)
+
+
+def test_migrate_record_ids_rekeys_legacy_records():
+    emb = CountingEmbeddings(size=16)
+    store = CanonStore(chromadb.EphemeralClient(), emb, collection_name=f"e_{uuid.uuid4().hex}")
+    legacy = mk(id="ent_0003", world="velmar", title="Lantern Quay")
+    vector = [0.25] * 16
+    doc = "Lantern Quay\n\nA moon."
+    store.col.upsert(
+        ids=["ent_0003"],
+        documents=[doc],
+        embeddings=[vector],
+        metadatas=[
+            {
+                "world_id": "velmar",
+                "type": "place",
+                "status": "canon",
+                "title_norm": norm(legacy.title),
+                "entry_json": legacy.model_dump_json(),
+            }
+        ],
+    )
+    store.upsert_entry(mk(id="ent_0001", world="velmar", title="Already keyed"))
+    before = emb.calls
+    assert store.migrate_record_ids() == 1
+    assert store.get_entry("velmar", "ent_0003") == legacy
+    assert store.has_id("velmar", "ent_0003")
+    assert store.migrate_record_ids() == 0
+    assert emb.calls == before  # copied, never re-embedded
+    got = store.col.get(ids=["velmar/ent_0003"], include=["embeddings", "documents"])
+    assert [float(x) for x in got["embeddings"][0]] == pytest.approx(vector)
+    assert got["documents"] == [doc]
+    assert store.col.get(ids=["ent_0003"], include=[])["ids"] == []
+    assert sorted(store.col.get(include=[])["ids"]) == ["velmar/ent_0001", "velmar/ent_0003"]
 
 
 def test_search_scoped_to_world(store):

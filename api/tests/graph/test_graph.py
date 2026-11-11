@@ -718,8 +718,8 @@ def test_concurrent_create_commits_draw_distinct_ids(store, monkeypatch):
     seed(store, id="ent_0001")
     real_next = store.next_entry_id
 
-    def slow_next():  # widen the read-then-write window so an unlocked commit would collide
-        nid = real_next()
+    def slow_next(world_id):  # widen the read-then-write window so an unlocked commit would collide
+        nid = real_next(world_id)
         time.sleep(0.05)
         return nid
 
