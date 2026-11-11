@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, POST, PUT } from "../app/api/proxy/[...path]/route";
 
+// A signed-in user: these tests are about the shared secret and pass-through (Clerk: proxyAuth.test.ts).
+vi.mock("@clerk/nextjs/server", () => ({ auth: async () => ({ getToken: async () => "tok_test" }) }));
+
 describe("secret-injecting proxy", () => {
   beforeEach(() => {
     process.env.API_URL = "http://api.test";

@@ -31,22 +31,62 @@ export class ApiError extends Error {
   }
 }
 
+/** The API's 401 detail when the request carries no valid Clerk session token. */
+export const SIGN_IN_REQUIRED = "sign in required";
+/** What to show for a 503: a new account is still being set up, or Clerk is unreachable. */
+export const ACCOUNT_UNAVAILABLE =
+  "Setting up your account, or the account service is unavailable — try again.";
+// Pages that render without a session: a 401 seen there must not redirect, or sign-in would reload itself.
+const PUBLIC_PAGE = /^\/(sign-in|sign-up)(\/|$)|^\/$/;
+const RETRY_503_MS = 1500;
+
+/**
+ * Sends the author to sign-in, and back here afterwards, when the API says the session is missing or
+ * expired (401 "sign in required"). The other 401 ("unauthorised") is a bad shared secret: a server
+ * misconfiguration that signing in cannot fix, so it never redirects. Returns true when it redirected.
+ */
+export function handleAuthStatus(status: number, detail: string | undefined): boolean {
+  if (status !== 401 || detail !== SIGN_IN_REQUIRED) return false;
+  if (PUBLIC_PAGE.test(location.pathname)) return false;
+  // A full page load on purpose: this runs outside React (no router here), and it lets Clerk's handshake run.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  location.assign("/sign-in?redirect_url=" + encodeURIComponent(location.pathname + location.search));
+  return true;
+}
+
+async function detailFrom(res: Response): Promise<string | undefined> {
+  try {
+    const body = (await res.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+    if (Array.isArray(body.detail))
+      return body.detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join("; ") || undefined;
+  } catch {
+    // no JSON body: the status line is enough
+  }
+  return undefined;
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${PROXY_BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  const send = () =>
+    fetch(`${PROXY_BASE}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    });
+  let res = await send();
+  // The first request after sign-up provisions the account and may answer 503 once; a GET is safe to repeat.
+  const isGet = (init?.method ?? "GET").toUpperCase() === "GET";
+  if (res.status === 503 && isGet) {
+    await wait(RETRY_503_MS);
+    res = await send();
+  }
   if (!res.ok) {
-    let detail: string | undefined;
-    try {
-      const body = (await res.json()) as { detail?: unknown };
-      if (typeof body.detail === "string") detail = body.detail;
-      else if (Array.isArray(body.detail))
-        detail = body.detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join("; ") || undefined;
-    } catch {
-      // no JSON body: the status line is enough
-    }
-    throw new ApiError(res.status, `${res.status} ${res.statusText || "request failed"}`, detail);
+    const detail = await detailFrom(res);
+    handleAuthStatus(res.status, detail);
+    const message =
+      res.status === 503 ? ACCOUNT_UNAVAILABLE : `${res.status} ${res.statusText || "request failed"}`;
+    throw new ApiError(res.status, message, detail);
   }
   return (await res.json()) as T;
 }

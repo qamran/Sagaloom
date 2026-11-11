@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ACCOUNT_UNAVAILABLE } from "@/lib/api";
 import { useImport } from "@/lib/useImport";
 
 const push = vi.fn();
@@ -144,6 +145,40 @@ describe("useImport", () => {
     });
     expect(result.current.phase).toBe("error");
     expect(result.current.error).toBe(copy);
+  });
+
+  it("sends a signed-out author to sign-in on a 401 'sign in required'", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { pathname: "/import", search: "", assign });
+    fetchMock.mockResolvedValue(errorResponse(401, "sign in required"));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(assign).toHaveBeenCalledWith("/sign-in?redirect_url=%2Fimport");
+    vi.unstubAllGlobals();
+  });
+
+  it("shows an error, not a sign-in redirect, for a 401 'unauthorised'", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { pathname: "/import", search: "", assign });
+    fetchMock.mockResolvedValue(errorResponse(401, "unauthorised"));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(assign).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe("error");
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the account-service copy on a 503", async () => {
+    fetchMock.mockResolvedValue(errorResponse(503, "account service unavailable"));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(result.current.error).toBe(ACCOUNT_UNAVAILABLE);
   });
 });
 

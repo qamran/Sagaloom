@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getThread, PROXY_BASE } from "./api";
+import { ACCOUNT_UNAVAILABLE, getThread, handleAuthStatus, PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
@@ -243,6 +243,11 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
         if (!res.ok || !res.body) {
           const detail = await detailOf(res);
           setStatus("error");
+          if (handleAuthStatus(res.status, detail)) return;
+          if (res.status === 503) {
+            setError(ACCOUNT_UNAVAILABLE);
+            return;
+          }
           if (res.status === 409 && detail === "turn in progress") {
             setError(BUSY);
             return;

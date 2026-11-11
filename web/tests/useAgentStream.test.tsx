@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getThread } from "@/lib/api";
+import { ACCOUNT_UNAVAILABLE, getThread } from "@/lib/api";
 import { TOUR_KEYS } from "@/lib/tour";
 import type { CheckResult, Decision, PendingInterrupt, Proposal, ThreadState } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
@@ -390,6 +390,38 @@ describe("useAgentStream", () => {
     });
     expect(result.current.status).toBe("error");
     expect(result.current.error).toBe(copy);
+  });
+
+  it("sends a signed-out author to sign-in on a 401 'sign in required'", async () => {
+    const assign = vi.fn();
+    getThreadMock.mockResolvedValue(thread());
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    vi.stubGlobal("location", { pathname: "/chat/t1", search: "", assign });
+    fetchMock.mockResolvedValue(errorResponse(401, "sign in required"));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(assign).toHaveBeenCalledWith("/sign-in?redirect_url=%2Fchat%2Ft1");
+  });
+
+  it("shows the account-service copy on a 503, and an error without redirect on 401 'unauthorised'", async () => {
+    const assign = vi.fn();
+    getThreadMock.mockResolvedValue(thread());
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    vi.stubGlobal("location", { pathname: "/chat/t1", search: "", assign });
+    fetchMock.mockResolvedValue(errorResponse(503, "account service unavailable"));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(result.current.error).toBe(ACCOUNT_UNAVAILABLE);
+    fetchMock.mockResolvedValue(errorResponse(401, "unauthorised"));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(result.current.status).toBe("error");
+    expect(assign).not.toHaveBeenCalled();
   });
 
   it("collects one decision per proposal and submits them together, in pending order", async () => {

@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PROXY_BASE } from "./api";
+import { ACCOUNT_UNAVAILABLE, handleAuthStatus, PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import type { SseEvent } from "./types";
 
@@ -76,7 +76,9 @@ export function useImport(): ImportRun {
         }
         if (!res.ok || !res.body) {
           const detail = await detailOf(res);
-          if (res.status === 413) fail("That text is too large.");
+          if (handleAuthStatus(res.status, detail)) return;
+          if (res.status === 503) fail(ACCOUNT_UNAVAILABLE);
+          else if (res.status === 413) fail("That text is too large.");
           else if (res.status === 429) fail("Too many requests. Wait a moment and try again.");
           else if (res.status === 422) fail(detail || "That text was not accepted.");
           else fail(UNREACHABLE);

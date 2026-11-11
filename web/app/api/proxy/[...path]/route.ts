@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+
 export const dynamic = "force-dynamic";
 
 function jsonError(status: number, detail: string): Response {
@@ -31,6 +33,14 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
 
   const headers = new Headers();
   headers.set("x-sagaloom-secret", secret);
+  // The user's Clerk session token, read on the server from the session cookie. Headers are built
+  // from scratch, so an Authorization or Cookie the browser sent is never passed on. Only
+  // /api/public/* goes without one.
+  if (path[0] !== "public") {
+    const token = await (await auth()).getToken();
+    if (!token) return jsonError(401, "sign in required");
+    headers.set("authorization", `Bearer ${token}`);
+  }
   const contentType = req.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
   // The API rate-limits per client. A route handler cannot tell an edge's X-Forwarded-For from
@@ -55,7 +65,7 @@ async function forward(req: Request, ctx: Ctx): Promise<Response> {
   try {
     upstream = await fetch(url, { method: req.method, headers, body, cache: "no-store" });
   } catch (cause) {
-    // The target URL and the cause only: the headers carry the shared secret.
+    // The target URL and the cause only: the headers carry the shared secret and the user's token.
     console.error("proxy: API fetch failed", url, cause);
     return jsonError(502, "The API is not reachable");
   }
