@@ -7,6 +7,7 @@ data/
 api/.venv/
 web/node_modules/
 web/.next/
+web/.next-e2e/
 test-results/
 __pycache__/
 .pytest_cache/

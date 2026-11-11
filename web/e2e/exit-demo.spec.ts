@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 // The exit demo (M1, then Waves 1 to 5, 7 and 8, then M3 Wave 3), end to end, against the real seed and real models.
@@ -36,7 +37,27 @@ async function send(page: Page, text: string) {
   await page.getByRole("button", { name: "Send" }).click();
 }
 
+// M5: the demo signs in as a Clerk test user (e2e/README.md). playwright.config.ts loads web/.env.local.
+const E2E_EMAIL = process.env.E2E_CLERK_USER_EMAIL?.trim() ?? "";
+const E2E_PASSWORD = process.env.E2E_CLERK_USER_PASSWORD?.trim() ?? "";
+
 test("M1 exit demo", async ({ page }) => {
+  test.skip(
+    !E2E_EMAIL || !E2E_PASSWORD,
+    "No Clerk test user: set E2E_CLERK_USER_EMAIL and E2E_CLERK_USER_PASSWORD in web/.env.local (see web/e2e/README.md).",
+  );
+
+  // 0. M5: signed out, `/` is the public home page. Then sign in as the test user; Clerk lands on `/`,
+  // which sends a signed-in author to Canon. The preview is not checked: Next may serve a cached copy.
+  await setupClerkTestingToken({ page });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("you decide, it checks");
+  await expect(page.getByRole("link", { name: "Sign up free" }).first()).toBeVisible();
+  await clerk.signIn({ page, signInParams: { strategy: "password", identifier: E2E_EMAIL, password: E2E_PASSWORD } });
+  await page.goto("/");
+  // The only proof the sign-in worked (the helper does not check), so it fails fast rather than in 180 s.
+  await expect(page).toHaveURL(/\/canon/, { timeout: 30_000 });
+
   // 1. Canon: Sky of Velmar shows its Moons fact.
   await page.goto("/canon");
   // Wave 7 (step 33a): checked here, while the data is still fresh. Later steps commit entries, so the counts
@@ -624,6 +645,8 @@ test("M1 exit demo", async ({ page }) => {
   const cachedBefore = cacheFiles();
   const worldPicker = page.getByRole("banner").getByLabel("World", { exact: true });
   await page.goto("/canon");
+  // The test user's own Velmar has the id `velmar`: the API starts on an empty DATA_DIR and seeds no world, so
+  // the first account's copy (accounts.py copy_velmar) gets the plain slug, not `velmar-<suffix>`.
   await expect(worldPicker).toHaveValue("velmar");
   await expect(headerSecrets).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator('nav[aria-label="Entries"] a[href$="/canon/ent_0007"]')).toHaveCount(1);

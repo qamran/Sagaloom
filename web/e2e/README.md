@@ -12,10 +12,37 @@ Run it from `web/`:
     pnpm exec playwright test
 
 It starts its own API (port 8100) and web app (port 3100) on a throwaway data folder, so it never touches
-your dev servers or `data/`. Before uvicorn starts, the API command runs `uv run python scripts/seed_wiki_cache.py
+your dev servers or `data/`. The web app builds into `web/.next-e2e/` (`NEXT_DIST_DIR`, read by `next.config.ts`):
+Next 16 lets only one `next dev` use `.next/dev`, so the demo can run while your `pnpm dev` is up. Before uvicorn starts, the API command runs `uv run python scripts/seed_wiki_cache.py
 "<data dir>"`, which copies the committed Wikipedia fixtures (`api/tests/fixtures/wiki/`: Rivendell, Gandalf, The
 Shire and the `en.wikipedia.org` licence) into `<data dir>/cache/wiki/` (R-W3-10), so the fan-wiki step is served
 from the cache.
+
+## The Clerk test user (M5)
+
+Every app page needs a session, so the demo signs in as a Clerk test user. Create it once in the Clerk dashboard
+(Users, Create user) with an email ending in `+clerk_test`, for example `sagaloom+clerk_test@example.com`, and a
+password, then add both to `web/.env.local`:
+
+    E2E_CLERK_USER_EMAIL=sagaloom+clerk_test@example.com
+    E2E_CLERK_USER_PASSWORD=<the password>
+
+Without them the spec is **skipped** (no server starts) and the run prints `Skipping the exit demo: no Clerk test
+user ...`. Nothing else loads `web/.env.local` into Playwright, so `playwright.config.ts` does it; a variable set in
+the real environment wins. `e2e/global-setup.ts` calls `clerkSetup()` from `@clerk/testing/playwright`, which fetches a
+testing token with `CLERK_SECRET_KEY` (and reads `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) from `web/.env.local`, so the
+browser gets past Clerk's bot protection. The demo API gets `ADMIN_EMAIL` set to the test user's email, so the test
+user is the admin: the demo switches admin-only settings (the input guard, the tools), and the admin has no monthly
+budget. `CLERK_ISSUER` and `CLERK_SECRET_KEY` reach the API from the root `.env` and `api/.env`, as for the dev API.
+
+Step 0 checks the public home page signed out (the hero line and a **Sign up free** link; not the preview, which
+Next may serve from its cache), signs in with `setupClerkTestingToken` and `clerk.signIn` (password strategy), opens
+`/` and waits for the redirect to `/canon`. The API starts on an empty data folder and seeds no world, so the test
+user's own Velmar copy gets the id `velmar`, which step 35 checks in the World picker.
+
+A failed run's trace in `web/test-results/` holds the test user's session and password: don't share it.
+
+## Cost and failures
 
 It makes **real OpenRouter calls** (and real Wikipedia calls for the reference tool in step 13; the fan-wiki step
 sends none). Expect about 7 to 8 minutes and a few cents.

@@ -294,7 +294,7 @@ The evals (`api/tests/eval`) use the real Velmar seed in a temporary store: the 
 
 `pnpm types:gen` exports the OpenAPI schema (`api/scripts/export_openapi.py`) to `web/lib/openapi.json` and generates `web/lib/api-types.gen.ts`; `web/lib/types.ts` re-exports Entry, Fact, Link, World, MentionRef, EntryDraft, Decision and PromptRecord from it, and the other types stay hand-written. `pnpm types:check` fails if the generated files are stale. It is a local check: there is no CI.
 
-The Playwright run starts both servers itself, on ports 8100 and 3100 with a throwaway data directory, so it never touches a running dev server or your `api/data/` folder. Install its browser once with `pnpm exec playwright install chromium`.
+The Playwright run starts both servers itself, on ports 8100 and 3100 with a throwaway data directory, so it never touches a running dev server or your `api/data/` folder; its web app builds into `web/.next-e2e/` (`NEXT_DIST_DIR`), since Next 16 allows one `next dev` per build folder. Install its browser once with `pnpm exec playwright install chromium`. Since M5 it signs in as a Clerk test user: create one in the Clerk dashboard with an email ending in `+clerk_test` (for example `sagaloom+clerk_test@example.com`) and a password, and put them in `web/.env.local` as `E2E_CLERK_USER_EMAIL` and `E2E_CLERK_USER_PASSWORD`. Without them the demo is skipped. The demo API gets `ADMIN_EMAIL` set to that email, so the test user is the admin. Details in `web/e2e/README.md`.
 
 ## Known limitations
 
