@@ -72,19 +72,45 @@ async def test_over_budget_402_on_message(make_env):
     assert len(env.agent.seen) == 1
 
 
+def two_creates() -> AIMessage:
+    """One agent message proposing two entries, so a decision batch can be mixed."""
+    a, b = create_call("Ostra").tool_calls[0], create_call("Brask").tool_calls[0]
+    return AIMessage(content="Drafting both.", tool_calls=[a, b])
+
+
 async def test_over_budget_402_on_decisions(make_env):
-    env = _env(make_env, [create_call()])
+    env = _env(make_env, [two_creates()])
     tid = await _pending(env)
     summary = env.deps.threads.get(tid).summary
-    pid = await env.pending_id(tid)
+    pending = (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"]
+    p1, p2 = sorted(p["proposal_id"] for p in pending["proposals"])
     _spend(env, 1.0)
-    r, _ = await env.decide(tid, {"proposal_id": pid, "action": "approve"})
-    assert r.status_code == 402 and r.json() == {"detail": OVER}
-    # A rejection resumes the graph too, so it is gated the same way.
-    r, _ = await env.decide(tid, {"proposal_id": pid, "action": "reject"})
-    assert r.status_code == 402
+    # Any decision that is not a rejection is gated, alone or in a mixed batch.
+    for actions in (("approve", "approve"), ("approve", "reject"), ("reject", "save_as_myth")):
+        decisions = [{"proposal_id": p, "action": a} for p, a in zip((p1, p2), actions)]
+        r, _ = await env.decide(tid, *decisions)
+        assert r.status_code == 402 and r.json() == {"detail": OVER}, actions
+    # Refused before the turn lock: the approval is still pending, nothing else changed.
     assert env.deps.threads.get(tid).summary == summary
-    assert (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"] is not None
+    assert tid not in env.deps.locks
+    assert (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"] == pending
+    assert env.deps.store.list_entries(W) == []
+
+
+async def test_rejection_only_decisions_stay_available_over_budget(make_env):
+    """Spec §5.5a: Review decisions that only reject stay available over budget."""
+    env = _env(make_env, [two_creates()])
+    tid = await _pending(env)
+    pending = (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"]
+    _spend(env, 5.0)
+    r, events = await env.decide(
+        tid, *({"proposal_id": p["proposal_id"], "action": "reject"} for p in pending["proposals"])
+    )
+    assert r.status_code == 200 and names(events)[-1] == "done", names(events)
+    assert (await env.client.get(f"/api/threads/{tid}")).json()["pending_interrupt"] is None
+    assert env.deps.store.list_entries(W) == []
+    row = next(t for t in (await env.client.get("/api/threads")).json() if t["thread_id"] == tid)
+    assert (row["rejected"], row["approved"], row["pending"]) == (2, 0, 0)
 
 
 async def test_over_budget_402_on_import(make_env):
@@ -179,7 +205,7 @@ async def test_budget_zero_blocks_everything_ai(make_env):
     other = await env.new_thread(W)
     responses = [
         (await env.send(other, "hi"))[0],
-        (await env.decide(tid, {"proposal_id": pid, "action": "reject"}))[0],
+        (await env.decide(tid, {"proposal_id": pid, "action": "approve"}))[0],
         await env.client.post(f"/api/worlds/{W}/imports", json={"text": "Ostra is a port."}),
     ]
     assert [(r.status_code, r.json()["detail"]) for r in responses] == [(402, zero)] * 3

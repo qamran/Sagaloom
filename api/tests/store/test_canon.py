@@ -385,3 +385,14 @@ def test_has_world(store):
     assert not store.has_world("w1")
     store.upsert_entry(mk())
     assert store.has_world("w1") and not store.has_world("w2")
+
+
+def test_upsert_entries_refuses_a_repeated_id_before_embedding():
+    emb = BatchCountingEmbeddings(size=16)
+    store = CanonStore(chromadb.EphemeralClient(), emb, collection_name=f"e_{uuid.uuid4().hex}")
+    with pytest.raises(VersionConflictError):
+        store.upsert_entries([mk(id="ent_0001", title="Ostra"), mk(id="ent_0001", title="Brask")])
+    assert emb.batches == 0 and store.list_entries("w1") == []
+    # The same id in two worlds is two entries.
+    store.upsert_entries([mk(id="ent_0001", title="Ostra"), mk(id="ent_0001", world="w2", title="Brask")])
+    assert store.has_id("w1", "ent_0001") and store.has_id("w2", "ent_0001")

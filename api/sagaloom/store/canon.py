@@ -114,16 +114,21 @@ class CanonStore:
     def upsert_entries(self, entries: list[Entry]) -> list[Entry]:
         """Write new entries with one embedding call and one Chroma write (a world's seed
         copy). The checks of `upsert_entry(e, expected_version=0)` hold for every entry: its id
-        must not exist yet (VersionConflictError), and its title must clash with no stored entry
+        must not exist yet nor repeat in the batch (VersionConflictError), and its title must clash with no stored entry
         of its world nor another entry of the batch (DuplicateTitleError). A refused batch
         writes nothing."""
-        seen: set[tuple[str, str]] = set()
+        titles: set[tuple[str, str]] = set()
+        ids: set[tuple[str, str]] = set()
         for e in entries:
             key = (e.world_id, norm(e.title))
             clash = self.col.get(where=_and({"world_id": e.world_id}, {"title_norm": key[1]}), include=[])
-            if key in seen or clash["ids"]:
+            if key in titles or clash["ids"]:
                 raise DuplicateTitleError(e.title)
-            seen.add(key)
+            titles.add(key)
+            # An id given twice in the batch: the second write would find the first (v1).
+            if (e.world_id, e.id) in ids:
+                raise VersionConflictError(e.id, 0, 1)
+            ids.add((e.world_id, e.id))
             prev = self._read(e.world_id, e.id)
             if prev is not None:
                 raise VersionConflictError(e.id, 0, prev.version)

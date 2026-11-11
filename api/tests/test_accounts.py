@@ -465,3 +465,22 @@ def test_copy_velmar_skips_an_id_with_records_left(store, tmp_path):
     assert re.fullmatch(r"velmar-[a-z0-9]{4}", world.id), world.id
     assert store.get_entry(VELMAR_ID, "ent_0001").title == "Old"
     assert len(store.list_entries(world.id)) == 19
+
+
+def test_copy_velmar_failed_chroma_write_leaves_no_entries(store, tmp_path):
+    """A write that fails after embedding (part of the batch may have landed) is cleaned up."""
+    worlds = WorldRegistry(tmp_path / "worlds.json")
+    real = store.col.upsert
+    calls = []
+
+    def half_then_fail(**kw):
+        calls.append(len(kw["ids"]))
+        real(**{k: v[:5] for k, v in kw.items()})  # some records land, then the write fails
+        raise RuntimeError("chroma write failed")
+
+    store.col.upsert = half_then_fail
+    with pytest.raises(RuntimeError):
+        copy_velmar(store, worlds, SEED_DIR, "user_a")
+    store.col.upsert = real
+    assert calls == [19]
+    assert worlds.all_worlds() == [] and not store.has_world(VELMAR_ID)

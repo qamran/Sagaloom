@@ -118,9 +118,13 @@ def checkpoint_serde() -> JsonPlusSerializer:
     )
 
 
+# The checkpointer's file in `data_dir` (the memory panel shows this name, never the path).
+CHECKPOINT_FILE = "checkpoints.sqlite"
+
+
 @asynccontextmanager
 async def sqlite_checkpointer(settings: Settings) -> AsyncIterator[AsyncSqliteSaver]:
     """The restart-safe checkpointer (R18.7), with the strict serde above."""
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(str(Path(settings.data_dir) / "checkpoints.sqlite")) as conn:
+    async with aiosqlite.connect(str(Path(settings.data_dir) / CHECKPOINT_FILE)) as conn:
         yield AsyncSqliteSaver(conn, serde=checkpoint_serde())

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from sagaloom.budget import budget_reset_date, check_budget
 from sagaloom.export import export_markdown, slugify
-from sagaloom.graph.build import run_config
+from sagaloom.graph.build import CHECKPOINT_FILE, run_config
 from sagaloom.graph.nodes import RoleModel
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.runs import last_run_nodes
@@ -386,9 +386,6 @@ def _memory_world(request: Request, world_id: str):
     return d
 
 
-CHECKPOINT_FILE = "checkpoints.sqlite"
-
-
 def _memory_payload(d, world_id: str, prefs: dict) -> dict:
     return {
         "preferences": prefs,
@@ -501,7 +498,10 @@ async def post_message(thread_id: str, body: NewMessage, request: Request):
 @router.post("/threads/{thread_id}/decisions")
 async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
     t = thread_for(request, thread_id)
-    check_budget(_deps(request), user_of(request))  # before the lock: a refusal changes nothing
+    # Decisions that only reject stay available over budget (spec §5.5a); any other decision
+    # is checked before the lock, so a refusal changes nothing.
+    if any(d.action != "reject" for d in body.decisions):
+        check_budget(_deps(request), user_of(request))
     release = await _take_turn(request, thread_id)
     try:
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})

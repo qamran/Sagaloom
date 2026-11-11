@@ -40,7 +40,12 @@ def copy_velmar(store: CanonStore, worlds: WorldRegistry, seed_dir: Path, owner_
     world_id = worlds.reserve_id(VELMAR_NAME, in_use=store.has_world)
     written: list[str] = []
     try:
-        written = [e.id for e in store.upsert_entries(_seed_entries(seed_dir, world_id))]
+        entries = _seed_entries(seed_dir, world_id)
+        # Every id is cleaned up on a failure, set before the write: a Chroma write that fails
+        # part way may leave some records, and deleting an id never written is harmless (the
+        # reserved id holds no other records: `in_use` skipped any that did).
+        written = [e.id for e in entries]
+        store.upsert_entries(entries)
         return worlds.create(VELMAR_NAME, owner_id=owner_id, world_id=world_id, is_demo=True)
     except BaseException:
         for entry_id in written:
