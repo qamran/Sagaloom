@@ -14,7 +14,7 @@ from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.app import AppDeps, SEED_DIR
 from sagaloom.web.routes import message_dict
 
-from fakes import KEY, W, StubLLM, create_call, endless, names, parse_sse, tc
+from fakes import KEY, USER_A, W, StubLLM, create_call, endless, names, parse_sse, tc
 
 
 def approve(pid):
@@ -188,7 +188,7 @@ async def test_pending_threads_listing(make_env):
 async def test_list_threads_scoped_by_world(make_env):
     long = "Add   Ostra,\nthe port " + "x" * 100
     env = make_env([create_call(), create_call("Peak")])
-    env.deps.worlds.create("Velmar", world_id="velmar")
+    env.deps.worlds.create("Velmar", world_id="velmar", owner_id=USER_A)
     other = await env.new_thread(W)
     velmar = await env.new_thread("velmar")
     await env.send(other, "Add Ostra")
@@ -352,6 +352,7 @@ def _entry(world, eid, title):
 
 async def test_entries_scoped_by_world(make_env, store):
     env = make_env()
+    env.deps.worlds.create("Two", world_id="w2", owner_id=USER_A)
     store.upsert_entry(_entry("w1", "ent_0001", "Alpha"))
     store.upsert_entry(_entry("w2", "ent_0002", "Beta"))
     one = (await env.client.get("/api/worlds/w1/entries")).json()
@@ -367,6 +368,7 @@ def _seeded(make_env):
 
     env = make_env()
     load_seed(env.deps.store, env.deps.worlds, SEED_DIR)
+    env.deps.worlds.assign_unowned(USER_A)  # the seeded Velmar is the signed-in user's
     return env
 
 
@@ -918,7 +920,7 @@ async def test_running_thread_is_read_live_and_not_stored(make_env):
         return state
 
     env.deps.graph.aget_state = lock_taken_meanwhile
-    [row] = await list_rows(env.deps, pending=False, world_id=None, kind=None)
+    [row] = await list_rows(env.deps, world_ids={W}, pending=False, world_id=None, kind=None)
     assert row["running"] is True and env.deps.threads.get(tid).summary is None
     env.deps.locks.pop(tid).release()
 

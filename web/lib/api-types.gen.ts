@@ -103,8 +103,9 @@ export interface paths {
         };
         /**
          * List Threads
-         * @description Newest first; `badge` is the worst badge among the pending checks, `running` whether the
-         *     thread's turn lock is held.
+         * @description The user's threads, newest first; `badge` is the worst badge among the pending checks,
+         *     `running` whether the thread's turn lock is held. `world_id` is a list filter, not an id
+         *     route: a world that is not the user's lists nothing (`[]`), it does not 404.
          */
         get: operations["list_threads_api_threads_get"];
         put?: never;

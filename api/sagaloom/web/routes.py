@@ -26,6 +26,7 @@ from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
 from sagaloom.text import first_line, message_text
 from sagaloom.tools.specs import TOOL_SPECS
+from sagaloom.web.access import thread_for, user_of, world_for
 from sagaloom.web.imports import import_events, wiki_import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
 from sagaloom.web.thread_list import (
@@ -78,13 +79,6 @@ NewImport = WikiImport | TextImport
 
 def _deps(request: Request):
     return request.app.state.deps
-
-
-def _thread(request: Request, thread_id: str):
-    info = _deps(request).threads.get(thread_id)
-    if info is None:
-        raise HTTPException(status_code=404, detail="thread not found")
-    return info
 
 
 def message_dict(m: BaseMessage) -> dict:
@@ -223,21 +217,23 @@ def _stream_run(
 
 @router.get("/worlds")
 def list_worlds(request: Request) -> list[World]:
-    return _deps(request).worlds.all_worlds()  # scoped to the user in Task 6
+    return _deps(request).worlds.owned_by(user_of(request).id)
 
 
 @router.post("/worlds")
 def create_world(body: NewWorld, request: Request) -> World:
-    return _deps(request).worlds.create(body.name.strip() or "World")
+    return _deps(request).worlds.create(body.name.strip() or "World", owner_id=user_of(request).id)
 
 
 @router.get("/worlds/{world_id}/entries")
 def list_entries(world_id: str, request: Request) -> list[Entry]:
+    world_for(request, world_id)
     return _deps(request).store.list_entries(world_id)
 
 
 @router.get("/worlds/{world_id}/entries/{entry_id}")
 def get_entry(world_id: str, entry_id: str, request: Request) -> Entry:
+    world_for(request, world_id)
     entry = _deps(request).store.get_entry(world_id, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
@@ -248,9 +244,8 @@ def get_entry(world_id: str, entry_id: str, request: Request) -> Entry:
 def entry_mentions(world_id: str, entry_id: str, request: Request) -> list[MentionRef]:
     """Entries whose body names this one ("Mentioned in", R12.11). Text only: a link alone
     (such as the Mayor's secret membership of the Choir) is not a mention here."""
+    world_for(request, world_id)
     d = _deps(request)
-    if d.worlds.get(world_id) is None:
-        raise HTTPException(status_code=404, detail="world not found")
     entry = d.store.get_entry(world_id, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
@@ -265,10 +260,8 @@ def entry_mentions(world_id: str, entry_id: str, request: Request) -> list[Menti
 def export_world(
     world_id: str, request: Request, format: str = "md", exclude_secrets: bool = False
 ) -> Response:
+    world = world_for(request, world_id)
     d = _deps(request)
-    world = d.worlds.get(world_id)
-    if world is None:
-        raise HTTPException(status_code=404, detail="world not found")
     if format != "md":
         raise HTTPException(status_code=422, detail="only format=md is supported")
     data = export_markdown(d.store.list_entries(world_id), exclude_secrets=exclude_secrets)
@@ -290,9 +283,8 @@ PASTE_TITLE_CHARS = 60
 async def post_import(world_id: str, body: NewImport, request: Request):
     """A new `import` thread: extraction, then the graph run from `check` (spec §3.1). A wiki
     import fetches its pages first (M3 design §5)."""
+    world_for(request, world_id)
     d = _deps(request)
-    if d.worlds.get(world_id) is None:
-        raise HTTPException(status_code=404, detail="world not found")
     if isinstance(body, WikiImport):
         return await _post_wiki_import(world_id, body, request)
     if not body.text.strip():
@@ -374,9 +366,8 @@ async def _stream_import(request: Request, world_id: str, title: str, make_event
 # ---------- long-term memory (R10.2) ----------
 
 def _memory_world(request: Request, world_id: str):
+    world_for(request, world_id)
     d = _deps(request)
-    if d.worlds.get(world_id) is None:
-        raise HTTPException(status_code=404, detail="world not found")
     if d.memory is None:
         raise HTTPException(status_code=503, detail="memory is not available")
     return d
@@ -416,9 +407,8 @@ async def delete_memory(
 
 @router.post("/threads")
 def create_thread(body: NewThread, request: Request) -> dict:
+    world_for(request, body.world_id)
     d = _deps(request)
-    if d.worlds.get(body.world_id) is None:
-        raise HTTPException(status_code=404, detail="world not found")
     return {"thread_id": d.threads.create(body.world_id)}
 
 
@@ -429,15 +419,18 @@ async def list_threads(
     world_id: str | None = None,
     kind: ThreadKind | None = None,
 ) -> list[dict]:
-    """Newest first; `badge` is the worst badge among the pending checks, `running` whether the
-    thread's turn lock is held."""
+    """The user's threads, newest first; `badge` is the worst badge among the pending checks,
+    `running` whether the thread's turn lock is held. `world_id` is a list filter, not an id
+    route: a world that is not the user's lists nothing (`[]`), it does not 404."""
+    d = _deps(request)
+    world_ids = {w.id for w in d.worlds.owned_by(user_of(request).id)}
     # Read from the registry's summaries, not every checkpoint (`web/thread_list.py`).
-    return await list_rows(_deps(request), pending=pending, world_id=world_id, kind=kind)
+    return await list_rows(d, world_ids=world_ids, pending=pending, world_id=world_id, kind=kind)
 
 
 @router.get("/threads/{thread_id}")
 async def get_thread(thread_id: str, request: Request) -> dict:
-    t = _thread(request, thread_id)
+    t = thread_for(request, thread_id)
     state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
     values = state.values or {}
     messages = values.get("messages") or []
@@ -461,7 +454,7 @@ async def get_thread(thread_id: str, request: Request) -> dict:
 
 @router.post("/threads/{thread_id}/messages")
 async def post_message(thread_id: str, body: NewMessage, request: Request):
-    t = _thread(request, thread_id)
+    t = thread_for(request, thread_id)
     release = await _take_turn(request, thread_id)
     try:
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
@@ -490,7 +483,7 @@ async def post_message(thread_id: str, body: NewMessage, request: Request):
 
 @router.post("/threads/{thread_id}/decisions")
 async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
-    t = _thread(request, thread_id)
+    t = thread_for(request, thread_id)
     release = await _take_turn(request, thread_id)
     try:
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
@@ -517,13 +510,13 @@ async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
 
 @router.get("/threads/{thread_id}/runs/last")
 async def last_run(thread_id: str, request: Request) -> dict:
-    _thread(request, thread_id)
+    thread_for(request, thread_id)
     return {"thread_id": thread_id, **await last_run_nodes(_deps(request).graph, thread_id)}
 
 
 @router.get("/threads/{thread_id}/llm-log")
 def llm_log(thread_id: str, request: Request) -> list[PromptRecord]:
-    _thread(request, thread_id)
+    thread_for(request, thread_id)
     return _deps(request).promptlog.list(thread_id)
 
 

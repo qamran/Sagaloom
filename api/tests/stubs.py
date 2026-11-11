@@ -90,6 +90,9 @@ class FakeDirectory:
 # The default signed-in user of the API tests.
 USER_A = "user_a"
 TOKEN_A = "tok-a"
+# A second user, for the isolation tests (M5 Task 6).
+USER_B = "user_b"
+TOKEN_B = "tok-b"
 
 
 def bearer(token: str = TOKEN_A) -> dict[str, str]:

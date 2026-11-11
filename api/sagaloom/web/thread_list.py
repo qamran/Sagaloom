@@ -124,12 +124,22 @@ def _row(t: ThreadInfo, s: ThreadSummary, running: bool) -> dict:
 
 
 async def list_rows(
-    deps: Any, *, pending: bool, world_id: str | None, kind: ThreadKind | None
+    deps: Any,
+    *,
+    world_ids: set[str],
+    pending: bool,
+    world_id: str | None,
+    kind: ThreadKind | None,
 ) -> list[dict]:
-    """Newest first. `badge` is the worst badge among the pending checks, `running` whether the
+    """The threads in `world_ids` (the user's worlds), newest first; a `world_id` filter outside
+    them lists nothing. `badge` is the worst badge among the pending checks, `running` whether the
     thread's turn lock is held. A summarised thread that is not running costs no checkpoint read."""
+    if world_id is not None and world_id not in world_ids:
+        return []
     out = []
     for t in reversed(deps.threads.list(world_id, kind)):
+        if t.world_id not in world_ids:  # skipped before any checkpoint read or summary write
+            continue
         running = _running(deps, t.thread_id)
         if t.summary is not None and not running:
             summary = t.summary

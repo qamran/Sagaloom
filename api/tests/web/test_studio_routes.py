@@ -49,7 +49,7 @@ def build_switchable_env(store, tmp_path, aclose_later) -> Env:
         checkpointer=memory_checkpointer(),
     )
     worlds = WorldRegistry(tmp_path / "worlds.json")
-    worlds.create("World One", world_id=W)
+    worlds.create("World One", world_id=W, owner_id=USER_A)
     deps = AppDeps(
         store=store,
         worlds=worlds,

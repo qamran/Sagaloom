@@ -17,7 +17,7 @@ from pydantic import Field
 
 from checkpointers import memory_checkpointer
 from stubs import StubLLM  # noqa: F401  (the one structured-output stub, as `fakes.StubLLM`)
-from stubs import TOKEN_A, USER_A, FakeDirectory, FakeVerifier, bearer  # noqa: F401
+from stubs import TOKEN_A, TOKEN_B, USER_A, USER_B, FakeDirectory, FakeVerifier, bearer  # noqa: F401
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
@@ -215,8 +215,11 @@ def make_env(store, tmp_path, aclose_later):
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
         guard=None, router=None, extraction=None, wiki=None,
     ) -> Env:
+        # No `ADMIN_EMAIL`: the default users are not the admin, so its "inherit ownerless
+        # worlds" cannot hide a missing owner check. A test that needs the admin sets it.
         settings = Settings(
-            _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path
+            _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path,
+            admin_email=None,
         )
         agent = ScriptedChat(script=iter(script), usage=usage)
         roles = {
@@ -240,7 +243,7 @@ def make_env(store, tmp_path, aclose_later):
             memory_locks=memory_locks,
         )
         worlds = WorldRegistry(tmp_path / "worlds.json")
-        worlds.create("World One", world_id=W)
+        worlds.create("World One", world_id=W, owner_id=USER_A)  # the default user's world
         deps = AppDeps(
             store=store,
             worlds=worlds,
@@ -252,7 +255,7 @@ def make_env(store, tmp_path, aclose_later):
             memory_locks=memory_locks,
             model_for=lambda role: roles[role],
             wiki=wiki,
-            verifier=FakeVerifier({TOKEN_A: USER_A}),
+            verifier=FakeVerifier({TOKEN_A: USER_A, TOKEN_B: USER_B}),
             directory=FakeDirectory(),
             seed_dir=None,  # no per-account Velmar copy: tests use world `W`
         )
