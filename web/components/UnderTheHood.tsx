@@ -281,13 +281,15 @@ function StepGroup({
   defaultOpen: boolean;
   hidden: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  // Follows `defaultOpen` (the costliest step, which changes as a live turn's costs arrive) until the user toggles it.
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? defaultOpen;
   return (
     <div className="flex flex-col gap-2">
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => setUserOpen(!open)}
         className="flex w-full flex-col gap-1.5 rounded-lg border border-border bg-panel-2 px-3 py-2 text-left text-xs tabular-nums"
       >
         <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -462,7 +464,7 @@ export function UnderTheHood({
           )}
           {groups.map((g) => (
             <StepGroup
-              key={g.key}
+              key={`${turn.key}-${g.key}`}
               group={g}
               turnCost={totals.cost}
               defaultOpen={g === biggest}

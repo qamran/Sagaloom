@@ -200,6 +200,35 @@ describe("UnderTheHood", () => {
         "j",
       ]);
     });
+
+    const open = (name: RegExp) => screen.getByRole("button", { name }).getAttribute("aria-expanded");
+
+    it("opens the new turn's most expensive group when the turn changes", () => {
+      const other: TurnView = { ...grouped, key: "live-2", calls: [mk("j2", "judge", 0.01), mk("a3", "agent", 0.001)] };
+      const { rerender } = render(<UnderTheHood turn={grouped} onClose={() => {}} />);
+      expect(open(/^Chat/)).toBe("true");
+      rerender(<UnderTheHood turn={other} onClose={() => {}} />);
+      expect(open(/^Check/)).toBe("true");
+      expect(open(/^Chat/)).toBe("false");
+    });
+
+    it("follows the most expensive group as a live turn's costs arrive", () => {
+      const pending = (id: string, role: string) => ({ ...mk(id, role, 0), response: null });
+      const live: TurnView = { ...grouped, calls: [pending("a", "agent"), pending("j", "judge")] };
+      const { rerender } = render(<UnderTheHood turn={live} onClose={() => {}} />);
+      expect(open(/^Chat/)).toBe("true");
+      rerender(<UnderTheHood turn={{ ...live, calls: [mk("a", "agent", 0.001), mk("j", "judge", 0.01)] }} onClose={() => {}} />);
+      expect(open(/^Check/)).toBe("true");
+    });
+
+    it("keeps a group the user toggled when costs change", async () => {
+      const user = userEvent.setup();
+      const live: TurnView = { ...grouped, calls: [mk("a", "agent", 0.01), mk("j", "judge", 0.001)] };
+      const { rerender } = render(<UnderTheHood turn={live} onClose={() => {}} />);
+      await user.click(screen.getByRole("button", { name: /^Chat/ })); // close the open group
+      rerender(<UnderTheHood turn={{ ...live, calls: [mk("a", "agent", 0.02), mk("j", "judge", 0.001)] }} onClose={() => {}} />);
+      expect(open(/^Chat/)).toBe("false");
+    });
   });
 
   describe("secrets", () => {
