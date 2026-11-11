@@ -13,7 +13,9 @@ Run it from `web/`:
 
 It starts its own API (port 8100) and web app (port 3100) on a throwaway data folder, so it never touches
 your dev servers or `data/`. The web app builds into `web/.next-e2e/` (`NEXT_DIST_DIR`, read by `next.config.ts`):
-Next 16 lets only one `next dev` use `.next/dev`, so the demo can run while your `pnpm dev` is up. Before uvicorn starts, the API command runs `uv run python scripts/seed_wiki_cache.py
+Next 16 lets only one `next dev` use `.next/dev`, so the demo can run while your `pnpm dev` is up. `tsconfig.json`
+excludes `.next-e2e`, so a normal `tsc` or `pnpm build` never checks its generated types. Each run points the
+git-ignored `web/next-env.d.ts` at `.next-e2e`; the next normal `pnpm dev` or `pnpm build` points it back. Before uvicorn starts, the API command runs `uv run python scripts/seed_wiki_cache.py
 "<data dir>"`, which copies the committed Wikipedia fixtures (`api/tests/fixtures/wiki/`: Rivendell, Gandalf, The
 Shire and the `en.wikipedia.org` licence) into `<data dir>/cache/wiki/` (R-W3-10), so the fan-wiki step is served
 from the cache.
@@ -33,7 +35,9 @@ the real environment wins. `e2e/global-setup.ts` calls `clerkSetup()` from `@cle
 testing token with `CLERK_SECRET_KEY` (and reads `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) from `web/.env.local`, so the
 browser gets past Clerk's bot protection. The demo API gets `ADMIN_EMAIL` set to the test user's email, so the test
 user is the admin: the demo switches admin-only settings (the input guard, the tools), and the admin has no monthly
-budget. `CLERK_ISSUER` and `CLERK_SECRET_KEY` reach the API from the root `.env` and `api/.env`, as for the dev API.
+budget. `CLERK_ISSUER` reaches the API from the root `.env`, as for the dev API. Both servers inherit the
+Playwright process's environment, so the values loaded from `web/.env.local` (`CLERK_SECRET_KEY`, `API_SHARED_SECRET`)
+reach the API as real env and win over `api/.env` and the root `.env`: keep them the same.
 
 Step 0 checks the public home page signed out (the hero line and a **Sign up free** link; not the preview, which
 Next may serve from its cache), signs in with `setupClerkTestingToken` and `clerk.signIn` (password strategy), opens

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { NO_TEST_USER, testUser } from "./testUser";
 
 // The exit demo (M1, then Waves 1 to 5, 7 and 8, then M3 Wave 3), end to end, against the real seed and real models.
 const SEED = path.resolve(__dirname, "../../seed/velmar/scripted_proposals.json");
@@ -38,14 +39,11 @@ async function send(page: Page, text: string) {
 }
 
 // M5: the demo signs in as a Clerk test user (e2e/README.md). playwright.config.ts loads web/.env.local.
-const E2E_EMAIL = process.env.E2E_CLERK_USER_EMAIL?.trim() ?? "";
-const E2E_PASSWORD = process.env.E2E_CLERK_USER_PASSWORD?.trim() ?? "";
+const TEST_USER = testUser();
 
 test("M1 exit demo", async ({ page }) => {
-  test.skip(
-    !E2E_EMAIL || !E2E_PASSWORD,
-    "No Clerk test user: set E2E_CLERK_USER_EMAIL and E2E_CLERK_USER_PASSWORD in web/.env.local (see web/e2e/README.md).",
-  );
+  test.skip(!TEST_USER, NO_TEST_USER);
+  const { email, password } = TEST_USER!;
 
   // 0. M5: signed out, `/` is the public home page. Then sign in as the test user; Clerk lands on `/`,
   // which sends a signed-in author to Canon. The preview is not checked: Next may serve a cached copy.
@@ -53,7 +51,7 @@ test("M1 exit demo", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("you decide, it checks");
   await expect(page.getByRole("link", { name: "Sign up free" }).first()).toBeVisible();
-  await clerk.signIn({ page, signInParams: { strategy: "password", identifier: E2E_EMAIL, password: E2E_PASSWORD } });
+  await clerk.signIn({ page, signInParams: { strategy: "password", identifier: email, password } });
   await page.goto("/");
   // The only proof the sign-in worked (the helper does not check), so it fails fast rather than in 180 s.
   await expect(page).toHaveURL(/\/canon/, { timeout: 30_000 });
