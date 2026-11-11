@@ -18,7 +18,7 @@ The author's decision (2026-11-11): build **private accounts per author now**, a
 - G1. A visitor can sign up (email + password, or Google), confirm their email, sign in, sign out and reset a forgotten password — all through Clerk.
 - G2. A logged-in author sees only their own worlds, and through them only their own threads, entries, imports, exports, memory (preferences), prompt records and cost totals. Every API route enforces this on the server; hiding things in the UI is not enough.
 - G3. Each new account starts with its own copy of the demo world Velmar, so the Get Started checklist and the README walkthroughs work for every author.
-- G4. Existing data survives: on the first sign-up after upgrade, every world that has no owner (today's `velmar` and any worlds the author made) is given to that first account.
+- G4. Existing data survives: every world that has no owner (today's `velmar` and any worlds the author made) is given to the admin account (§5.4) on its first verified request.
 - G5. A logged-out visitor landing on `/` sees a public home page with a read-only preview, and is sent to log in when they open any app page.
 - G6. Personalisation, the second half of Medium 4: the author's display name in the header with an account menu, the last world they used remembered per account (server-side, so it follows them across browsers), and the existing per-world preferences (tone, genre, banned tropes, notes) now clearly belong to that author.
 - G7. The data model leaves room for sharing: a world has an owner, and access is checked through one function, so a later "members" table can widen it without touching every route.
@@ -74,7 +74,7 @@ Entry ids are global today (`next_entry_id` counts across the whole Chroma colle
 ### 5.4 Accounts and the demo world
 
 - Sign-up creates the user, then copies Velmar into a new world owned by them: name "Velmar", `is_demo=True`, a fresh world id (the registry's slug rule, e.g. `velmar-2`), the seed entries at their seed ids (§5.3).
-- **Admin and existing data (Claude's call, after the builder check):** the admin is named by `ADMIN_EMAIL` in `api/.env`, never by sign-up order, so a stranger who signs up first on a reachable server cannot take the data. The account whose email equals `ADMIN_EMAIL` is `is_admin`, and on its first verified request (or on API start, if it already exists) every world with `owner_id` missing is assigned to it. If that account already has a demo world through the assignment (the existing `velmar`), no second copy is made. With `ADMIN_EMAIL` unset there is no admin and unowned worlds stay unowned (invisible to everyone) until it is set; the API logs a warning at start.
+- **Admin and existing data (Claude's call, after the builder check):** the admin is named by `ADMIN_EMAIL` in `api/.env`, never by sign-up order, so a stranger who signs up first on a reachable server cannot take the data. The account whose email equals `ADMIN_EMAIL` is `is_admin`, and on its first verified request every world with `owner_id` missing is assigned to it. If that account already has a demo world through the assignment (the existing `velmar`), no second copy is made. With `ADMIN_EMAIL` unset there is no admin and unowned worlds stay unowned (invisible to everyone) until it is set; the API logs a warning at start.
 - `ensure_first_run` no longer creates a global Velmar at API start; seeding happens per account at sign-up.
 - The Get Started checklist (`GetStarted.tsx`, `localStorage` flags) stays as it is, but its keys are prefixed with the user id so a second account on the same browser starts fresh.
 - **Last world:** `users` stores `last_world_id`; the world picker reads it on load and writes it on change (`PUT /api/me` with `last_world_id`). The current `localStorage` world choice becomes a fallback only.
@@ -83,7 +83,7 @@ Entry ids are global today (`next_entry_id` counts across the whole Chroma colle
 
 Developer settings (models per role, agent temperature / max tokens / system prompt, tool toggles, guard on/off) are app-wide and stay app-wide.
 
-- The **first account is admin** (`is_admin`, §5.4). Only an admin may call `PUT /api/settings`, `PUT /api/settings/models`; others get 403.
+- The **admin** is the account with the Clerk-verified `ADMIN_EMAIL` (`is_admin`, §5.4). Only an admin may call `PUT /api/settings`, `PUT /api/settings/models`; others get 403.
 - Every logged-in user can open Studio. Non-admins see the same panels read-only (controls disabled, a one-line note "Only the admin can change developer settings"), and their own usage, memory and guard verdicts.
 - The Feature map gains a **User accounts** card (Medium 4): Live, with a Try it link to the account menu.
 
