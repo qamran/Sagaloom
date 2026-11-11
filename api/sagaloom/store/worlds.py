@@ -98,6 +98,19 @@ class WorldRegistry:
                 self._save(worlds)
             return assigned
 
+    def reassign_owner(self, old_owner_id: str, new_owner_id: str) -> list[str]:
+        """Gives every world of `old_owner_id` to `new_owner_id` (`scripts/reassign_owner.py`);
+        returns the ids moved."""
+        with self._lock:
+            worlds = self._load()
+            moved = [w.id for w in worlds if w.owner_id == old_owner_id]
+            if moved:
+                for w in worlds:
+                    if w.owner_id == old_owner_id:
+                        w.owner_id = new_owner_id
+                self._save(worlds)
+            return moved
+
     def get(self, id: str) -> World | None:
         return next((w for w in self._load() if w.id == id), None)
 

@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from httpx import ASGITransport, AsyncClient

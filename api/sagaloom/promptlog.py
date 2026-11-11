@@ -143,6 +143,14 @@ class PromptLog:
                 for tid, owner in owners.items()
             )
 
+    def reassign_user(self, old_user_id: str, new_user_id: str) -> int:
+        """Moves every record of `old_user_id` to `new_user_id` (`scripts/reassign_owner.py`);
+        returns the number of records moved."""
+        with closing(self._connect()) as conn, conn:
+            return conn.execute(
+                "UPDATE prompt_log SET user_id = ? WHERE user_id = ?", (new_user_id, old_user_id)
+            ).rowcount
+
     def complete(self, id: str, response: dict) -> None:
         with closing(self._connect()) as conn, conn:
             row = conn.execute("SELECT record FROM prompt_log WHERE id = ?", (id,)).fetchone()

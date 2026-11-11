@@ -14,7 +14,7 @@ from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.app import AppDeps, SEED_DIR
 from sagaloom.web.routes import message_dict
 
-from fakes import KEY, USER_A, W, StubLLM, create_call, endless, names, parse_sse, tc
+from fakes import KEY, USER_A, W, StubLLM, create_call, endless, names, tc
 
 
 def approve(pid):
@@ -463,7 +463,7 @@ async def test_recursion_limit_becomes_error_event(make_env):
 
 
 async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(make_env, monkeypatch):
-    import sagaloom.web.routes as routes
+    from sagaloom.web import routes
 
     def boom(*a, **k):
         raise AssertionError("make_tools must not be called")
