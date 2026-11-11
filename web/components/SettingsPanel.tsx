@@ -29,7 +29,7 @@ export function SettingsPanel({ payload, readOnly = false }: { payload: Settings
   const tokensOk = n === null || (Number.isInteger(n) && n >= 256 && n <= 16000);
   const promptOk = prompt.length >= 1 && prompt.length <= 8000;
   const b = budget.trim() === "" ? NaN : Number(budget);
-  const budgetOk = Number.isFinite(b) && b >= 0;
+  const budgetOk = Number.isFinite(b) && b >= 0 && b <= 1000;
 
   const patch: SettingsPatch = {};
   if (tempOk && t !== base.settings.agent_temperature) patch.agent_temperature = t;
@@ -117,6 +117,7 @@ export function SettingsPanel({ payload, readOnly = false }: { payload: Settings
             type="number"
             step="0.25"
             min={0}
+            max={1000}
             value={budget}
             aria-label="Monthly AI budget (US$)"
             aria-invalid={!budgetOk}
@@ -124,7 +125,7 @@ export function SettingsPanel({ payload, readOnly = false }: { payload: Settings
             onChange={(e) => setBudget(e.target.value)}
             className={`${FIELD} w-28`}
           />
-          <span>per account per month; the admin has no limit</span>
+          <span>0 to 1000, per account per month; the admin has no limit</span>
         </label>
       </div>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">

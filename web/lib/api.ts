@@ -34,7 +34,12 @@ export class ApiError extends Error {
 
 /** The API's 401 detail when the request carries no valid Clerk session token. */
 export const SIGN_IN_REQUIRED = "sign in required";
-/** What to show for a 503: a new account is still being set up, or Clerk is unreachable. */
+/** The API's 503 detail when Clerk or account provisioning is down (other 503s mean other things). */
+export const ACCOUNT_SERVICE_DOWN = "account service unavailable";
+/** True for the account-service 503 only; "import is not available" and the like are not account problems. */
+export const isAccountDown = (status: number, detail: string | undefined) =>
+  status === 503 && detail === ACCOUNT_SERVICE_DOWN;
+/** What to show for the account-service 503: a new account is still being set up, or Clerk is unreachable. */
 export const ACCOUNT_UNAVAILABLE =
   "Setting up your account, or the account service is unavailable — try again.";
 // Pages that render without a session: a 401 seen there must not redirect, or sign-in would reload itself.
@@ -113,22 +118,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
   let res = await send();
-  // The first request after sign-up provisions the account and may answer 503 once; a GET is safe to repeat.
+  let detail: string | undefined;
+  let detailRead = false;
+  // The first request after sign-up provisions the account and may answer the account 503 once; a GET is
+  // safe to repeat. Reading the detail also drains the first body before the retry.
   const isGet = (init?.method ?? "GET").toUpperCase() === "GET";
   if (res.status === 503 && isGet) {
-    await res.body?.cancel();
-    await wait(RETRY_503_MS);
-    res = await send();
+    detail = await detailFrom(res);
+    detailRead = true;
+    if (isAccountDown(res.status, detail)) {
+      await wait(RETRY_503_MS);
+      res = await send();
+      detailRead = false;
+    }
   }
   if (!res.ok) {
-    const detail = await detailFrom(res);
+    if (!detailRead) detail = await detailFrom(res);
     const auth = handleAuthStatus(res.status, detail);
     const message =
       auth === "rejected"
         ? SESSION_REJECTED
-        : res.status === 503
+        : isAccountDown(res.status, detail)
           ? ACCOUNT_UNAVAILABLE
-          : `${res.status} ${res.statusText || "request failed"}`;
+          : res.status === 503 && detail
+            ? detail
+            : `${res.status} ${res.statusText || "request failed"}`;
     throw new ApiError(res.status, message, detail);
   }
   return (await res.json()) as T;

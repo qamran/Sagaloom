@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACCOUNT_UNAVAILABLE, getThread } from "@/lib/api";
+import { ACCOUNT_UNAVAILABLE, getThread, SESSION_REJECTED } from "@/lib/api";
 import { TOUR_KEYS } from "@/lib/tour";
 import type { CheckResult, Decision, PendingInterrupt, Proposal, ThreadState } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
@@ -435,6 +435,33 @@ describe("useAgentStream", () => {
     });
     expect(result.current.status).toBe("error");
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("shows the rejected-session copy when sign-in just bounced back, without redirecting", async () => {
+    const assign = vi.fn();
+    getThreadMock.mockResolvedValue(thread());
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    vi.stubGlobal("location", { pathname: "/chat/t1", search: "", assign });
+    sessionStorage.setItem("sagaloom.signInRedirectAt", String(Date.now() - 2_000));
+    fetchMock.mockResolvedValue(errorResponse(401, "sign in required"));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(assign).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toBe(SESSION_REJECTED);
+  });
+
+  it("shows another 503's own detail, not the account copy", async () => {
+    getThreadMock.mockResolvedValue(thread());
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    fetchMock.mockResolvedValue(errorResponse(503, "memory is not available"));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(result.current.error).toBe("memory is not available");
   });
 
   it("collects one decision per proposal and submits them together, in pending order", async () => {

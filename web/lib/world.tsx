@@ -37,7 +37,7 @@ const WorldContext = createContext<WorldContextValue | null>(null);
 
 export function WorldProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const query = useQuery({ queryKey: ["worlds"], queryFn: getWorlds, enabled: !!isSignedIn });
   const meQuery = useQuery({ queryKey: ME_KEY, queryFn: getMe, enabled: !!isSignedIn });
   // The author's own pick this session; before one, the account's last world, then this browser's.
@@ -80,7 +80,8 @@ export function WorldProvider({ children }: { children: ReactNode }) {
   const value: WorldContextValue = {
     worlds,
     world,
-    isLoading: query.isLoading || !meSettled,
+    // Until clerk-js loads, isSignedIn is undefined and nothing is fetched: that is loading, not an empty account.
+    isLoading: !isLoaded || query.isLoading || !meSettled,
     error: query.error,
     setWorldId,
     startWorld,

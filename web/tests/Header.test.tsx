@@ -120,14 +120,14 @@ describe("Header Show secrets toggle", () => {
 describe("Header account", () => {
   it("shows the spend line against the budget and the account menu", async () => {
     renderHeader();
-    expect(await screen.findByLabelText("AI spend this month")).toHaveTextContent("This month: $0.23 of $1.00");
+    expect(await screen.findByTestId("spend-line")).toHaveTextContent("This month: $0.23 of $1.00");
     expect(screen.getByTestId("user-button")).toBeInTheDocument();
   });
 
   it("shows only the spend for the admin, with no limit", async () => {
     vi.mocked(getMe).mockResolvedValue(me({ is_admin: true, monthly_budget_usd: null }));
     renderHeader();
-    expect(await screen.findByLabelText("AI spend this month")).toHaveTextContent(/^This month: \$0\.23$/);
+    expect(await screen.findByTestId("spend-line")).toHaveTextContent(/^This month: \$0\.23$/);
   });
 
   it("offers Sign in and Sign up free, and nothing else, when signed out", () => {

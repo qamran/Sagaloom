@@ -6,8 +6,12 @@ import { getMe, getWorlds, putMe } from "@/lib/api";
 import { TOUR_KEYS } from "@/lib/tour";
 import type { Me, World } from "@/lib/types";
 import { useWorld, WorldProvider } from "@/lib/world";
+import { Providers } from "@/components/Providers";
 
-vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ isLoaded: true, isSignedIn: true }) }));
+const auth = vi.hoisted(() => ({
+  value: { isLoaded: true, isSignedIn: true as boolean | undefined, userId: "user_a" as string | null | undefined },
+}));
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => auth.value }));
 vi.mock("@/lib/api", () => ({ getWorlds: vi.fn(), getMe: vi.fn(), putMe: vi.fn(), createWorld: vi.fn() }));
 
 const w = (id: string): World => ({ id, name: id, is_demo: false, divergent: false, owner_id: "user_a" });
@@ -22,7 +26,13 @@ function Probe() {
   useEffect(() => {
     handle.current = w;
   });
-  return <p data-testid="active">{w.world?.id ?? "none"}</p>;
+  return (
+    <>
+      <p data-testid="active">{w.world?.id ?? "none"}</p>
+      <p data-testid="loading">{String(w.isLoading)}</p>
+      <p data-testid="worlds">{w.worlds.map((x) => x.id).join(",")}</p>
+    </>
+  );
 }
 const setup = () =>
   render(
@@ -34,6 +44,7 @@ const setup = () =>
   );
 
 beforeEach(() => {
+  auth.value = { isLoaded: true, isSignedIn: true, userId: "user_a" };
   vi.mocked(getWorlds).mockReset().mockResolvedValue([w("velmar-ab12"), w("mine"), w("other")]);
   vi.mocked(getMe).mockReset().mockResolvedValue(me("mine"));
   vi.mocked(putMe).mockReset().mockResolvedValue(me("other"));
@@ -70,5 +81,70 @@ describe("WorldProvider", () => {
     setup();
     await waitFor(() => expect(screen.getByTestId("active")).toHaveTextContent("mine"));
     expect(TOUR_KEYS.visited).toBe("sagaloom.tour.user_a.visited");
+  });
+
+  it("is loading, not empty, until Clerk has loaded", async () => {
+    auth.value = { isLoaded: false, isSignedIn: undefined, userId: undefined };
+    const view = setup();
+    expect(screen.getByTestId("loading")).toHaveTextContent("true");
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
+    expect(getWorlds).not.toHaveBeenCalled();
+
+    auth.value = { isLoaded: true, isSignedIn: true, userId: "user_a" };
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <WorldProvider>
+          <Probe />
+        </WorldProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("active")).toHaveTextContent("mine"));
+    expect(screen.getByTestId("loading")).toHaveTextContent("false");
+  });
+});
+
+describe("Providers across a Clerk user change", () => {
+  const app = () => (
+    <Providers>
+      <Probe />
+    </Providers>
+  );
+
+  it("drops the previous user's data and picked world before the new user's queries answer", async () => {
+    const view = render(app());
+    await waitFor(() => expect(screen.getByTestId("active")).toHaveTextContent("mine"));
+    act(() => handle.current?.setWorldId("other"));
+    expect(TOUR_KEYS.visited).toBe("sagaloom.tour.user_a.visited");
+
+    // User B signs in without a page load; B's queries have not answered yet. (This browser's stored
+    // pick is cleared so only the in-memory one is tested; real world ids differ between accounts.)
+    localStorage.removeItem("sagaloom.world");
+    let answerWorlds!: (w: World[]) => void;
+    let answerMe!: (m: Me) => void;
+    vi.mocked(getWorlds).mockReturnValue(new Promise((r) => (answerWorlds = r)));
+    vi.mocked(getMe).mockReturnValue(new Promise((r) => (answerMe = r)));
+    auth.value = { isLoaded: true, isSignedIn: true, userId: "user_b" };
+    view.rerender(app());
+
+    expect(screen.getByTestId("worlds")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("active")).toHaveTextContent("none");
+    expect(screen.getByTestId("loading")).toHaveTextContent("true");
+
+    await act(async () => {
+      answerWorlds([w("b-velmar"), w("other")]);
+      answerMe({ ...me(null), id: "user_b" });
+    });
+    // A's pick ("other") is not carried over: B starts in B's first world.
+    await waitFor(() => expect(screen.getByTestId("active")).toHaveTextContent("b-velmar"));
+    expect(TOUR_KEYS.visited).toBe("sagaloom.tour.user_b.visited");
+  });
+
+  it("keeps what was fetched while Clerk finished its first load", async () => {
+    auth.value = { isLoaded: false, isSignedIn: undefined, userId: undefined };
+    const view = render(app());
+    auth.value = { isLoaded: true, isSignedIn: true, userId: "user_a" };
+    view.rerender(app());
+    await waitFor(() => expect(screen.getByTestId("active")).toHaveTextContent("mine"));
+    expect(getWorlds).toHaveBeenCalledTimes(1);
   });
 });

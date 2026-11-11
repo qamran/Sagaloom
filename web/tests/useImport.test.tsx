@@ -195,6 +195,15 @@ describe("useImport", () => {
     expect(result.current.error).toBe(detail);
   });
 
+  it("shows another 503's own detail, not the account copy", async () => {
+    fetchMock.mockResolvedValue(errorResponse(503, "import is not available"));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(result.current.error).toBe("import is not available");
+  });
+
   it("shows the account-service copy on a 503", async () => {
     fetchMock.mockResolvedValue(errorResponse(503, "account service unavailable"));
     const { result } = setup();

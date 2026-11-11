@@ -98,13 +98,21 @@ describe("API 401 and 503 handling", () => {
   it("drains the first 503 body before retrying a GET", async () => {
     vi.useFakeTimers();
     const first = json(503, { detail: "account service unavailable" });
-    const cancel = vi.spyOn(first.body!, "cancel");
     fetchMock.mockResolvedValueOnce(first).mockResolvedValueOnce(json(200, []));
 
     const pending = getWorlds();
     await vi.advanceTimersByTimeAsync(1500);
     await pending;
-    expect(cancel).toHaveBeenCalled();
+    expect(first.bodyUsed).toBe(true);
+  });
+
+  it("shows another 503's own detail, and does not retry it", async () => {
+    fetchMock.mockImplementation(async () => json(503, { detail: "memory is not available" }));
+
+    const err = await getWorlds().catch((e: unknown) => e);
+    expect((err as ApiError).status).toBe(503);
+    expect((err as ApiError).message).toBe("memory is not available");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

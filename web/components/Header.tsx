@@ -199,7 +199,7 @@ function SpendLine() {
   if (!me) return null;
   return (
     <div
-      aria-label="AI spend this month"
+      data-testid="spend-line"
       className={`rounded-full border px-3 py-[5px] text-xs ${
         me.over_budget ? "border-conflict text-conflict-text" : "border-border text-muted-foreground"
       }`}

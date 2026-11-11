@@ -162,6 +162,19 @@ describe("SettingsPanel budget and admin rules", () => {
     await waitFor(() => expect(putSettings).toHaveBeenCalledWith({ monthly_budget_usd: 2.5 }));
   });
 
+  it("refuses a budget over 1000 inline", async () => {
+    setup();
+    const b = screen.getByLabelText("Monthly AI budget (US$)");
+    expect(b).toHaveAttribute("max", "1000");
+    await userEvent.clear(b);
+    await userEvent.type(b, "1000.25");
+    expect(b).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.clear(b);
+    await userEvent.type(b, "1000");
+    expect(b).toHaveAttribute("aria-invalid", "false");
+  });
+
   it("disables every control and says why for a non-admin", () => {
     setup(undefined, payload, true);
     expect(screen.getByText("Only the admin can change developer settings.")).toBeInTheDocument();

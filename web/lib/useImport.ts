@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ACCOUNT_UNAVAILABLE, handleAuthStatus, PROXY_BASE, SESSION_REJECTED } from "./api";
+import { ACCOUNT_UNAVAILABLE, handleAuthStatus, isAccountDown, PROXY_BASE, SESSION_REJECTED } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import type { SseEvent } from "./types";
 
@@ -79,7 +79,8 @@ export function useImport(): ImportRun {
           const auth = handleAuthStatus(res.status, detail);
           if (auth === "redirected") return;
           if (auth === "rejected") fail(SESSION_REJECTED);
-          else if (res.status === 503) fail(ACCOUNT_UNAVAILABLE);
+          else if (isAccountDown(res.status, detail)) fail(ACCOUNT_UNAVAILABLE);
+          else if (res.status === 503) fail(detail || UNREACHABLE); // e.g. "import is not available"
           else if (res.status === 402) fail(detail || "You've used this month's AI budget.");
           else if (res.status === 413) fail("That text is too large.");
           else if (res.status === 429) fail("Too many requests. Wait a moment and try again.");

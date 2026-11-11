@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ACCOUNT_UNAVAILABLE, getThread, handleAuthStatus, PROXY_BASE, SESSION_REJECTED } from "./api";
+import { ACCOUNT_UNAVAILABLE, getThread, handleAuthStatus, isAccountDown, PROXY_BASE, SESSION_REJECTED } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
@@ -250,8 +250,13 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
             setError(SESSION_REJECTED);
             return;
           }
-          if (res.status === 503) {
+          if (isAccountDown(res.status, detail)) {
             setError(ACCOUNT_UNAVAILABLE);
+            return;
+          }
+          // Any other 503 (e.g. "memory is not available") says what is missing.
+          if (res.status === 503) {
+            setError(detail || UNREACHABLE);
             return;
           }
           // Over the monthly budget: the API's own sentence, word for word.
