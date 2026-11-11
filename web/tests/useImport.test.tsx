@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACCOUNT_UNAVAILABLE } from "@/lib/api";
 import { useImport } from "@/lib/useImport";
 
@@ -46,6 +46,7 @@ beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe("useImport", () => {
   it("reports the candidates while extracting, then sends the body", async () => {
@@ -156,7 +157,6 @@ describe("useImport", () => {
       await result.current.start("w1", { text: "x" });
     });
     expect(assign).toHaveBeenCalledWith("/sign-in?redirect_url=%2Fimport");
-    vi.unstubAllGlobals();
   });
 
   it("shows an error, not a sign-in redirect, for a 401 'unauthorised'", async () => {
@@ -169,7 +169,6 @@ describe("useImport", () => {
     });
     expect(assign).not.toHaveBeenCalled();
     expect(result.current.phase).toBe("error");
-    vi.unstubAllGlobals();
   });
 
   it("shows the account-service copy on a 503", async () => {
