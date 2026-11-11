@@ -23,16 +23,16 @@ def bearer_token(authorization: str | None) -> str | None:
 
 
 class UnconfiguredVerifier:
-    """Used when `CLERK_ISSUER` is unset: nobody can sign in."""
+    """Used when `CLERK_ISSUER` is unset: nobody can sign in, and that is the server's fault (503)."""
 
     def verify(self, token: str) -> Claims:
-        raise AuthError("CLERK_ISSUER is not set")
+        raise AuthUnavailable("CLERK_ISSUER is not set")
 
 
 async def current_user(request: Request) -> User:
     """Verifies the bearer token and returns its user, also stored on `request.state.user`.
-    401 `sign in required` for a missing or untrusted token; neither the token nor the
-    verifier's reason is logged or returned."""
+    401 `sign in required` for a missing or untrusted token; the verifier's reason is logged at
+    INFO, the token never. 503 when the token cannot be checked or the profile not fetched."""
     token = bearer_token(request.headers.get("authorization"))
     if token is None:
         raise HTTPException(status_code=401, detail=SIGN_IN_REQUIRED)
@@ -44,7 +44,8 @@ async def current_user(request: Request) -> User:
         # `AuthError` messages carry no token or key, so the reason is safe to log.
         log.warning("Clerk token check unavailable: %s", exc)
         raise HTTPException(status_code=503, detail=UNAVAILABLE) from None
-    except AuthError:
+    except AuthError as exc:
+        log.info("sign-in rejected: %s", exc)  # an exception class name, never the token
         raise HTTPException(status_code=401, detail=SIGN_IN_REQUIRED) from None
     try:
         user = await ensure_user(deps, claims)

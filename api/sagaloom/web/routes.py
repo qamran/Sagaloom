@@ -223,7 +223,7 @@ def _stream_run(
 
 @router.get("/worlds")
 def list_worlds(request: Request) -> list[World]:
-    return _deps(request).worlds.list()
+    return _deps(request).worlds.all_worlds()  # scoped to the user in Task 6
 
 
 @router.post("/worlds")

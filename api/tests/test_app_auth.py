@@ -18,7 +18,8 @@ def client(aclose_later, tmp_path):
         web_origin=ORIGIN,
         data_dir=tmp_path,  # never the developer's api/data/
     )
-    app = create_app(settings, AppDeps(verifier=FakeVerifier({TOKEN_A: USER_A}), directory=FakeDirectory()))
+    deps = AppDeps(verifier=FakeVerifier({TOKEN_A: USER_A}), directory=FakeDirectory(), seed_dir=None)
+    app = create_app(settings, deps)
     c = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     aclose_later(c)
     return c

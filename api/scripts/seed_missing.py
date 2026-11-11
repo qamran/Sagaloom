@@ -1,7 +1,7 @@
 """Add the Velmar seed entries that are missing from an existing `velmar` world.
 
-Use it after a new seed entry ships (such as ent_0019, The Choir Ledger): first-run seeding
-only happens when no world exists, so older data never gets it. Entries already in the world,
+Use it after a new seed entry ships (such as ent_0019, The Choir Ledger): a Velmar copied
+before that never gets it. Entries already in the world,
 including any the author edited, are left alone.
 
 Stop the API first: it holds the same Chroma directory open. The store is built exactly as at
@@ -32,6 +32,7 @@ def main() -> None:
         return
     client = chromadb.PersistentClient(path=str(settings.data_dir / "chroma"))
     store = CanonStore(client, make_embeddings(settings))
+    store.migrate_record_ids()  # as at app startup: before any write, re-key pre-M5 records
     report = seed_missing(store, SEED_DIR)
     for seed_id, entry in report.added:
         print(f"added {seed_id} as {entry.id} ({entry.title})")

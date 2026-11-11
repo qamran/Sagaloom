@@ -300,3 +300,47 @@ def test_sources_round_trip_through_chroma(store):
     got = store.get_entry("w1", "ent_0001")
     assert got == saved and got.sources == sources
     assert store.list_entries("w1")[0].sources == sources
+
+
+def _legacy(store, entry, doc="legacy doc"):
+    """A record as stored before ids were per world: record id == entry id."""
+    store.col.upsert(
+        ids=[entry.id],
+        documents=[doc],
+        embeddings=[[0.5] * 256],
+        metadatas=[
+            {
+                "world_id": entry.world_id,
+                "type": entry.type,
+                "status": entry.status,
+                "title_norm": norm(entry.title),
+                "entry_json": entry.model_dump_json(),
+            }
+        ],
+    )
+
+
+def test_migrate_record_ids_skips_a_target_that_exists(store):
+    kept = store.upsert_entry(mk(id="ent_0001", world="velmar", title="Already keyed"))
+    _legacy(store, mk(id="ent_0001", world="velmar", title="Stale legacy copy"))
+    assert store.migrate_record_ids() == 0
+    assert store.get_entry("velmar", "ent_0001") == kept
+    assert store.col.get(include=[])["ids"] == ["velmar/ent_0001"]  # the legacy record is gone
+
+
+def test_migrate_record_ids_works_in_chunks(store, monkeypatch):
+    for i in range(1, 6):
+        _legacy(store, mk(id=f"ent_{i:04d}", world="velmar", title=f"T{i}"))
+    monkeypatch.setattr(store, "_batch_size", 2)
+    sizes = []
+    real_get = store.col.get
+
+    def get(*args, **kwargs):
+        if kwargs.get("ids") is not None:
+            sizes.append(len(kwargs["ids"]))
+        return real_get(*args, **kwargs)
+
+    monkeypatch.setattr(store.col, "get", get)
+    assert store.migrate_record_ids() == 5
+    assert sizes and max(sizes) <= 2
+    assert sorted(real_get(include=[])["ids"]) == [f"velmar/ent_{i:04d}" for i in range(1, 6)]

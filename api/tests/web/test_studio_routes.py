@@ -60,6 +60,7 @@ def build_switchable_env(store, tmp_path, aclose_later) -> Env:
         model_settings=ms,
         verifier=FakeVerifier({TOKEN_A: USER_A}),
         directory=FakeDirectory(),
+        seed_dir=None,  # no per-account Velmar copy: tests use world `W`
     )
     app = create_app(settings, deps)
     env = Env(signed_in_client(app, TOKEN_A, aclose_later), app, deps, agent, settings, aclose_later)

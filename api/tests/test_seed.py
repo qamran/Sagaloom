@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from sagaloom.models import Entry, EntryDraft
-from sagaloom.seed import ensure_first_run, load_seed, seed_missing
+from sagaloom.seed import load_seed, seed_missing
 from sagaloom.store.worlds import WorldRegistry
 
 SEED = Path(__file__).resolve().parents[2] / "seed" / "velmar"
@@ -60,22 +60,7 @@ def test_load_seed_twice_is_idempotent(store, worlds):
     n2 = load_seed(store, worlds, SEED)
     assert n1 == n2
     assert [e.id for e in store.list_entries("velmar")] == ids1
-    assert len(worlds.list()) == 1
-
-
-def test_first_run_creates_only_velmar_and_makes_it_active(store, worlds):
-    world = ensure_first_run(store, worlds, SEED)
-    assert world.id == "velmar" and world.name == "Velmar" and world.is_demo
-    assert [w.id for w in worlds.list()] == ["velmar"]
-    assert len(store.list_entries("velmar")) >= 15
-
-
-def test_first_run_does_nothing_when_a_world_exists(store, worlds):
-    mine = worlds.create("Mine")
-    world = ensure_first_run(store, worlds, SEED)
-    assert world.id == mine.id
-    assert [w.id for w in worlds.list()] == [mine.id]
-    assert store.list_entries("velmar") == []
+    assert len(worlds.all_worlds()) == 1
 
 
 def test_scripted_proposals_reference_existing_ids(store, worlds):
@@ -120,26 +105,6 @@ def test_seed_keeps_a_rumour_fact_and_hidden_secret(store, worlds):
     mayor = by_id["ent_0003"]
     assert any(f.status == "secret" for f in mayor.facts)
     assert "Choir" not in mayor.body
-
-
-def test_failed_load_leaves_no_world_and_retry_succeeds(store, worlds):
-    real = store.upsert_entry
-    calls = {"n": 0}
-
-    def flaky(entry):
-        calls["n"] += 1
-        if calls["n"] == 5:
-            raise RuntimeError("embedding failed")
-        return real(entry)
-
-    store.upsert_entry = flaky
-    with pytest.raises(RuntimeError):
-        ensure_first_run(store, worlds, SEED)
-    assert worlds.list() == []
-    store.upsert_entry = real
-    world = ensure_first_run(store, worlds, SEED)
-    assert world.id == "velmar"
-    assert len(store.list_entries("velmar")) == 19
 
 
 def test_seed(store, worlds):

@@ -27,10 +27,13 @@ class TokenVerifier(Protocol):
 
 class ClerkVerifier:
     def __init__(self, issuer: str, web_origin: str, *, jwks_client=None):
-        self._issuer = issuer
+        # The `iss` claim has no trailing slash; an issuer configured with one must still match.
+        self._issuer = issuer.rstrip("/")
         self._web_origin = web_origin
         # PyJWKClient does no network I/O until the first verify(); it caches the keys.
-        self._jwks = jwks_client or jwt.PyJWKClient(f"{issuer}/.well-known/jwks.json", cache_keys=True)
+        self._jwks = jwks_client or jwt.PyJWKClient(
+            f"{self._issuer}/.well-known/jwks.json", cache_keys=True, timeout=5
+        )
 
     def verify(self, token: str) -> Claims:
         try:
@@ -77,14 +80,31 @@ class ClerkDirectory:
             )
             r.raise_for_status()
             body = r.json()
+        except httpx.HTTPStatusError as exc:
+            # The status only: the body may echo request details. Not `from exc` (see below).
+            raise AuthError(f"Clerk lookup failed: HTTP {exc.response.status_code}") from None
         except (httpx.HTTPError, ValueError) as exc:
             # Not `from exc`: the chained request/response text must not reach logs.
             raise AuthError(f"Clerk lookup failed: {type(exc).__name__}") from None
-        primary = body.get("primary_email_address_id")
-        match = next((e for e in body.get("email_addresses") or [] if e.get("id") == primary), None)
-        if match is None:
-            raise AuthError("Clerk user has no primary email")
-        email = match["email_address"]
-        verified = (match.get("verification") or {}).get("status") == "verified"
-        name = f"{body.get('first_name') or ''} {body.get('last_name') or ''}".strip()
-        return ClerkProfile(email=email, email_verified=verified, display_name=name or email.split("@")[0])
+        return _profile(body)
+
+
+def _profile(body: object) -> ClerkProfile:
+    """The profile in a Clerk user object; any unexpected shape is an `AuthError`."""
+    if not isinstance(body, dict):
+        raise AuthError("Clerk user is malformed")
+    primary = body.get("primary_email_address_id")
+    addresses = body.get("email_addresses")
+    if not isinstance(addresses, list):
+        raise AuthError("Clerk user is malformed")
+    match = next((e for e in addresses if isinstance(e, dict) and e.get("id") == primary), None)
+    if match is None:
+        raise AuthError("Clerk user has no primary email")
+    email = match.get("email_address")
+    if not isinstance(email, str) or not email:
+        raise AuthError("Clerk user is malformed")
+    verification = match.get("verification")
+    verified = isinstance(verification, dict) and verification.get("status") == "verified"
+    first, last = body.get("first_name"), body.get("last_name")
+    name = " ".join(n for n in (first, last) if isinstance(n, str) and n).strip()
+    return ClerkProfile(email=email, email_verified=verified, display_name=name or email.split("@")[0])

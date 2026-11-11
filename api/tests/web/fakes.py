@@ -254,6 +254,7 @@ def make_env(store, tmp_path, aclose_later):
             wiki=wiki,
             verifier=FakeVerifier({TOKEN_A: USER_A}),
             directory=FakeDirectory(),
+            seed_dir=None,  # no per-account Velmar copy: tests use world `W`
         )
         app = create_app(settings, deps)
         client = signed_in_client(app, TOKEN_A, aclose_later)  # signed in as `user_a` by default

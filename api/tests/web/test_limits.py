@@ -76,7 +76,7 @@ def limiter_of(app: FastAPI) -> RateLimitMiddleware:
 def signed_in_deps():
     from sagaloom.web.app import AppDeps
 
-    return AppDeps(verifier=FakeVerifier({TOKEN_A: USER_A}), directory=FakeDirectory())
+    return AppDeps(verifier=FakeVerifier({TOKEN_A: USER_A}), directory=FakeDirectory(), seed_dir=None)
 
 
 def scope_from(peer: str | None, *xff: str) -> dict:

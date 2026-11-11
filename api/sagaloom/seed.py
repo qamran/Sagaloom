@@ -31,13 +31,24 @@ def load_seed(
     return len(entries)
 
 
-def ensure_first_run(store: CanonStore, worlds: WorldRegistry, seed_dir: Path) -> World:
-    """Load Velmar only if no world exists; return the active world."""
-    existing = worlds.list()
-    if existing:
-        return existing[0]
-    load_seed(store, worlds, seed_dir)
-    return worlds.get(VELMAR_ID)
+def copy_velmar(store: CanonStore, worlds: WorldRegistry, seed_dir: Path, owner_id: str) -> World:
+    """A new account's own Velmar (spec §5.4): a fresh world id by the registry's slug rule
+    (`velmar`, `velmar-2`, ...), reserved so no concurrent create takes it, holding the seed
+    entries at their seed ids. As in `load_seed`, the world record is created only after every
+    upsert succeeded; on a failure the entries written so far are deleted and the id released."""
+    world_id = worlds.reserve_id(VELMAR_NAME)
+    written: list[str] = []
+    try:
+        for e in _seed_entries(seed_dir, world_id):
+            store.upsert_entry(e)
+            written.append(e.id)
+        return worlds.create(VELMAR_NAME, owner_id=owner_id, world_id=world_id, is_demo=True)
+    except BaseException:
+        for entry_id in written:
+            store.delete_entry(world_id, entry_id)
+        raise
+    finally:
+        worlds.release(world_id)
 
 
 def _names(e: Entry) -> set[str]:

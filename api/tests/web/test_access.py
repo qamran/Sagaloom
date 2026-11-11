@@ -27,7 +27,10 @@ async def test_bad_token_401(make_env, caplog):
     for header in ("Bearer tok-unknown", "Basic tok-a", "Bearer", "tok-a"):
         r = await env.client.get("/api/worlds", headers={"Authorization": header})
         assert r.status_code == 401 and r.json() == {"detail": "sign in required"}, header
-    assert "tok-unknown" not in caplog.text and "DecodeError" not in caplog.text
+    # The reason (an exception class name) is logged at INFO; the token never is.
+    assert "tok-unknown" not in caplog.text
+    reasons = [r for r in caplog.records if "DecodeError" in r.getMessage()]
+    assert reasons and all(r.levelno == logging.INFO for r in reasons)
 
 
 async def test_valid_token_sets_user(make_env):
@@ -105,7 +108,7 @@ async def test_stream_outlives_token_expiry(make_env):
     assert expired.status_code == 401 and expired.json() == {"detail": "sign in required"}
 
 
-async def test_unconfigured_issuer_rejects_every_token_and_logs_once(store, tmp_path, caplog):
+async def test_unconfigured_issuer_is_unavailable_and_logs_once_at_startup(store, tmp_path, caplog):
     settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
     assert settings.clerk_issuer is None
     deps = AppDeps(store=store, graph="graph", seed_dir=None)
@@ -118,7 +121,8 @@ async def test_unconfigured_issuer_rejects_every_token_and_logs_once(store, tmp_
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         r = await c.get("/api/worlds", headers={"X-Sagaloom-Secret": "s", **bearer(TOKEN_A)})
-    assert r.status_code == 401 and r.json() == {"detail": "sign in required"}
+    # A server without CLERK_ISSUER cannot check anyone: not the user's fault.
+    assert r.status_code == 503 and r.json() == {"detail": "account service unavailable"}
 
 
 async def test_lifespan_builds_and_closes_the_clerk_directory(store, tmp_path):

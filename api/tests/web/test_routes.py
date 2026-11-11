@@ -545,7 +545,8 @@ async def test_llm_log_survives_refresh_and_never_contains_api_key(make_env):
 # ---------- startup ----------
 
 
-async def test_startup_seeds_velmar_once(store, tmp_path, make_env):
+async def test_startup_seeds_no_world(store, tmp_path, make_env):
+    """Velmar is copied per account at sign-up (spec §5.4), never at API start."""
     env = make_env()
     deps = AppDeps(
         store=store,
@@ -559,15 +560,10 @@ async def test_startup_seeds_velmar_once(store, tmp_path, make_env):
     from sagaloom.web.app import create_app
 
     app = create_app(env.settings, deps)
-    for _ in range(2):
-        async with app.router.lifespan_context(app):
-            pass
-    assert [w.id for w in deps.worlds.list()] == [VELMAR_ID]
-    n = len(store.list_entries(VELMAR_ID))
-    assert n > 0
     async with app.router.lifespan_context(app):
         pass
-    assert len(store.list_entries(VELMAR_ID)) == n
+    assert deps.worlds.all_worlds() == []
+    assert store.list_entries(VELMAR_ID) == []
 
 
 async def test_startup_builds_the_wiki_client_and_passes_it_to_the_graph(store, tmp_path, make_env, monkeypatch):

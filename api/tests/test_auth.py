@@ -154,3 +154,98 @@ def test_unknown_signing_key_is_still_invalid(key):
     with pytest.raises(AuthError) as err:
         v.verify(make_token(key))
     assert not isinstance(err.value, AuthUnavailable)
+
+
+def _b64(data: bytes) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _claims(**over):
+    now = int(time.time())
+    claims = {"sub": "user_1", "iss": ISSUER, "azp": ORIGIN, "iat": now, "nbf": now - 1, "exp": now + 300}
+    claims.update(over)
+    return {k: v for k, v in claims.items() if v is not None}
+
+
+def _assert_clean(err):
+    """No chained exception (its text could carry token details) reaches a log."""
+    assert err.value.__cause__ is None and err.value.__suppress_context__ is True
+
+
+def test_alg_none_rejected(verifier):
+    import json
+
+    header = _b64(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+    token = f"{header}.{_b64(json.dumps(_claims()).encode())}."
+    with pytest.raises(AuthError) as err:
+        verifier.verify(token)
+    _assert_clean(err)
+
+
+def test_hs256_signed_with_the_public_key_rejected(verifier, key):
+    """Algorithm confusion: an HMAC token keyed with the RSA public key's PEM."""
+    import hashlib
+    import hmac
+    import json
+
+    from cryptography.hazmat.primitives import serialization
+
+    pem = key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    signing_input = f"{header}.{_b64(json.dumps(_claims()).encode())}"
+    sig = hmac.new(pem, signing_input.encode(), hashlib.sha256).digest()
+    with pytest.raises(AuthError) as err:
+        verifier.verify(f"{signing_input}.{_b64(sig)}")
+    _assert_clean(err)
+
+
+def test_future_nbf_rejected(verifier, key):
+    with pytest.raises(AuthError) as err:
+        verifier.verify(make_token(key, nbf=int(time.time()) + 600))
+    _assert_clean(err)
+
+
+@pytest.mark.parametrize("missing", ["exp", "sub"])
+def test_missing_required_claim_rejected(verifier, key, missing):
+    claims = _claims()
+    del claims[missing]
+    with pytest.raises(AuthError) as err:
+        verifier.verify(jwt.encode(claims, key, algorithm="RS256"))
+    _assert_clean(err)
+
+
+def test_issuer_trailing_slash_is_ignored(key):
+    v = ClerkVerifier(ISSUER + "/", ORIGIN, jwks_client=FakeJwks(key))
+    assert v.verify(make_token(key)).sub == "user_1"
+
+
+def test_default_jwks_client_url_and_timeout():
+    v = ClerkVerifier(ISSUER + "/", ORIGIN)
+    assert v._jwks.uri == f"{ISSUER}/.well-known/jwks.json"
+    assert v._jwks.timeout == 5
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        [],
+        "just a string",
+        {"primary_email_address_id": "idn_2", "email_addresses": [{"id": "idn_2"}]},
+        {"primary_email_address_id": "idn_2", "email_addresses": "nope"},
+        {"primary_email_address_id": "idn_2", "email_addresses": [{"id": "idn_2", "email_address": 7}]},
+    ],
+)
+async def test_malformed_profile_is_an_auth_error(body):
+    with pytest.raises(AuthError):
+        await directory(lambda r: httpx.Response(200, json=body)).fetch("user_1")
+
+
+async def test_http_error_names_the_status_not_the_body():
+    with pytest.raises(AuthError) as exc:
+        await directory(lambda r: httpx.Response(404, text=f"no such user {SECRET}")).fetch("user_1")
+    assert "404" in str(exc.value) and SECRET not in str(exc.value) and "no such" not in str(exc.value)
+    assert exc.value.__cause__ is None

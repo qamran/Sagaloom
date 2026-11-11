@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,6 @@ from sagaloom.llm import install_warning_filters
 from sagaloom.locks import KeyedLocks
 from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
-from sagaloom.seed import ensure_first_run
 from sagaloom.settings_store import DevSettingsStore
 from sagaloom.store.threads import ThreadRegistry
 from sagaloom.store.users import UserRegistry
@@ -50,7 +50,7 @@ class AppDeps:
     dev_settings: DevSettingsStore | None = None
     wiki: WikiClient | None = None  # the shared MediaWiki client (R11.4.8)
     memory: BaseStore | None = None  # long-term author preferences (R10.2)
-    seed_dir: Path | None = SEED_DIR
+    seed_dir: Path | None = SEED_DIR  # each new account's Velmar; None: no demo copy (tests)
     locks: dict[str, asyncio.Lock] = field(default_factory=dict)  # one running turn per thread
     # One preferences writer per world, shared by the graph's `remember` and the memory routes.
     memory_locks: KeyedLocks = field(default_factory=KeyedLocks)
@@ -62,6 +62,7 @@ class AppDeps:
     verifier: TokenVerifier | None = None  # Clerk session tokens -> claims
     directory: ProfileDirectory | None = None  # Clerk profiles; built at startup from the secret key
     user_locks: KeyedLocks = field(default_factory=KeyedLocks)  # one account write per user
+    now: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))  # tests move the clock
 
 
 # Roles that run on another role's model choice; not switchable on their own.
@@ -100,7 +101,9 @@ def make_model_for(settings: Settings, model_settings: ModelSettings, factory=No
 
 @asynccontextmanager
 async def _open_runtime(app: FastAPI):
-    """Builds Chroma and the graph (unless supplied), then seeds Velmar on first run."""
+    """Builds Chroma (and re-keys legacy records before anything else touches it), the graph
+    and the Clerk directory. Velmar is no longer seeded here: each account gets its own copy
+    (`ensure_user`), and ownerless worlds go to the admin on their own request."""
     deps: AppDeps = app.state.deps
     settings: Settings = app.state.settings
     install_warning_filters()
@@ -113,6 +116,10 @@ async def _open_runtime(app: FastAPI):
 
             client = chromadb.PersistentClient(path=str(settings.data_dir / "chroma"))
             deps.store = CanonStore(client, make_embeddings(settings))
+        # Before any store write: records from before ids were per world get `{world}/{entry}`.
+        moved = await asyncio.to_thread(deps.store.migrate_record_ids)
+        if moved:
+            log.info("re-keyed %d canon record(s) to per-world ids", moved)
         if deps.wiki is None:
             deps.wiki = WikiClient(Path(settings.data_dir) / "cache" / "wiki")
         if deps.graph is None:
@@ -145,8 +152,8 @@ async def _open_runtime(app: FastAPI):
             http = await stack.enter_async_context(httpx.AsyncClient(timeout=10))
             deps.directory = ClerkDirectory(settings.clerk_secret_key.get_secret_value(), http=http)
             stack.callback(setattr, deps, "directory", None)  # a restart opens a fresh client
-        if deps.seed_dir is not None:
-            await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)
+        if not (settings.admin_email or "").strip():
+            log.warning("ADMIN_EMAIL is not set: there is no admin, and worlds without an owner stay hidden")
         try:
             yield
         finally:

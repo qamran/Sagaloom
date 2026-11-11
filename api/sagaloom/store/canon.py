@@ -53,6 +53,9 @@ class CanonStore:
         collection_name: str = "entries",
     ):
         self.embeddings = embeddings
+        # Chroma caps how many records one call may carry; migration works in chunks of it.
+        get_max = getattr(client, "get_max_batch_size", None)
+        self._batch_size = get_max() if callable(get_max) else 1000
         self.col = client.get_or_create_collection(
             collection_name, metadata={"hnsw:space": "cosine"}
         )
@@ -129,20 +132,29 @@ class CanonStore:
     def migrate_record_ids(self) -> int:
         """Re-key records stored before ids were per world (record id == entry id) to
         `{world_id}/{entry_id}`, copying their stored embedding, document and metadata (no
-        re-embed). Returns the number re-keyed; a second run finds none and returns 0."""
-        res = self.col.get(include=["embeddings", "documents", "metadatas"])
-        legacy = [i for i, rid in enumerate(res["ids"]) if "/" not in rid]
-        if not legacy:
-            return 0
-        metas = [{**res["metadatas"][i], "entry_id": res["ids"][i]} for i in legacy]
-        self.col.upsert(
-            ids=[_record_id(m["world_id"], m["entry_id"]) for m in metas],
-            embeddings=[res["embeddings"][i] for i in legacy],
-            documents=[res["documents"][i] for i in legacy],
-            metadatas=metas,
-        )
-        self.col.delete(ids=[res["ids"][i] for i in legacy])
-        return len(legacy)
+        re-embed). A legacy record whose target id already exists is not copied (the keyed
+        record wins) but is still deleted. Works in chunks of Chroma's batch size; each chunk is
+        copied before its legacy records are deleted, so a run cut short is safe to repeat.
+        Returns the number re-keyed; a second run finds none and returns 0."""
+        legacy_ids = [rid for rid in self.col.get(include=[])["ids"] if "/" not in rid]
+        moved = 0
+        for start in range(0, len(legacy_ids), self._batch_size):
+            chunk = legacy_ids[start : start + self._batch_size]
+            res = self.col.get(ids=chunk, include=["embeddings", "documents", "metadatas"])
+            metas = [{**m, "entry_id": rid} for rid, m in zip(res["ids"], res["metadatas"])]
+            targets = [_record_id(m["world_id"], m["entry_id"]) for m in metas]
+            existing = set(self.col.get(ids=targets, include=[])["ids"])
+            fresh = [i for i, t in enumerate(targets) if t not in existing]
+            if fresh:
+                self.col.upsert(
+                    ids=[targets[i] for i in fresh],
+                    embeddings=[res["embeddings"][i] for i in fresh],
+                    documents=[res["documents"][i] for i in fresh],
+                    metadatas=[metas[i] for i in fresh],
+                )
+            self.col.delete(ids=res["ids"])
+            moved += len(fresh)
+        return moved
 
     def search(
         self,
