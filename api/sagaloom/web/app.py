@@ -27,6 +27,7 @@ from sagaloom.store.users import UserRegistry
 from sagaloom.store.worlds import WorldRegistry
 from sagaloom.web.access import UnconfiguredVerifier, current_user
 from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
+from sagaloom.web.public_routes import router as public_router
 from sagaloom.web.routes import router
 from sagaloom.wiki.client import WikiClient
 
@@ -242,13 +243,14 @@ def create_app(
 
     # The shared secret guards every /api route; `authed` adds the signed-in user. Routers are
     # copied when included, so `authed` is filled before it goes into `protected`. A secret-only
-    # route goes straight into `protected`.
+    # route (the public preview) goes straight into `protected`, never into `authed`.
     protected = APIRouter(
         prefix="/api", dependencies=[Depends(make_require_secret(settings.api_shared_secret.get_secret_value()))]
     )
     authed = APIRouter(dependencies=[Depends(current_user)])
     authed.include_router(router)
     protected.include_router(authed)
+    protected.include_router(public_router)
     app.include_router(protected)
     return app
 

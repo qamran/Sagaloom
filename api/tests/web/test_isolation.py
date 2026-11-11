@@ -179,3 +179,27 @@ async def test_require_admin(make_env):
     assert ADMIN_ONLY == "Only the admin can change developer settings."
     r = await env.as_user("tok-boss").get("/api/_admin_only")
     assert r.status_code == 200 and r.json() == {"id": "user_boss"}
+
+
+def test_every_route_is_in_the_openapi_schema(make_env):
+    """`test_every_id_route_is_owner_scoped` reads the OpenAPI schema, so a route hidden from it
+    (`include_in_schema=False`, on the route or on an `include_router` call) would escape the
+    sweep. FastAPI 0.162 keeps included routers as `_IncludedRouter`s (`original_router` plus the
+    `include_context` of the include call), so walk those and carry the context's flag down."""
+    env = make_env()
+
+    def leaves(routes, shown=True):
+        for r in routes:
+            if hasattr(r, "original_router"):
+                yield from leaves(r.original_router.routes, shown and r.include_context.include_in_schema)
+            else:
+                yield r, shown and getattr(r, "include_in_schema", True)
+
+    # The docs routes (/openapi.json, /docs) are Starlette routes outside any router; the API's
+    # own routes are APIRoutes.
+    api = [(r, shown) for r, shown in leaves(env.app.routes) if type(r).__name__ == "APIRoute"]
+    assert len(api) >= 20, "the walk must reach the routes nested in the included routers"
+    assert [r.path for r, shown in api if not shown] == []
+    # Cross-check against the schema: every walked route's operation is listed there.
+    ops = {(m, p) for p, o in env.app.openapi()["paths"].items() for m in o}
+    assert len(ops) == sum(len(r.methods) for r, _ in api if r.path != "/api/health") + 1  # + health

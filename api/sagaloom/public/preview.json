@@ -1,0 +1,410 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Velmar has three moons that rise together at the solstice.",
+      "mode": "edit"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_vOvMZ2m7IEUePENqWzq5WL6q",
+          "name": "search_canon",
+          "args": {
+            "query": "Velmar moons solstice; number of moons and whether they rise together",
+            "k": 10
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "<untrusted_data source=\"search_canon\">\n{\"results\": [{\"id\": \"ent_0007\", \"title\": \"Sky of Velmar\", \"type\": \"place\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"The night sky over Velmar holds a single moon, Ister, and nothing else shines in it. At the solstice Ister rises red over the Grey River. Evening sea fog rolls in on most nights, and the Ashen Choir s\", \"facts\": [{\"key\": \"Moons\", \"value\": \"One (Ister)\", \"status\": \"canon\"}, {\"key\": \"At the solstice\", \"value\": \"Ister rises red\", \"status\": \"canon\"}, {\"key\": \"Weather\", \"value\": \"Evening sea fog\", \"status\": \"canon\"}], \"score\": 0.5351420640945435, \"trusted\": true}, {\"id\": \"ent_0012\", \"title\": \"Ister, the red moon\", \"type\": \"place\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"Ister is the one moon of Velmar, a red disc that is full every twenty-nine days. At the solstice it rises red and huge over the Grey River. The Ashen Choir sings to it and the Sky of Velmar holds noth\", \"facts\": [{\"key\": \"Only light in the night sky\", \"value\": \"Ister\", \"status\": \"canon\"}, {\"key\": \"Colour\", \"value\": \"Red\", \"status\": \"canon\"}, {\"key\": \"Full\", \"value\": \"Every 29 days\", \"status\": \"canon\"}], \"score\": 0.5034037232398987, \"trusted\": true}, {\"id\": \"ent_0015\", \"title\": \"The Song of Three Moons\", \"type\": \"event\", \"status\": \"myth\", \"source\": \"user\", \"snippet\": \"The Ashen Choir sings that Velmar once had three moons that rose together, and that two fell into the sea, making the fog. Scholars of the Tidehall call it a lullaby, not history. The song is told on \", \"facts\": [{\"key\": \"Moons\", \"value\": \"Three, rising together\", \"status\": \"myth\"}, {\"key\": \"Cause of the fog\", \"value\": \"Two moons fell into the sea\", \"status\": \"myth\"}, {\"key\": \"Sung at\", \"value\": \"The Cinder Steps\", \"status\": \"canon\"}], \"score\": 0.47138839960098267, \"trusted\": true}, {\"id\": \"ent_0005\", \"title\": \"Founding of Velmar\", \"type\": \"event\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"Ilsa Corran led the first settlers down the Grey River to its mouth in the year 312 AF and raised the first lantern on the headland where Lantern Quay now stands. The date is carved on the lintel of t\", \"facts\": [{\"key\": \"Founded\", \"value\": \"312 AF\", \"status\": \"canon\"}, {\"key\": \"Founder\", \"value\": \"Ilsa Corran\", \"status\": \"canon\"}, {\"key\": \"Site\", \"value\": \"Mouth of the Grey River\", \"status\": \"canon\"}], \"score\": 0.3843729496002197, \"trusted\": true}, {\"id\": \"ent_0001\", \"title\": \"The City of Velmar\", \"type\": \"place\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"Velmar is a fog-bound harbour city on the northern coast, built where the Grey River meets the sea. It is governed by the Harbour Council, which sits in the Tidehall. Its people fish, trade salt and l\", \"facts\": [{\"key\": \"Location\", \"value\": \"Northern coast, mouth of the Grey River\", \"status\": \"canon\"}, {\"key\": \"Population\", \"value\": \"About 40,000\", \"status\": \"canon\"}, {\"key\": \"Government\", \"value\": \"Harbour Council\", \"status\": \"canon\"}], \"score\": 0.34011411666870117, \"trusted\": true}, {\"id\": \"ent_0002\", \"title\": \"The Harbour Council\", \"type\": \"faction\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"The Harbour Council runs Velmar. Seven seats are held by elected harbour-wardens, and it meets in the Tidehall. Mayor Elsbeth Varr chairs it. The Salt Guild holds two of the seven seats and enforces t\", \"facts\": [{\"key\": \"Seats\", \"value\": \"Seven\", \"status\": \"canon\"}, {\"key\": \"Meets at\", \"value\": \"The Tidehall\", \"status\": \"canon\"}, {\"key\": \"Chaired by\", \"value\": \"Mayor Elsbeth Varr\", \"status\": \"canon\"}], \"score\": 0.2996317148208618, \"trusted\": true}, {\"id\": \"ent_0010\", \"title\": \"Lantern Quay\", \"type\": \"place\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"Lantern Quay is the busiest waterfront in Velmar, a mile of timber piers lit by iron lanterns. Ketra Dunn tends them. The Salt Guild keeps its warehouses here and the Law of Lanterns governs it.\", \"facts\": [{\"key\": \"Lanterns\", \"value\": \"Two hundred iron lanterns\", \"status\": \"canon\"}, {\"key\": \"Lit\", \"value\": \"At dusk each evening\", \"status\": \"canon\"}, {\"key\": \"Warehouses\", \"value\": \"Held by the Salt Guild\", \"status\": \"canon\"}], \"score\": 0.29018259048461914, \"trusted\": true}, {\"id\": \"ent_0004\", \"title\": \"The Ashen Choir\", \"type\": \"faction\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"The Ashen Choir is a society of about sixty singers who gather on the Cinder Steps beneath the Tidehall at every full Ister and sing to the red moon. They keep the Song of Three Moons alive, though th\", \"facts\": [{\"key\": \"Members\", \"value\": \"About sixty\", \"status\": \"canon\"}, {\"key\": \"Sings\", \"value\": \"At every full Ister\", \"status\": \"canon\"}, {\"key\": \"Meets at\", \"value\": \"The Cinder Steps beneath the Tidehall\", \"status\": \"canon\"}], \"score\": 0.2884107232093811, \"trusted\": true}, {\"id\": \"ent_0013\", \"title\": \"The Law of Lanterns\", \"type\": \"rule\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"Written by Ilsa Corran, the Law of Lanterns requires every lantern on Lantern Quay to be lit at dusk and kept burning until dawn whenever sea fog covers the harbour. The Salt Guild enforces it, and th\", \"facts\": [{\"key\": \"Applies to\", \"value\": \"Every lantern on Lantern Quay\", \"status\": \"canon\"}, {\"key\": \"Penalty\", \"value\": \"Fine of one silver mark\", \"status\": \"canon\"}, {\"key\": \"Enforced by\", \"value\": \"The Salt Guild\", \"status\": \"canon\"}], \"score\": 0.2812429666519165, \"trusted\": true}, {\"id\": \"ent_0006\", \"title\": \"Ilsa Corran\", \"type\": \"character\", \"status\": \"canon\", \"source\": \"user\", \"snippet\": \"Ilsa Corran, a river-pilot from the south, founded Velmar. She wrote the first Law of Lanterns after losing two boats in the fog. She died in 340 AF and is buried beneath the Tidehall.\", \"facts\": [{\"key\": \"Role\", \"value\": \"Founder of Velmar\", \"status\": \"canon\"}, {\"key\": \"Died\", \"value\": \"340 AF\", \"status\": \"canon\"}, {\"key\": \"Buried\", \"value\": \"Beneath the Tidehall\", \"status\": \"canon\"}], \"score\": 0.26578158140182495, \"trusted\": true}]}\n</untrusted_data>",
+      "name": "search_canon"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_7F1ec8Cj5aNNKLvpgkXl5wHh",
+          "name": "create_or_update_entry",
+          "args": {
+            "action": "update",
+            "entry_id": "ent_0007",
+            "body": "The night sky over Velmar holds three moons. At the solstice, all three rise together. Evening sea fog rolls in on most nights.",
+            "facts": [
+              {
+                "key": "Moons",
+                "value": "Three",
+                "status": "canon"
+              },
+              {
+                "key": "At the solstice",
+                "value": "All three moons rise together",
+                "status": "canon"
+              },
+              {
+                "key": "Weather",
+                "value": "Evening sea fog",
+                "status": "canon"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Proposal to update Sky of Velmar is awaiting the author's review.",
+      "name": "create_or_update_entry"
+    }
+  ],
+  "pending_interrupt": {
+    "proposals": [
+      {
+        "proposal_id": "p_9b6fb02a",
+        "action": "update",
+        "world_id": "velmar",
+        "entry_id": "ent_0007",
+        "before": {
+          "id": "ent_0007",
+          "world_id": "velmar",
+          "title": "Sky of Velmar",
+          "type": "place",
+          "body": "The night sky over Velmar holds a single moon, Ister, and nothing else shines in it. At the solstice Ister rises red over the Grey River. Evening sea fog rolls in on most nights, and the Ashen Choir says it thins when they sing. Sailors steer by the lanterns of Lantern Quay.",
+          "status": "canon",
+          "source": "user",
+          "source_url": null,
+          "licence": null,
+          "trusted": true,
+          "aliases": [],
+          "links": [
+            {
+              "target_id": "ent_0012",
+              "relation": "features"
+            }
+          ],
+          "facts": [
+            {
+              "key": "Moons",
+              "value": "One (Ister)",
+              "refs": [
+                "ent_0012"
+              ],
+              "status": "canon",
+              "told_by": null
+            },
+            {
+              "key": "At the solstice",
+              "value": "Ister rises red",
+              "refs": [],
+              "status": "canon",
+              "told_by": null
+            },
+            {
+              "key": "Weather",
+              "value": "Evening sea fog",
+              "refs": [],
+              "status": "canon",
+              "told_by": null
+            }
+          ],
+          "sources": [],
+          "version": 1,
+          "created_at": "2026-11-11T19:11:23.296138+00:00",
+          "updated_at": "2026-11-11T19:11:26.863985+00:00"
+        },
+        "after": {
+          "title": "Sky of Velmar",
+          "type": "place",
+          "body": "The night sky over Velmar holds three moons. At the solstice, all three rise together. Evening sea fog rolls in on most nights.",
+          "status": "canon",
+          "aliases": [],
+          "facts": [
+            {
+              "key": "Moons",
+              "value": "Three",
+              "refs": [],
+              "status": "canon",
+              "told_by": null
+            },
+            {
+              "key": "At the solstice",
+              "value": "All three moons rise together",
+              "refs": [],
+              "status": "canon",
+              "told_by": null
+            },
+            {
+              "key": "Weather",
+              "value": "Evening sea fog",
+              "refs": [],
+              "status": "canon",
+              "told_by": null
+            }
+          ],
+          "source": "user",
+          "source_url": null,
+          "licence": null,
+          "trusted": true,
+          "sources": []
+        },
+        "imported": false
+      }
+    ],
+    "checks": {
+      "p_9b6fb02a": {
+        "proposal_id": "p_9b6fb02a",
+        "verdict": "conflict",
+        "flags": [
+          {
+            "kind": "retcon",
+            "entry_id": "ent_0007",
+            "title": "Sky of Velmar",
+            "fact_key": "Moons",
+            "existing_fact": "One (Ister)",
+            "new_fact": "Three",
+            "existing_quote": null,
+            "new_quote": null,
+            "severity": null,
+            "explanation": "Changes established canon: One (Ister) → Three",
+            "suggested_fix": null,
+            "existing_secret": false
+          },
+          {
+            "kind": "retcon",
+            "entry_id": "ent_0007",
+            "title": "Sky of Velmar",
+            "fact_key": "At the solstice",
+            "existing_fact": "Ister rises red",
+            "new_fact": "All three moons rise together",
+            "existing_quote": null,
+            "new_quote": null,
+            "severity": null,
+            "explanation": "Changes established canon: Ister rises red → All three moons rise together",
+            "suggested_fix": null,
+            "existing_secret": false
+          },
+          {
+            "kind": "conflict",
+            "entry_id": "ent_0012",
+            "title": "Ister, the red moon",
+            "fact_key": "Moons",
+            "existing_fact": "Only light in the night sky: Ister",
+            "new_fact": "Moons: Three",
+            "existing_quote": null,
+            "new_quote": null,
+            "severity": "hard",
+            "explanation": "The existing canon fact says Ister is the only light in Velmar’s night sky, while the proposal establishes three moons there. These statements cannot both be true.",
+            "suggested_fix": "Reconcile the number of moons with the existing canon about Ister.",
+            "existing_secret": false
+          }
+        ],
+        "dependents": [],
+        "badge": "conflict"
+      }
+    }
+  },
+  "entries": [
+    {
+      "id": "ent_0002",
+      "world_id": "velmar",
+      "title": "The Harbour Council",
+      "type": "faction",
+      "body": "The Harbour Council runs Velmar. Seven seats are held by elected harbour-wardens, and it meets in the Tidehall. Mayor Elsbeth Varr chairs it. The Salt Guild holds two of the seven seats and enforces the Law of Lanterns on its behalf.",
+      "status": "canon",
+      "source": "user",
+      "source_url": null,
+      "licence": null,
+      "trusted": true,
+      "aliases": [
+        "the Council"
+      ],
+      "links": [
+        {
+          "target_id": "ent_0003",
+          "relation": "chaired by"
+        },
+        {
+          "target_id": "ent_0009",
+          "relation": "meets at"
+        }
+      ],
+      "facts": [
+        {
+          "key": "Seats",
+          "value": "Seven",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Meets at",
+          "value": "The Tidehall",
+          "refs": [
+            "ent_0009"
+          ],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Chaired by",
+          "value": "Mayor Elsbeth Varr",
+          "refs": [
+            "ent_0003"
+          ],
+          "status": "canon",
+          "told_by": null
+        }
+      ],
+      "sources": [],
+      "version": 1,
+      "created_at": "2026-11-11T19:11:23.296138+00:00",
+      "updated_at": "2026-11-11T19:11:24.322779+00:00"
+    },
+    {
+      "id": "ent_0007",
+      "world_id": "velmar",
+      "title": "Sky of Velmar",
+      "type": "place",
+      "body": "The night sky over Velmar holds a single moon, Ister, and nothing else shines in it. At the solstice Ister rises red over the Grey River. Evening sea fog rolls in on most nights, and the Ashen Choir says it thins when they sing. Sailors steer by the lanterns of Lantern Quay.",
+      "status": "canon",
+      "source": "user",
+      "source_url": null,
+      "licence": null,
+      "trusted": true,
+      "aliases": [],
+      "links": [
+        {
+          "target_id": "ent_0012",
+          "relation": "features"
+        }
+      ],
+      "facts": [
+        {
+          "key": "Moons",
+          "value": "One (Ister)",
+          "refs": [
+            "ent_0012"
+          ],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "At the solstice",
+          "value": "Ister rises red",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Weather",
+          "value": "Evening sea fog",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        }
+      ],
+      "sources": [],
+      "version": 1,
+      "created_at": "2026-11-11T19:11:23.296138+00:00",
+      "updated_at": "2026-11-11T19:11:26.863985+00:00"
+    },
+    {
+      "id": "ent_0010",
+      "world_id": "velmar",
+      "title": "Lantern Quay",
+      "type": "place",
+      "body": "Lantern Quay is the busiest waterfront in Velmar, a mile of timber piers lit by iron lanterns. Ketra Dunn tends them. The Salt Guild keeps its warehouses here and the Law of Lanterns governs it.",
+      "status": "canon",
+      "source": "user",
+      "source_url": null,
+      "licence": null,
+      "trusted": true,
+      "aliases": [
+        "the Quay"
+      ],
+      "links": [],
+      "facts": [
+        {
+          "key": "Lanterns",
+          "value": "Two hundred iron lanterns",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Lit",
+          "value": "At dusk each evening",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Warehouses",
+          "value": "Held by the Salt Guild",
+          "refs": [
+            "ent_0011"
+          ],
+          "status": "canon",
+          "told_by": null
+        }
+      ],
+      "sources": [],
+      "version": 1,
+      "created_at": "2026-11-11T19:11:23.296138+00:00",
+      "updated_at": "2026-11-11T19:11:28.820199+00:00"
+    },
+    {
+      "id": "ent_0012",
+      "world_id": "velmar",
+      "title": "Ister, the red moon",
+      "type": "place",
+      "body": "Ister is the one moon of Velmar, a red disc that is full every twenty-nine days. At the solstice it rises red and huge over the Grey River. The Ashen Choir sings to it and the Sky of Velmar holds nothing else bright.",
+      "status": "canon",
+      "source": "user",
+      "source_url": null,
+      "licence": null,
+      "trusted": true,
+      "aliases": [
+        "Ister"
+      ],
+      "links": [
+        {
+          "target_id": "ent_0007",
+          "relation": "seen in"
+        }
+      ],
+      "facts": [
+        {
+          "key": "Only light in the night sky",
+          "value": "Ister",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Colour",
+          "value": "Red",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        },
+        {
+          "key": "Full",
+          "value": "Every 29 days",
+          "refs": [],
+          "status": "canon",
+          "told_by": null
+        }
+      ],
+      "sources": [],
+      "version": 1,
+      "created_at": "2026-11-11T19:11:23.296138+00:00",
+      "updated_at": "2026-11-11T19:11:29.753497+00:00"
+    }
+  ]
+}

@@ -1259,6 +1259,55 @@
         "summary": "Put Me"
       }
     },
+    "/api/public/preview": {
+      "get": {
+        "description": "The home page's Velmar example: the chat, its approval card and a few entries, in the\nshapes of `GET /threads/{id}` and `GET /worlds/{id}/entries`.",
+        "operationId": "get_preview_api_public_preview_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Preview Api Public Preview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Preview"
+      }
+    },
     "/api/settings": {
       "get": {
         "operationId": "get_dev_settings_api_settings_get",
