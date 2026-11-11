@@ -84,6 +84,10 @@ function deferred<T>() {
 
 const bodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string);
 
+/** Mount reads `t`; the re-read after each turn fails, so a test sees what the stream itself built. */
+const streamOnly = (t: ThreadState = thread()) =>
+  getThreadMock.mockResolvedValueOnce(t).mockRejectedValue(new Error("offline"));
+
 beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   fetchMock = vi.fn();
@@ -166,7 +170,7 @@ describe("useAgentStream", () => {
   });
 
   it("sets the mode on the last user message from the live router response", async () => {
-    getThreadMock.mockResolvedValue(thread({ messages: [{ role: "user", content: "Earlier" }] }));
+    streamOnly(thread({ messages: [{ role: "user", content: "Earlier" }] }));
     fetchMock.mockResolvedValue(
       streamResponse([
         sse("node", { name: "router", phase: "start" }),
@@ -192,7 +196,7 @@ describe("useAgentStream", () => {
   });
 
   it("marks tokens streamed inside the guard node as the guard's notice", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     const copy = "That message tries to change how I work, so I didn't act on it.";
     fetchMock.mockResolvedValue(
       streamResponse([
@@ -213,7 +217,7 @@ describe("useAgentStream", () => {
   });
 
   it("keeps a guard token as the guard's even when the guard's end event comes first", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     fetchMock.mockResolvedValue(
       streamResponse([
         sse("node", { name: "guard", phase: "start" }),
@@ -231,7 +235,7 @@ describe("useAgentStream", () => {
   });
 
   it("keeps tokens after the agent starts as the assistant's", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     fetchMock.mockResolvedValue(
       streamResponse([
         sse("node", { name: "guard", phase: "start" }),
@@ -254,7 +258,7 @@ describe("useAgentStream", () => {
   });
 
   it("streams tokens and tool calls, records turn events, and ends on done", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
     fetchMock.mockResolvedValue(
       streamResponse([
@@ -269,7 +273,7 @@ describe("useAgentStream", () => {
         sse("done", {}),
       ]),
     );
-    const { result } = setup();
+    const { result, statuses } = setup();
     await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(1));
     await act(async () => {
       await result.current.send("How many moons?");
@@ -293,7 +297,8 @@ describe("useAgentStream", () => {
     expect(result.current.status).toBe("idle");
     expect(result.current.streaming).toBe(false);
     expect(result.current.usage?.cost_usd).toBe(0.004);
-    expect(getThreadMock).toHaveBeenCalledTimes(1); // no reconnect after done
+    expect(getThreadMock).toHaveBeenCalledTimes(2); // the re-read after done, not a reconnect
+    expect(statuses).not.toContain("reconnecting");
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["thread", "t1"] });
     expect(result.current.turnEvents).toHaveLength(1);
     expect(result.current.turnEvents[0].kind).toBe("message");
@@ -304,7 +309,7 @@ describe("useAgentStream", () => {
   });
 
   it("adds a memory message for a live remember result and leaves other tool results alone", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     const memory = [{ key: "tone", value: "grim", stored: true, note: "Remembered: tone → grim" }];
     fetchMock.mockResolvedValue(
       streamResponse([
@@ -326,7 +331,7 @@ describe("useAgentStream", () => {
   });
 
   it("a live remember result adds no tool line", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     const memory = [{ key: "tone", value: "grim", stored: true, note: "Remembered: tone → grim" }];
     fetchMock.mockResolvedValue(
       streamResponse([sse("tool_result", { name: "remember", summary: "Remembered: tone", memory }), sse("done", {})]),
@@ -529,6 +534,7 @@ describe("useAgentStream", () => {
     expect(result.current.pending).toBeNull();
     expect(result.current.sent).toEqual({ pending: asked, chosen: { p_1: approve } });
     fetchMock.mockResolvedValue(streamResponse([sse("interrupt", pendingOf("p_2")), sse("done", {})]));
+    getThreadMock.mockResolvedValueOnce(thread({ pending_interrupt: pendingOf("p_2") }));
     await act(async () => {
       await result.current.send("Another change");
     });
@@ -565,8 +571,100 @@ describe("useAgentStream", () => {
     expect(result.current.error).toMatch(/every pending change/i);
   });
 
+  const turnUsage = (turn_id: string, cost_usd: number) => ({
+    turn_id,
+    usage: usage(cost_usd),
+    by_role: [{ role: "agent", calls: 1, prompt_tokens: 10, completion_tokens: 5, cost_usd }],
+  });
+
+  it("exposes turns from getThread, and none when the response has no turns", async () => {
+    getThreadMock.mockResolvedValueOnce(thread());
+    const first = setup();
+    await waitFor(() => expect(first.result.current.loaded).toBe(true));
+    expect(first.result.current.turns).toEqual([]);
+    first.unmount();
+    getThreadMock.mockResolvedValueOnce(thread({ turns: [turnUsage("run_1", 0.001)] }));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+  });
+
+  it("restores the thread after a chat turn ends with done", async () => {
+    getThreadMock.mockResolvedValueOnce(thread());
+    const reread = deferred<ThreadState>();
+    getThreadMock.mockReturnValueOnce(reread.promise);
+    fetchMock.mockResolvedValue(streamResponse([sse("token", { text: "One moon." }), sse("done", {})]));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    let sent!: Promise<void>;
+    act(() => {
+      sent = result.current.send("How many moons?");
+    });
+    await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(2));
+    expect(result.current.status).toBe("streaming");
+    await act(async () => {
+      reread.resolve(
+        thread({
+          messages: [
+            { role: "user", content: "How many moons?", turn_id: "run_1" },
+            { role: "assistant", content: "One moon.", turn_id: "run_1" },
+          ],
+          turns: [turnUsage("run_1", 0.002)],
+        }),
+      );
+      await sent;
+    });
+    expect(result.current.status).toBe("idle");
+    expect(result.current.messages.map((m) => m.turn_id)).toEqual(["run_1", "run_1"]);
+    expect(result.current.turns.map((t) => t.turn_id)).toEqual(["run_1"]);
+  });
+
+  it("restores after a paused turn", async () => {
+    getThreadMock.mockResolvedValueOnce(thread());
+    getThreadMock.mockResolvedValueOnce(
+      thread({
+        messages: [{ role: "user", content: "Add a moon", turn_id: "run_1" }],
+        pending_interrupt: pendingOf("p_1"),
+        turns: [turnUsage("run_1", 0.003)],
+      }),
+    );
+    fetchMock.mockResolvedValue(
+      streamResponse([
+        sse("interrupt", pendingOf("p_1")),
+        sse("usage", { turn: usage(0.003), total: usage(0.003) }),
+        sse("done", {}),
+      ]),
+    );
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => {
+      await result.current.send("Add a moon");
+    });
+    expect(getThreadMock).toHaveBeenCalledTimes(2);
+    expect(result.current.pending?.proposals[0].proposal_id).toBe("p_1");
+    expect(result.current.turns.map((t) => t.turn_id)).toEqual(["run_1"]);
+    expect(result.current.status).toBe("idle");
+  });
+
+  it("restore failure after a chat turn keeps messages and goes idle", async () => {
+    getThreadMock.mockResolvedValueOnce(thread());
+    getThreadMock.mockRejectedValueOnce(new Error("down"));
+    fetchMock.mockResolvedValue(streamResponse([sse("token", { text: "One moon." }), sse("done", {})]));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => {
+      await result.current.send("How many moons?");
+    });
+    expect(getThreadMock).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("idle");
+    expect(result.current.error).toBeNull();
+    expect(result.current.messages).toEqual([
+      { role: "user", content: "How many moons?" },
+      { role: "assistant", content: "One moon." },
+    ]);
+  });
+
   it("marks the conflict step when an interrupt carries a conflict flag", async () => {
-    getThreadMock.mockResolvedValue(thread());
+    streamOnly();
     const withConflict = pendingOf("p_1");
     withConflict.checks.p_1 = {
       ...withConflict.checks.p_1,

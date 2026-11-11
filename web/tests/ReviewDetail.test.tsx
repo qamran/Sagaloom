@@ -41,7 +41,7 @@ const two = pendingOf(
 );
 
 const base = (over: Partial<AgentStream> = {}): AgentStream => ({
-  messages: [], streaming: false, pending: null, usage: null, status: "idle", error: null, loaded: true,
+  messages: [], streaming: false, pending: null, usage: null, turns: [], status: "idle", error: null, loaded: true,
   worldId: "w1", kind: "chat", title: null, importNote: null, chosen: {}, sent: null, turnEvents: [],
   send: vi.fn(), decide: vi.fn(async () => undefined), choose: vi.fn(async () => undefined),
   chooseMany: vi.fn(async () => undefined), unchoose: vi.fn(), ...over,

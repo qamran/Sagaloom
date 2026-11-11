@@ -1,17 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { CourseChip } from "@/components/CourseChip";
 import { RememberedChip } from "@/components/RememberedChip";
 import { Composer } from "@/components/Composer";
 import { EntityText } from "@/components/EntityText";
+import { TurnCost } from "@/components/TurnCost";
 import { UnderTheHood } from "@/components/UnderTheHood";
 import { getEntries, getLlmLog, getSettings } from "@/lib/api";
 import type { Named } from "@/lib/mentions";
 import { checkSummary } from "@/lib/review";
 import { useShowSecrets } from "@/lib/secrets";
+import { SHOWN_ROLES } from "@/lib/steps";
 import { buildTurnViews } from "@/lib/turns";
 import type { ChatMessage } from "@/lib/types";
 import { useAgentStream } from "@/lib/useAgentStream";
@@ -166,17 +168,29 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
   const { data: dev } = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const guardOff = dev?.settings.guard_enabled === false;
 
+  // Each turn's cost line goes under the last message of that turn the chat shows (linked by turn id only).
+  const lastIndexByTurn = useMemo(() => {
+    const at = new Map<string, number>();
+    s.messages.forEach((m, i) => {
+      if (m.turn_id && SHOWN_ROLES.includes(m.role)) at.set(m.turn_id, i);
+    });
+    return at;
+  }, [s.messages]);
+  const turnUsageById = useMemo(() => new Map(s.turns.map((t) => [t.turn_id, t])), [s.turns]);
+
   const last = s.messages[s.messages.length - 1];
   useEffect(() => {
     bottom.current?.scrollIntoView?.({ block: "end" });
-  }, [s.messages.length, last?.content, s.pending]);
+    // A finished turn's re-read swaps in the server's messages and adds its cost line: stay at the end.
+  }, [s.messages.length, last?.content, s.pending, s.turns]);
 
   const pending = s.pending;
   const busy = s.status === "streaming" || s.status === "reconnecting";
   const many = (pending?.proposals.length ?? 0) > 1;
   const summary = pending ? checkSummary(pending) : null;
+  // Not under a paused turn's card: there the stream is only re-reading the thread.
   const thinking =
-    s.streaming && (!last || (last.role !== "assistant" && last.role !== "guard") || !!last.tool_calls);
+    s.streaming && !pending && (!last || (last.role !== "assistant" && last.role !== "guard") || !!last.tool_calls);
 
   return (
     <div className="flex min-h-0 flex-1 flex-wrap">
@@ -253,16 +267,21 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           </div>
         )}
 
-        {s.messages.map((m, i) => (
-          <Message
-            key={i}
-            m={m}
-            worldId={s.worldId ?? world?.id}
-            entries={threadEntries}
-            showSecrets={threadShowSecrets}
-            done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
-          />
-        ))}
+        {s.messages.map((m, i) => {
+          const cost = m.turn_id && lastIndexByTurn.get(m.turn_id) === i ? turnUsageById.get(m.turn_id) : undefined;
+          return (
+            <Fragment key={i}>
+              <Message
+                m={m}
+                worldId={s.worldId ?? world?.id}
+                entries={threadEntries}
+                showSecrets={threadShowSecrets}
+                done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
+              />
+              {cost && <TurnCost turn={cost} />}
+            </Fragment>
+          );
+        })}
 
         {thinking && (
           <div className="text-xs text-muted-foreground">

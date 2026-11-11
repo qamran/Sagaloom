@@ -6,7 +6,7 @@ import { getThread, PROXY_BASE } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
-import type { ChatMessage, Decision, ImportNote, Mode, PendingInterrupt, SseEvent, ThreadState, Usage } from "./types";
+import type { ChatMessage, Decision, ImportNote, Mode, PendingInterrupt, SseEvent, ThreadState, TurnUsage, Usage } from "./types";
 
 export type StreamStatus = "idle" | "streaming" | "reconnecting" | "error";
 
@@ -29,6 +29,8 @@ export interface AgentStream {
   pending: PendingInterrupt | null;
   /** Thread totals (from `GET /threads/{id}` or the last `usage` event). */
   usage: Usage | null;
+  /** Each turn's model-call usage by role, from `GET /threads/{id}` (re-read after every turn); `[]` until loaded. */
+  turns: TurnUsage[];
   status: StreamStatus;
   error: string | null;
   /** True once the first `getThread` has answered. */
@@ -121,6 +123,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPendingState] = useState<PendingInterrupt | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [turns, setTurns] = useState<TurnUsage[]>([]);
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -161,6 +164,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
       setThreadTitle(t.title ?? null);
       setPending(t.pending_interrupt);
       setUsage(t.usage);
+      setTurns(t.turns ?? []);
     },
     [setPending],
   );
@@ -311,17 +315,20 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
         if (ended === null) {
           await reconnect();
         } else if (ended === "done") {
-          // Commit review notes are not streamed; re-read them after a decision, and stay
-          // "streaming" until they land so a page never shows a finished turn without them.
-          if (kind === "decision") {
-            await restore().then(
-              () => setStatus("idle"),
-              () => {
-                setStatus("error");
-                setError(LOST);
-              },
-            );
-          } else setStatus("idle");
+          // Re-read the thread after every turn and stay "streaming" until it lands: commit review
+          // notes are not streamed, and the server's copies carry the turn ids the cost lines need.
+          // A chat turn's streamed messages are already complete, so a failed re-read keeps them.
+          await restore().then(
+            () => setStatus("idle"),
+            () => {
+              if (kind === "message") {
+                setStatus("idle");
+                return;
+              }
+              setStatus("error");
+              setError(LOST);
+            },
+          );
         } else {
           await restore().catch(() => undefined);
         }
@@ -407,6 +414,7 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
     streaming: status === "streaming",
     pending,
     usage,
+    turns,
     worldId: threadWorld,
     kind: threadKind,
     title: threadTitle,
