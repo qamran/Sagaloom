@@ -206,6 +206,24 @@ class Usage(BaseModel):
     cost_usd: float = 0.0
 
 
+class RoleUsage(BaseModel):
+    """One model role's calls in a turn; `role` is None for a record logged without one."""
+
+    role: str | None
+    calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    cost_usd: float
+
+
+class TurnUsage(BaseModel):
+    """A turn's usage (the PromptLog records sharing its `run_id`), total and by role."""
+
+    turn_id: str
+    usage: Usage
+    by_role: list[RoleUsage]
+
+
 # Long-term author preferences (R10.2, spec §3.5). Here rather than in `sagaloom.memory` so the
 # strict checkpoint serde, which allows every class defined in this module, covers them.
 PreferenceKey = Literal["tone", "genre", "banned_tropes", "notes"]

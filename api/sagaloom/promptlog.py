@@ -21,7 +21,7 @@ from langchain_core.outputs import LLMResult
 from pydantic import BaseModel, Field
 
 from sagaloom.config import Settings
-from sagaloom.models import Usage
+from sagaloom.models import RoleUsage, TurnUsage, Usage
 from sagaloom.usage import extract_usage
 
 # R20.1: these keys are never recorded, wherever they appear.
@@ -140,6 +140,39 @@ class PromptLog:
                 cost += float(r.get("cost_usd") or 0.0)
         return Usage(prompt_tokens=prompt, completion_tokens=completion, cost_usd=cost)
 
+    def usage_by_turn(self, thread_id: str) -> "builtins.list[TurnUsage]":
+        """Per-turn (`run_id`) usage with a per-role split, oldest turn first; roles in first-seen
+        order. Totals match `usage(thread_id, run_id)` (R16 ruling)."""
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT record FROM prompt_log WHERE thread_id = ? ORDER BY started_at, rowid",
+                (thread_id,),
+            ).fetchall()
+        turns: dict[str, dict[str | None, dict]] = {}
+        totals: dict[str, Usage] = {}  # summed in record order, as `usage()` does
+        for (raw,) in rows:
+            rec = PromptRecord.model_validate_json(raw)
+            r = rec.response or {}
+            a = turns.setdefault(rec.run_id, {}).setdefault(
+                rec.role,
+                {"role": rec.role, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+            )
+            a["calls"] += 1
+            a["prompt_tokens"] += int(r.get("prompt_tokens") or 0)
+            a["completion_tokens"] += int(r.get("completion_tokens") or 0)
+            a["cost_usd"] += float(r.get("cost_usd") or 0.0)
+            t = totals.setdefault(rec.run_id, Usage())
+            t.prompt_tokens += int(r.get("prompt_tokens") or 0)
+            t.completion_tokens += int(r.get("completion_tokens") or 0)
+            t.cost_usd += float(r.get("cost_usd") or 0.0)
+        return [
+            TurnUsage(
+                turn_id=run_id,
+                usage=totals[run_id],
+                by_role=[RoleUsage(**a) for a in roles.values()],
+            )
+            for run_id, roles in turns.items()
+        ]
 
     def usage_by_model(self) -> "builtins.list[dict]":
         """Calls, tokens and cost per (role, model) over every recorded call (Studio usage panel)."""

@@ -455,6 +455,7 @@ async def get_thread(thread_id: str, request: Request) -> dict:
             else None
         ),
         "usage": _deps(request).promptlog.usage(thread_id).model_dump(),
+        "turns": [t.model_dump() for t in _deps(request).promptlog.usage_by_turn(thread_id)],
     }
 
 

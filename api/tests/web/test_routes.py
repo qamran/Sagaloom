@@ -57,6 +57,7 @@ async def test_create_thread_and_get_empty_state(make_env):
         "messages": [],
         "pending_interrupt": None,
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+        "turns": [],
     }
     assert (await env.client.get("/api/threads/nope")).status_code == 404
 
@@ -1000,3 +1001,15 @@ async def test_list_threads_row_shape_unchanged(make_env):
     for row in (summarised, lazy, live):
         assert set(row) == ROW_KEYS
     assert summarised == lazy == {**live, "running": False}
+
+
+async def test_get_thread_returns_turns(make_env):
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    _, events = await env.send(tid)
+    usage = next(d for e, d in events if e == "usage")
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    [turn] = body["turns"]
+    assert {m["turn_id"] for m in body["messages"] if "turn_id" in m} == {turn["turn_id"]}
+    assert turn["usage"] == usage["turn"]
+    assert [r["calls"] for r in turn["by_role"]] == [1]  # the fake agent logs no role

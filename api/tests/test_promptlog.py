@@ -253,3 +253,56 @@ def test_schema_created_once_per_log(tmp_path, monkeypatch):
     log.list_by_role("guard")
     log.usage()
     assert len(calls) == 1
+
+
+def _turn_rec(id, run_id, role, started_at, response="ok", thread_id="t1"):
+    from sagaloom.promptlog import PromptRecord
+
+    if response == "ok":
+        response = {"prompt_tokens": 10, "completion_tokens": 2, "cost_usd": 0.001}
+    return PromptRecord(
+        id=id, thread_id=thread_id, run_id=run_id, provider="openrouter", model="m", role=role,
+        request={"messages": [], "tools": []}, response=response, started_at=started_at,
+    )
+
+
+def test_usage_by_turn_groups_by_run_and_role(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    for i, (run, role) in enumerate(
+        [("A", "agent"), ("A", "judge"), ("A", "agent"), ("A", "extractor"), ("B", "agent")]
+    ):
+        log.add(_turn_rec(f"r{i}", run, role, f"2026-01-01T00:00:0{i}"))
+    a, b = log.usage_by_turn("t1")
+    assert (a.turn_id, b.turn_id) == ("A", "B")
+    assert [r.role for r in a.by_role] == ["agent", "judge", "extractor"]
+    agent = a.by_role[0]
+    assert agent.calls == 2 and agent.prompt_tokens == 20 and agent.completion_tokens == 4
+    assert agent.cost_usd == pytest.approx(0.002)
+    assert [r.calls for r in b.by_role] == [1]
+    assert a.usage == log.usage("t1", "A") and b.usage == log.usage("t1", "B")
+
+
+def test_usage_by_turn_counts_failed_call(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_turn_rec("a", "A", "agent", "2026-01-01T00:00:01"))
+    log.add(_turn_rec("b", "A", "judge", "2026-01-01T00:00:02", response=None))
+    [turn] = log.usage_by_turn("t1")
+    judge = turn.by_role[1]
+    assert (judge.role, judge.calls, judge.prompt_tokens, judge.completion_tokens) == ("judge", 1, 0, 0)
+    assert judge.cost_usd == 0.0
+    assert turn.usage == log.usage("t1", "A")
+
+
+def test_usage_by_turn_null_role(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_turn_rec("a", "A", None, "2026-01-01T00:00:01"))
+    [turn] = log.usage_by_turn("t1")
+    assert [(r.role, r.calls) for r in turn.by_role] == [(None, 1)]
+
+
+def test_usage_by_turn_other_thread_excluded(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_turn_rec("a", "A", "agent", "2026-01-01T00:00:01"))
+    log.add(_turn_rec("b", "X", "agent", "2026-01-01T00:00:02", thread_id="t2"))
+    assert [t.turn_id for t in log.usage_by_turn("t1")] == ["A"]
+    assert log.usage_by_turn("nope") == []
