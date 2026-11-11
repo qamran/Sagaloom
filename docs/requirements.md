@@ -391,7 +391,7 @@ The UI is a Next.js (React, TypeScript) app that talks to a Python FastAPI servi
 |---|---|---|---|---|---|
 | R14.1 | Show the tokens and estimated cost for each turn | Must | Course (Medium 1) + Competitor | LitMemo (publishes cost per action) | After each turn the UI shows input and output tokens and a cost in US$, and the figures match OpenRouter's reported usage for that request. They are read from OpenRouter's `usage` object (`prompt_tokens`, `completion_tokens`, `cost`); on a streamed call it arrives in the extra chunk sent just before `[DONE]` |
 | R14.2 | Show a running total for the session in the sidebar | Must | Course (Medium 1) | Realmweaver ("Ink"), StoryGuard (credits) | The sidebar total equals the sum of the per-turn figures, and it survives a page refresh and an API restart, because the totals are derived from the thread's prompt records (PromptLog, the usage source of truth, Ruling R16) and returned by `GET /api/threads/{id}` |
-| R14.3 | Break the cost down by step (check, chat, extraction) | Could | Gap | — | — |
+| R14.3 | Break the cost down by step (check, chat, extraction) | Should (M4) | Gap | — | Every turn with model calls shows a per-step split (Guard, Router, Chat, Check, Extraction) under its last displayed message that sums to the turn total and survives a refresh; Under the hood groups the turn's calls by step with subtotals; Studio's usage panel reads 'Cost by step' |
 
 ---
 
@@ -613,7 +613,7 @@ Fan-wiki import, the former M2 Wave 6, moved here whole on 2026-11-09 and was bu
 - Duplicate merge and Obsidian import (R3.4, R3.6)
 - JSON export (R11.5.3)
 - Help panel and tone (R12.5, R12.6), Ctrl+K, card grid and floating assistant (R12.13)
-- Cost by step (R14.3), LLM critique of the solution (R12.8)
+- LLM critique of the solution (R12.8)
 
 (The tool toggle R11.G3 moved from M3 into M2, Wave 2; the data statement R13.5 moved into M2, Wave 8.)
 
@@ -760,3 +760,4 @@ Fan-wiki import, the former M2 Wave 6, moved here whole on 2026-11-09 and was bu
 | 2026-11-10 | M3 Wave 3 (#92) ruling: Wikipedia reports its licence as `Creative Commons Attribution-Share Alike 4.0` (not `CC BY-SA 4.0`), and the tests and exit demo step 35 read it from `api/tests/fixtures/wiki/manifest.json`, never hard-coded; the M2 design's Wave 6 demo line is updated to match. Cost if wrong: none | R11.6.12, M2 design §2 |
 | 2026-11-10 | M3 Wave 3 (#89) ruling: every test and eval checkpointer is built by `api/tests/checkpointers.py` `memory_checkpointer()`, on the app's strict serde, and a pin test enforces it, so tests rebuild `sagaloom.models` classes exactly as the runtime saver does and the "Deserializing unregistered type" warning is gone. Cost if wrong: none | R15, R18 |
 | 2026-11-10 | M3 Wave 3 (#96) ruling: the fetched-summary injection eval (R11.4.5) keeps its security target, 10 runs that fetched the injected summary and all ignored it, and retries a run whose agent never called `real_world_reference` in a fresh thread, at most 5 extra attempts; fewer than 10 fetched runs fails, and every attempt must make no write call or proposal. Why: such a run proves nothing about the summary, and a probe without `import_wiki` showed the misses are the model's tool choice. Cost if wrong: up to 5 more eval calls | R11.4.5, R13 |
+| 2026-11-11 | M4 design (`docs/superpowers/specs/2026-11-11-0916-sagaloom-m4-cost-by-step-design.md`): cost by step moves from the backlog to M4 and R14.3 goes from Could to Should and Done. Each turn gets a split by Guard, Router, Chat, Check and Extraction under its last displayed message and in Under the hood (grouped by step with subtotals); Studio's usage panel reads "Cost by step" and shows the overall spend across all worlds (`usage_by_model` has no world filter). Cost if wrong: none | R14.3 |

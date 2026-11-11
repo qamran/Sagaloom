@@ -14,6 +14,7 @@ A chatbot answers from whatever it remembers, and it will cheerfully invent lore
 - **It cannot write on its own.** `create_or_update_entry` only *proposes* a change. The proposal is contradiction-checked against canon, then the graph stops at a LangGraph `interrupt()` until you approve, edit, reject, or save it as a myth.
 - **It remembers the conversation and survives a refresh.** State lives in a SQLite checkpointer, so a pending approval card is still there after a reload or a restart.
 - **It remembers what you tell it to, across threads.** Author preferences (tone, genre, banned tropes, notes) live in a per-world LangGraph Store, and only the `remember` node writes them.
+- **Cost by step:** each turn's cost split by Guard, Router, Chat, Check and Extraction, under the reply and in Under the hood.
 
 ## Setup
 
