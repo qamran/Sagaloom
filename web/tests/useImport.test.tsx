@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACCOUNT_UNAVAILABLE } from "@/lib/api";
+import { ACCOUNT_UNAVAILABLE, SESSION_REJECTED } from "@/lib/api";
 import { useImport } from "@/lib/useImport";
 
 const push = vi.fn();
@@ -169,6 +169,19 @@ describe("useImport", () => {
     });
     expect(assign).not.toHaveBeenCalled();
     expect(result.current.phase).toBe("error");
+  });
+
+  it("shows the rejected-session copy when sign-in just bounced back", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { pathname: "/import", search: "", assign });
+    sessionStorage.setItem("sagaloom.signInRedirectAt", String(Date.now() - 2_000));
+    fetchMock.mockResolvedValue(errorResponse(401, "sign in required"));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(assign).not.toHaveBeenCalled();
+    expect(result.current.error).toBe(SESSION_REJECTED);
   });
 
   it("shows the account-service copy on a 503", async () => {

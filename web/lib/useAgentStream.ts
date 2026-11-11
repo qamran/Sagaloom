@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ACCOUNT_UNAVAILABLE, getThread, handleAuthStatus, PROXY_BASE } from "./api";
+import { ACCOUNT_UNAVAILABLE, getThread, handleAuthStatus, PROXY_BASE, SESSION_REJECTED } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
 import { parseRouterMode } from "./turns";
@@ -243,7 +243,12 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
         if (!res.ok || !res.body) {
           const detail = await detailOf(res);
           setStatus("error");
-          if (handleAuthStatus(res.status, detail)) return;
+          const auth = handleAuthStatus(res.status, detail);
+          if (auth === "redirected") return;
+          if (auth === "rejected") {
+            setError(SESSION_REJECTED);
+            return;
+          }
           if (res.status === 503) {
             setError(ACCOUNT_UNAVAILABLE);
             return;

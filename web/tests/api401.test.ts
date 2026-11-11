@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ACCOUNT_UNAVAILABLE, ApiError, createWorld, getWorlds, handleAuthStatus } from "@/lib/api";
+import { ACCOUNT_UNAVAILABLE, ApiError, createWorld, getWorlds, handleAuthStatus, SESSION_REJECTED } from "@/lib/api";
+
+// What a previous page wrote when it sent the author to sign-in.
+const REDIRECT_KEY = "sagaloom.signInRedirectAt";
+const redirectedAgo = (ms: number) => sessionStorage.setItem(REDIRECT_KEY, String(Date.now() - ms));
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -17,6 +21,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("API 401 and 503 handling", () => {
@@ -82,11 +87,63 @@ describe("API 401 and 503 handling", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("handleAuthStatus redirects only for 'sign in required' and says when it did", () => {
-    expect(handleAuthStatus(401, "sign in required")).toBe(true);
+  it("handleAuthStatus redirects only for 'sign in required' and says what it did", () => {
+    expect(handleAuthStatus(401, "sign in required")).toBe("redirected");
     expect(assign).toHaveBeenCalledTimes(1);
-    expect(handleAuthStatus(401, "unauthorised")).toBe(false);
-    expect(handleAuthStatus(403, "sign in required")).toBe(false);
+    expect(handleAuthStatus(401, "unauthorised")).toBeNull();
+    expect(handleAuthStatus(403, "sign in required")).toBeNull();
     expect(assign).toHaveBeenCalledTimes(1);
+  });
+
+  it("drains the first 503 body before retrying a GET", async () => {
+    vi.useFakeTimers();
+    const first = json(503, { detail: "account service unavailable" });
+    const cancel = vi.spyOn(first.body!, "cancel");
+    fetchMock.mockResolvedValueOnce(first).mockResolvedValueOnce(json(200, []));
+
+    const pending = getWorlds();
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    expect(cancel).toHaveBeenCalled();
+  });
+});
+
+describe("sign-in bounce guard", () => {
+  it("a second 'sign in required' within 30 s of the last redirect shows an error instead of redirecting", async () => {
+    redirectedAgo(5_000);
+    fetchMock.mockResolvedValue(json(401, { detail: "sign in required" }));
+
+    const err = await getWorlds().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).message).toBe(SESSION_REJECTED);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("redirects again once 30 s have passed since the last redirect", async () => {
+    redirectedAgo(31_000);
+    fetchMock.mockResolvedValue(json(401, { detail: "sign in required" }));
+
+    await expect(getWorlds()).rejects.toBeInstanceOf(ApiError);
+    expect(assign).toHaveBeenCalledTimes(1);
+  });
+
+  it("parallel requests on one page redirect once and are not taken for a bounce", async () => {
+    fetchMock.mockImplementation(async () => json(401, { detail: "sign in required" }));
+
+    const errs = await Promise.all([getWorlds().catch((e: unknown) => e), getWorlds().catch((e: unknown) => e)]);
+    expect(assign).toHaveBeenCalledTimes(1);
+    for (const e of errs) expect((e as ApiError).message).not.toBe(SESSION_REJECTED);
+  });
+
+  it("always redirects when session storage is unavailable", async () => {
+    const blocked = () => {
+      throw new Error("blocked");
+    };
+    vi.stubGlobal("sessionStorage", { getItem: blocked, setItem: blocked });
+    fetchMock.mockImplementation(async () => json(401, { detail: "sign in required" }));
+
+    await expect(getWorlds()).rejects.toBeInstanceOf(ApiError);
+    await expect(getWorlds()).rejects.toBeInstanceOf(ApiError);
+    expect(assign).toHaveBeenCalledTimes(2);
   });
 });
