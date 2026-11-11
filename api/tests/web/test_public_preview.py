@@ -42,25 +42,41 @@ async def test_preview_has_conflict_with_ent_0012(make_env):
     assert {"ent_0012"} <= {e["id"] for e in data["entries"]}
 
 
+def _secret_marks(x, path="$"):
+    if isinstance(x, dict):
+        here = [path for k, v in x.items() if (k == "status" and v == "secret") or (k == "existing_secret" and v is True)]
+        return here + [p for k, v in x.items() for p in _secret_marks(v, f"{path}.{k}")]
+    if isinstance(x, list):
+        return [p for i, v in enumerate(x) for p in _secret_marks(v, f"{path}[{i}]")]
+    return []
+
+
 async def test_preview_has_no_secrets(make_env):
     env = make_env()
     r = await env.client.get("/api/public/preview")
     data = r.json()
     assert data["entries"]
-    for e in data["entries"]:
-        assert e["status"] != "secret"
-        assert all(f.get("status") != "secret" for f in e["facts"])
-    # The served text and the file itself: no secret entry title, no secret fact value.
+    assert _secret_marks(data) == []  # anywhere: entries, proposals, checks
     for text in (r.text, PREVIEW_FILE.read_text(encoding="utf-8")):
         assert "Choir Ledger" not in text
         assert MAYOR_SECRET not in text
 
 
+async def test_preview_shows_no_internal_plumbing(make_env):
+    env = make_env()
+    r = await env.client.get("/api/public/preview")
+    data = r.json()
+    assert data["messages"] and {m["role"] for m in data["messages"]} <= {"user", "assistant"}
+    assert all("tool_calls" not in m for m in data["messages"])
+    for s in ("untrusted_data", "call_", "tool_calls", '"tool"'):
+        assert s not in r.text
+
+
 async def test_preview_makes_no_model_call(make_env):
     env = make_env()
-    env.deps.graph = None  # the route must not need the graph
+    before = env.deps.promptlog.total_usage()
     r = await env.client.get("/api/public/preview")
     assert r.status_code == 200
     assert env.agent.seen == []
-    assert env.deps.promptlog.month_spend is not None  # sanity: the log exists
+    assert env.deps.promptlog.total_usage() == before  # no prompt record written
     assert json.loads(r.text) == json.loads(PREVIEW_FILE.read_text(encoding="utf-8"))

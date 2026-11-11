@@ -38,6 +38,27 @@ ENTRY_IDS = ["ent_0007", "ent_0012", "ent_0010", "ent_0002"]
 FORBIDDEN = ["Choir Ledger", "Yes, at every full Ister"]
 
 
+def public_messages(messages: list[dict]) -> list[dict]:
+    """Only what a visitor should read: the author's messages and the assistant's text replies.
+    Tool calls, tool results (retrieval output, provider call ids) stay out."""
+    return [
+        {"role": m["role"], "content": m["content"]}
+        for m in messages
+        if m["role"] == "user" or (m["role"] == "assistant" and m["content"].strip() and not m.get("tool_calls"))
+    ]
+
+
+def find_secret_marks(x, path="$") -> list[str]:
+    """Paths of every `"status": "secret"` and `existing_secret: true`, at any depth."""
+    if isinstance(x, dict):
+        here = [f"{path}.status" for k, v in x.items() if k == "status" and v == "secret"]
+        here += [f"{path}.existing_secret" for k, v in x.items() if k == "existing_secret" and v is True]
+        return here + [p for k, v in x.items() for p in find_secret_marks(v, f"{path}.{k}")]
+    if isinstance(x, list):
+        return [p for i, v in enumerate(x) for p in find_secret_marks(v, f"{path}[{i}]")]
+    return []
+
+
 def strip_secrets(entry: dict) -> dict:
     return {**entry, "facts": [f for f in entry["facts"] if f.get("status") != "secret"]}
 
@@ -67,7 +88,7 @@ async def run_once(tmp: Path) -> dict:
         raise RuntimeError("the turn did not stop at an approval card")
     entries = [e for e in store.list_entries(VELMAR_ID) if e.id in ENTRY_IDS and e.status != "secret"]
     return {
-        "messages": [message_dict(m) for m in state.values["messages"]],
+        "messages": public_messages([message_dict(m) for m in state.values["messages"]]),
         "pending_interrupt": {"proposals": interrupt["proposals"], "checks": interrupt["checks"]},
         "entries": [strip_secrets(e) for e in jsonable_encoder(entries)],
     }
@@ -80,6 +101,11 @@ def verify(data: dict) -> None:
             raise RuntimeError(f"secret text in the fixture: {s!r}")
     if sorted(e["id"] for e in data["entries"]) != sorted(ENTRY_IDS):
         raise RuntimeError("the four entries are not all there")
+    if marks := find_secret_marks(data):
+        raise RuntimeError(f"secret marks in the fixture: {marks}")
+    for s in ("untrusted_data", "call_", '"tool'):
+        if s in text:
+            raise RuntimeError(f"plumbing in the fixture: {s!r}")
     if any(e["status"] == "secret" or any(f.get("status") == "secret" for f in e["facts"]) for e in data["entries"]):
         raise RuntimeError("a secret survived")
 
