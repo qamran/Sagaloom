@@ -22,6 +22,13 @@ const WIKI_CACHE = path.join(os.tmpdir(), "sagaloom-e2e-data", "cache", "wiki");
 const card = (page: Page, title: string) => page.getByRole("region", { name: `Review proposal: ${title}` });
 const log = (page: Page) => page.getByRole("log", { name: "Conversation" });
 
+/** Open the Check step group in Under the hood, where the judge's calls sit and which starts closed unless Check cost most. */
+async function openCheckGroup(drawer: Locator) {
+  const group = drawer.getByRole("button", { name: /^Check/ });
+  if (!(await group.waitFor({ timeout: 5_000 }).then(() => true, () => false))) return;
+  if ((await group.getAttribute("aria-expanded")) !== "true") await group.click();
+}
+
 async function send(page: Page, text: string) {
   const composer = page.getByLabel("Message Sagaloom");
   await expect(composer).toBeEnabled();
@@ -114,6 +121,7 @@ test("M1 exit demo", async ({ page }) => {
   const options = await turns.locator("option").count();
   for (let i = 0; i < options; i++) {
     await turns.selectOption({ index: i });
+    await openCheckGroup(drawer);
     if (await judge.waitFor({ timeout: 5_000 }).then(() => true, () => false)) break;
   }
   // The turn's first call card starts expanded: click only a collapsed one, or the click would close it.
@@ -538,8 +546,10 @@ test("M1 exit demo", async ({ page }) => {
   for (let i = Math.max(turnOptions, 1) - 1; i >= 0 && !maskedRequest; i--) {
     if (turnOptions > 0) {
       await hoodTurns.selectOption({ index: i });
+      await openCheckGroup(hood);
       if (!(await judgeCalls.first().waitFor({ timeout: 5_000 }).then(() => true, () => false))) continue;
     } else {
+      await openCheckGroup(hood);
       await expect(judgeCalls.first()).toBeVisible();
     }
     for (let j = 0; j < (await judgeCalls.count()); j++) {

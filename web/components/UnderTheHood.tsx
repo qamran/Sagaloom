@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { MASKED_LINE, UNTRUSTED, argsHoldSecret, maskPrompt, responseHoldsSecret } from "@/lib/maskSecrets";
 import { useShowSecrets } from "@/lib/secrets";
+import { groupCalls, type CallGroup } from "@/lib/steps";
 import type { LlmCall, NodeStep, TurnView } from "@/lib/turns";
 import type { PromptMessage } from "@/lib/types";
 
@@ -266,6 +267,56 @@ function PathStep({ node }: { node: NodeStep }) {
   );
 }
 
+const plural = (count: number, word: string) => `${count} ${count === 1 ? word : `${word}s`}`;
+
+/** One pipeline step's calls (M4, design §3.5): a header with the step's subtotal and share of the turn's cost, and its call cards when open. */
+function StepGroup({
+  group,
+  turnCost,
+  defaultOpen,
+  hidden,
+}: {
+  group: CallGroup;
+  turnCost: number;
+  defaultOpen: boolean;
+  hidden: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full flex-col gap-1.5 rounded-lg border border-border bg-panel-2 px-3 py-2 text-left text-xs tabular-nums"
+      >
+        <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="font-semibold text-foreground">
+            <span aria-hidden="true" className={`mr-1.5 inline-block size-2 rounded-sm ${group.bar}`} />
+            {group.name}
+          </span>
+          <span className="text-muted-foreground">
+            {plural(group.calls, "call")} · {n(group.prompt_tokens)} → {n(group.completion_tokens)} tok
+          </span>
+          <span className="ml-auto text-foreground">
+            {usd(group.cost_usd)} <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+          </span>
+        </span>
+        <span aria-hidden="true" className="flex h-1 overflow-hidden rounded-full bg-panel-3">
+          <span
+            className={`h-full ${group.bar}`}
+            style={{ width: `${turnCost > 0 ? (group.cost_usd / turnCost) * 100 : 0}%` }}
+          />
+        </span>
+      </button>
+      {open &&
+        group.items.map(({ call, index }) => (
+          <CallCard key={call.id} call={call} index={index} defaultOpen={index === 0} hidden={hidden} />
+        ))}
+    </div>
+  );
+}
+
 /** The Under the hood drawer (R20.3): graph path, tool calls and every prompt sent to OpenRouter
  * for one turn. API keys never reach this data: the prompt log is redacted on the server.
  * Secrets are masked on screen until `worldId`'s Show secrets is on; Copy stays verbatim. */
@@ -287,6 +338,10 @@ export function UnderTheHood({
     (a, c) => ({ cost: a.cost + (c.response?.cost_usd ?? 0), ms: a.ms + (c.response?.latency_ms ?? 0) }),
     { cost: 0, ms: 0 },
   );
+
+  const groups = groupCalls(turn.calls);
+  // The step that cost most starts open; on a tie, the earlier step in the pipeline.
+  const biggest = groups.reduce((best, g) => (g.cost_usd > best.cost_usd ? g : best), groups[0]);
 
   async function copyTurn() {
     setCopyError(false);
@@ -405,8 +460,14 @@ export function UnderTheHood({
           {turn.calls.length === 0 && (
             <p className="m-0 text-xs text-muted-foreground">No model calls in this turn yet.</p>
           )}
-          {turn.calls.map((c, i) => (
-            <CallCard key={c.id} call={c} index={i} defaultOpen={i === 0} hidden={!showSecrets} />
+          {groups.map((g) => (
+            <StepGroup
+              key={g.key}
+              group={g}
+              turnCost={totals.cost}
+              defaultOpen={g === biggest}
+              hidden={!showSecrets}
+            />
           ))}
         </div>
         <p className="m-0 text-[11px] text-muted-foreground">

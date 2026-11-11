@@ -80,7 +80,7 @@ describe("UnderTheHood", () => {
     expect(screen.getByText("agent")).toBeInTheDocument();
     expect(screen.getByText("paused")).toBeInTheDocument();
     expect(screen.getAllByText(/search_canon/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/3,120 → 210 tok/)).toBeInTheDocument();
+    expect(screen.getAllByText(/3,120 → 210 tok/)).toHaveLength(2); // the step header and the call card
   });
 
   it("copy-as-JSON copies the request", async () => {
@@ -123,10 +123,83 @@ describe("UnderTheHood", () => {
     unmount();
     const router = { ...turn, calls: [{ ...turn.calls[0], role: "router" }] };
     const second = render(<UnderTheHood turn={router} onClose={() => {}} />);
-    expect(screen.getByText("Router")).toBeInTheDocument();
+    expect(screen.getAllByText("Router")).toHaveLength(2); // the step heading and the card label
     second.unmount();
     render(<UnderTheHood turn={turn} onClose={() => {}} />);
     expect(screen.getByText("Agent")).toBeInTheDocument();
+  });
+
+  describe("step groups", () => {
+    const mk = (id: string, role: string, cost: number, p = 1000, c = 100) => ({
+      ...turn.calls[0],
+      id,
+      role,
+      response: { ...turn.calls[0].response!, prompt_tokens: p, completion_tokens: c, cost_usd: cost },
+    });
+    const grouped: TurnView = {
+      ...turn,
+      calls: [
+        mk("g", "guard", 0.0001, 100, 10),
+        mk("r", "router", 0.0002, 200, 20),
+        mk("a1", "agent", 0.001, 2000, 100),
+        mk("a2", "agent", 0.0018, 2214, 137),
+        mk("j", "judge", 0.0005, 500, 50),
+      ],
+    };
+
+    it("groups calls by step in pipeline order", () => {
+      render(<UnderTheHood turn={grouped} onClose={() => {}} />);
+      const heads = screen.getAllByRole("button", { name: /^(Guard|Router|Chat|Check)/ });
+      expect(heads.map((b) => /^(Guard|Router|Chat|Check)/.exec(b.textContent ?? "")?.[1])).toEqual([
+        "Guard",
+        "Router",
+        "Chat",
+        "Check",
+      ]);
+    });
+
+    it("group header shows calls tokens and cost", () => {
+      render(<UnderTheHood turn={grouped} onClose={() => {}} />);
+      const chat = screen.getByRole("button", { name: /^Chat/ });
+      expect(chat).toHaveTextContent("2 calls");
+      expect(chat).toHaveTextContent("4,214 \u2192 237");
+      expect(chat).toHaveTextContent("$0.0028");
+      expect(screen.getByRole("button", { name: /^Guard/ })).toHaveTextContent("1 call \u00b7");
+    });
+
+    it("most expensive group starts open, and a tie opens the earlier group", () => {
+      const { unmount } = render(<UnderTheHood turn={grouped} onClose={() => {}} />);
+      expect(screen.getByRole("button", { name: /^Chat/ })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("button", { name: /^Check/ })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getAllByRole("button", { name: /^\d+Agent/ })).toHaveLength(2);
+      expect(screen.queryByRole("button", { name: /Contradiction judge/ })).not.toBeInTheDocument();
+      unmount();
+      const tie = { ...grouped, calls: [mk("j", "judge", 0.001), mk("a", "agent", 0.001)] };
+      render(<UnderTheHood turn={tie} onClose={() => {}} />);
+      expect(screen.getByRole("button", { name: /^Chat/ })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("button", { name: /^Check/ })).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("cards keep their turn index", async () => {
+      render(<UnderTheHood turn={grouped} onClose={() => {}} />);
+      await userEvent.setup().click(screen.getByRole("button", { name: /^Check/ }));
+      expect(screen.getByRole("button", { name: /Contradiction judge/ })).toHaveTextContent(/^5/);
+    });
+
+    it("copy turn as JSON keeps call order", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.fn(async () => {});
+      stubClipboard(writeText);
+      render(<UnderTheHood turn={grouped} onClose={() => {}} />);
+      await user.click(screen.getByRole("button", { name: "Copy turn as JSON" }));
+      expect(JSON.parse((writeText.mock.calls[0] as unknown as [string])[0]).calls.map((c: { id: string }) => c.id)).toEqual([
+        "g",
+        "r",
+        "a1",
+        "a2",
+        "j",
+      ]);
+    });
   });
 
   describe("secrets", () => {

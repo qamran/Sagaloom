@@ -1,4 +1,4 @@
-import { STEPS, stepOf } from "@/lib/steps";
+import { stepName, stepOf } from "@/lib/steps";
 import type { StudioData } from "@/lib/types";
 
 /** "Check (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
@@ -9,7 +9,7 @@ export function usageLabel(role: string | null | undefined, model: string): stri
   const name = gpt ? short.charAt(0).toUpperCase() + short.slice(1) : short;
   if (!role) return model;
   const key = stepOf(role);
-  return key === "other" ? model : `${STEPS.find((s) => s.key === key)!.name} (${name})`;
+  return key === "other" ? model : `${stepName(key)} (${name})`;
 }
 
 const n = (v: number) => v.toLocaleString("en-US");
