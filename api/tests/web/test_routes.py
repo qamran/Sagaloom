@@ -21,6 +21,14 @@ def approve(pid):
     return {"proposal_id": pid, "action": "approve"}
 
 
+def without_turn_id(m: dict) -> dict:
+    """A displayed message without its turn id, which is new each run (checked in
+    test_turn_ids.py); raises if the id is missing."""
+    rest = dict(m)
+    assert rest.pop("turn_id")
+    return rest
+
+
 # ---------- auth ----------
 
 
@@ -115,7 +123,7 @@ async def test_decisions_resume_and_commit(make_env, store):
     assert body["pending_interrupt"] is None
     review = [m for m in body["messages"] if m["role"] == "review"]
     assert len(review) == 1 and "committed" in review[0]["content"]
-    assert body["messages"][-1] == {"role": "assistant", "content": "Saved it."}
+    assert without_turn_id(body["messages"][-1]) == {"role": "assistant", "content": "Saved it."}
 
 
 async def test_decisions_without_pending_returns_409(make_env):
@@ -699,7 +707,9 @@ async def test_blocked_turn_streams_the_copy_and_drops_the_message(make_env):
     assert seq[-2:] == ["usage", "done"]
     assert env.agent.seen == []
     body = (await env.client.get(f"/api/threads/{tid}")).json()
-    assert body["messages"] == [{"role": "guard", "content": BLOCK_COPY["injection"], "name": "guard"}]
+    assert [without_turn_id(m) for m in body["messages"]] == [
+        {"role": "guard", "content": BLOCK_COPY["injection"], "name": "guard"}
+    ]
 
 
 # ---------- export (R11.5) ----------
@@ -749,7 +759,9 @@ async def test_mode_on_user_message(make_env):
     tid = await env.new_thread()
     await env.send(tid, "How many moons?")
     body = (await env.client.get(f"/api/threads/{tid}")).json()
-    assert body["messages"][0] == {"role": "user", "content": "How many moons?", "mode": "query"}
+    assert without_turn_id(body["messages"][0]) == {
+        "role": "user", "content": "How many moons?", "mode": "query"
+    }
     assert "mode" not in body["messages"][1]
     assert message_dict(HumanMessage(content="hi")) == {"role": "user", "content": "hi"}
     noted = HumanMessage(name="review", content="r", additional_kwargs={"mode": "edit"})

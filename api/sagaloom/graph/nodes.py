@@ -9,6 +9,7 @@ from typing import Any, Literal
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
+    BaseMessage,
     HumanMessage,
     RemoveMessage,
     SystemMessage,
@@ -78,6 +79,20 @@ def _review(text: str, pid: str, outcome: ReviewOutcome) -> HumanMessage:
     return HumanMessage(
         name="review", content=text, additional_kwargs={"proposal_id": pid, "outcome": outcome}
     )
+
+
+def with_turn(msgs: list[BaseMessage], config: RunnableConfig | None) -> list[BaseMessage]:
+    """Copies of `msgs` stamped with the run's turn id (`configurable.turn_id`, set by the web
+    routes), so the chat can attach the turn's cost to them (M4 §3.3). Kept in
+    `additional_kwargs`, as the router's `mode`; no model request carries it. Unchanged when the
+    run has no turn id (a test or script run)."""
+    turn_id = ((config or {}).get("configurable") or {}).get("turn_id")
+    if not turn_id:
+        return msgs
+    return [
+        m.model_copy(update={"additional_kwargs": {**m.additional_kwargs, "turn_id": turn_id}})
+        for m in msgs
+    ]
 
 
 # ---------- routing ----------
@@ -154,7 +169,7 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
     error blocks the message. A blocked message is removed from the history, so an injection
     never sits in what the agent reads on later turns, and replaced by the guard's notice."""
 
-    async def guard(state: SagaState) -> dict:
+    async def guard(state: SagaState, config: RunnableConfig | None = None) -> dict:
         run = _unchecked_run(state.get("messages") or [])
         if not run:
             return {"guard_verdict": "safe"}  # only the author's own messages are classified
@@ -172,7 +187,7 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
             "guard_verdict": verdict,
             "messages": [
                 *(RemoveMessage(id=m.id) for m in run),
-                AIMessage(name="guard", content=BLOCK_COPY[verdict]),
+                *with_turn([AIMessage(name="guard", content=BLOCK_COPY[verdict])], config),
             ],
         }
 
@@ -233,7 +248,7 @@ def make_agent_node(
         section = "" if not mode or router_mod.ROUTER_ADVISORY else "\n\n" + router_mod.MODE_SECTIONS[mode]
         system = SystemMessage(content=base + section + ("\n\n" + block if block else ""))
         reply = await llm.ainvoke([system, *state.get("messages", [])], config)
-        return {"messages": [reply]}
+        return {"messages": with_turn([reply], config)}
 
     return agent
 
@@ -327,7 +342,7 @@ def make_remember_node(memory_store: BaseStore, locks: KeyedLocks):
     memory routes: two threads of the same world, or a remember and an Undo, must not
     interleave their read-modify-write (a lost update, or a way past the cap)."""
 
-    async def remember(state: SagaState) -> dict:
+    async def remember(state: SagaState, config: RunnableConfig | None = None) -> dict:
         world_id = state["world_id"]
         updates = list(state.get("memory_updates") or [])
         author = _author_text(state.get("messages") or [])
@@ -341,14 +356,17 @@ def make_remember_node(memory_store: BaseStore, locks: KeyedLocks):
             results = [unavailable(u) for u in updates]
         return {
             "memory_updates": None,
-            "messages": [
-                HumanMessage(
-                    name="memory",
-                    # Key only for a refused value; the full notes are in additional_kwargs.
-                    content="\n".join(agent_note(r) for r in results),
-                    additional_kwargs={"memory": [r.model_dump() for r in results]},
-                )
-            ],
+            "messages": with_turn(
+                [
+                    HumanMessage(
+                        name="memory",
+                        # Key only for a refused value; the full notes are in additional_kwargs.
+                        content="\n".join(agent_note(r) for r in results),
+                        additional_kwargs={"memory": [r.model_dump() for r in results]},
+                    )
+                ],
+                config,
+            ),
         }
 
     return remember
@@ -537,7 +555,7 @@ def _apply_locked(store, p: Proposal) -> str:
 
 
 def make_commit_node(store):
-    def commit(state: SagaState) -> dict:
+    def commit(state: SagaState, config: RunnableConfig | None = None) -> dict:
         world_id = state.get("world_id")
         checks = state.get("check_results") or {}
         decisions = state.get("decisions") or {}
@@ -601,7 +619,7 @@ def make_commit_node(store):
                 )
         cleared = {pid: None for pid in handled}
         return {
-            "messages": messages,
+            "messages": with_turn(messages, config),
             "pending_proposals": {"clear": handled},
             "check_results": cleared,
             "decisions": {**cleared, **{pid: None for pid in refused}},

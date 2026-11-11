@@ -88,10 +88,12 @@ def _thread(request: Request, thread_id: str):
 
 
 def message_dict(m: BaseMessage) -> dict:
-    """{role, content, name?, tool_calls?, memory?, mode?, import?}; `review` is the author's
-    decision note (R18.6), `memory` the `remember` node's note with one result per preference
-    (R10.2), `guard` the input guard's notice in place of a blocked message (R13.1), and `import`
-    the import endpoint's summary note that opens an import thread (R18.10)."""
+    """{role, content, name?, tool_calls?, memory?, mode?, import?, turn_id?}; `review` is the
+    author's decision note (R18.6), `memory` the `remember` node's note with one result per
+    preference (R10.2), `guard` the input guard's notice in place of a blocked message (R13.1),
+    and `import` the import endpoint's summary note that opens an import thread (R18.10).
+    `turn_id` is the id of the turn that wrote the message (its PromptLog `run_id`, M4 §3.3);
+    messages from before M4, and tool and import messages, have none."""
     out: dict[str, Any] = {"content": message_text(m.content)}
     if isinstance(m, HumanMessage):
         role = {"review": "review", "memory": "memory", "import": "import"}.get(m.name or "", "user")
@@ -119,6 +121,8 @@ def message_dict(m: BaseMessage) -> dict:
             out["name"] = m.name
     else:
         out = {"role": m.type, **out}
+    if m.additional_kwargs.get("turn_id"):
+        out["turn_id"] = m.additional_kwargs["turn_id"]
     return out
 
 
@@ -131,6 +135,7 @@ def _turn_config(
     if s.gemini_api_key:
         secrets.append(s.gemini_api_key.get_secret_value())
     cfg = run_config(thread.thread_id, thread.world_id)
+    cfg["configurable"]["turn_id"] = turn_id  # the nodes stamp it on what they append (M4 §3.3)
     cfg["callbacks"] = [
         PromptLogHandler(
             d.promptlog, thread.thread_id, emit, settings=s, secrets=secrets, turn_id=turn_id
@@ -169,12 +174,14 @@ async def _take_turn(request: Request, thread_id: str) -> Callable[[], None]:
     return release
 
 
-def _turn(request: Request, thread) -> tuple[asyncio.Queue, dict, Callable[[], tuple[Usage, Usage]]]:
-    """One turn's prompt-event queue, run config (prompt capture under a new turn id) and
-    usage function (turn, total), read from the prompt log (R12)."""
+def _turn(
+    request: Request, thread, turn_id: str | None = None
+) -> tuple[asyncio.Queue, dict, Callable[[], tuple[Usage, Usage]]]:
+    """One turn's prompt-event queue, run config (prompt capture under `turn_id`, else a new
+    one) and usage function (turn, total), read from the prompt log (R12)."""
     d = _deps(request)
     queue: asyncio.Queue = asyncio.Queue()
-    turn_id = uuid.uuid4().hex
+    turn_id = turn_id or uuid.uuid4().hex
     cfg = _turn_config(
         request, thread, lambda name, data: queue.put_nowait({"event": name, "data": data}), turn_id
     )
@@ -188,9 +195,15 @@ def _turn(request: Request, thread) -> tuple[asyncio.Queue, dict, Callable[[], t
     return queue, cfg, usage_fn
 
 
-def _stream_run(request: Request, thread, input_or_command: Any, release: Callable[[], None]):
+def _stream_run(
+    request: Request,
+    thread,
+    input_or_command: Any,
+    release: Callable[[], None],
+    turn_id: str | None = None,
+):
     d = _deps(request)
-    queue, cfg, usage_fn = _turn(request, thread)
+    queue, cfg, usage_fn = _turn(request, thread, turn_id)
     # Shielded: a client that goes away does not cancel the run; the lock is released when the
     # run itself ends (Review Focus 5).
     return sse_response(
@@ -453,16 +466,21 @@ async def post_message(thread_id: str, body: NewMessage, request: Request):
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
         if state.interrupts:  # a new message would silently drop the pending approval (R15)
             raise HTTPException(status_code=409, detail="approval pending")
+        # The author's message is built here, before the run, so the turn id is made here too.
+        turn_id = uuid.uuid4().hex
         return _stream_run(
             request,
             t,
             # `entry` persists in the checkpoint, so every run input sets it (R18.10).
             {
-                "messages": [HumanMessage(content=body.content)],
+                "messages": [
+                    HumanMessage(content=body.content, additional_kwargs={"turn_id": turn_id})
+                ],
                 "world_id": t.world_id,
                 "entry": "chat",
             },
             release,
+            turn_id=turn_id,
         )
     except BaseException:
         release()
