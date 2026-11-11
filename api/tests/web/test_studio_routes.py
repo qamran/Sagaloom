@@ -3,8 +3,10 @@
 import itertools
 from urllib.parse import parse_qs, urlsplit
 
-from fakes import HEADERS, KEY, SECRET, W, Env, FakeJudge, ScriptedChat, StubLLM, create_call
-from httpx import ASGITransport, AsyncClient
+from fakes import (
+    KEY, SECRET, TOKEN_A, USER_A, W, Env, FakeDirectory, FakeJudge, FakeVerifier, ScriptedChat, StubLLM,
+    create_call, signed_in_client,
+)
 
 from checkpointers import memory_checkpointer
 from sagaloom.config import Settings
@@ -56,11 +58,11 @@ def build_switchable_env(store, tmp_path, aclose_later) -> Env:
         settings=settings,
         promptlog=PromptLog(tmp_path / "prompts.sqlite"),
         model_settings=ms,
+        verifier=FakeVerifier({TOKEN_A: USER_A}),
+        directory=FakeDirectory(),
     )
     app = create_app(settings, deps)
-    client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)
-    aclose_later(client)
-    env = Env(client, app, deps, agent, settings)
+    env = Env(signed_in_client(app, TOKEN_A, aclose_later), app, deps, agent, settings, aclose_later)
     env.built = built  # type: ignore[attr-defined]
     return env
 

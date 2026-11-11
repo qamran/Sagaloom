@@ -12,6 +12,10 @@ import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
 
+import jwt
+
+from sagaloom.web.access import bearer_token
+
 TURN_PATH = re.compile(r"^/api/(threads/[^/]+/(messages|decisions)|worlds/[^/]+/imports)$")
 HEALTH_PATH = "/api/health"
 
@@ -30,6 +34,19 @@ async def _json_response(send, status: int, detail: str, headers: list[tuple[byt
         }
     )
     await send({"type": "http.response.body", "body": body})
+
+
+def _token_sub(scope) -> str | None:
+    """The `sub` of an `Authorization: Bearer <jwt>` header, unverified; None if there is none."""
+    header = next((v.decode("latin-1") for n, v in scope["headers"] if n == b"authorization"), None)
+    token = bearer_token(header)
+    if token is None:
+        return None
+    try:
+        sub = jwt.decode(token, options={"verify_signature": False}).get("sub")
+    except jwt.PyJWTError:
+        return None
+    return sub if isinstance(sub, str) and sub else None
 
 
 class _TooLarge(Exception):
@@ -95,8 +112,8 @@ class RateLimitMiddleware:
     """Sliding-window limits per client key: `turn_limit` turn requests and `total_limit`
     requests overall per `window_s`. `/api/health` is exempt.
 
-    The key is the socket peer's address (see `client_key`); `X-Forwarded-For` is read only when
-    that peer is in `trusted_proxies`. At most `max_keys` clients are tracked: a new client first
+    A request with a bearer token is keyed by its user (see `client_key`); otherwise by the socket
+    peer's address, reading `X-Forwarded-For` only when that peer is in `trusted_proxies`. At most `max_keys` clients are tracked: a new client first
     drops the expired keys at the least recently hit end and, if the map is still full, evicts
     the least recently hit one."""
 
@@ -123,9 +140,15 @@ class RateLimitMiddleware:
         self._last_sweep = clock()
 
     def client_key(self, scope) -> str:
-        """The socket peer's address. When that peer is a trusted proxy, the right-most
+        """`user:<sub>` when the request carries a bearer JWT. Its `sub` is read without checking
+        the signature: `current_user` rejects a forged token, and the key only picks a bucket.
+
+        Otherwise the socket peer's address. When that peer is a trusted proxy, the right-most
         `X-Forwarded-For` hop that is not itself a trusted proxy (the hops left of it are
         whatever the client chose to send); if there is none, the proxy's own address."""
+        sub = _token_sub(scope)
+        if sub is not None:
+            return "user:" + sub
         client = scope.get("client")
         peer = client[0] if client else "unknown"
         if peer not in self.trusted_proxies:

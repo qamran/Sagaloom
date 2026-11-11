@@ -17,6 +17,7 @@ from pydantic import Field
 
 from checkpointers import memory_checkpointer
 from stubs import StubLLM  # noqa: F401  (the one structured-output stub, as `fakes.StubLLM`)
+from stubs import TOKEN_A, USER_A, FakeDirectory, FakeVerifier, bearer  # noqa: F401
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
 from sagaloom.graph.build import build_graph
@@ -33,7 +34,7 @@ from sagaloom.web.app import AppDeps, create_app
 
 SECRET = "test-secret"
 KEY = "sk-or-TEST-KEY-999"
-HEADERS = {"X-Sagaloom-Secret": SECRET}
+HEADERS = {"X-Sagaloom-Secret": SECRET}  # the shared secret only
 W = "w1"
 
 
@@ -168,6 +169,14 @@ def names(events) -> list[str]:
     return [e for e, _ in events]
 
 
+def signed_in_client(app, token: str, aclose_later) -> AsyncClient:
+    client = AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers={**HEADERS, **bearer(token)}
+    )
+    aclose_later(client)
+    return client
+
+
 @dataclass
 class Env:
     client: AsyncClient
@@ -175,6 +184,12 @@ class Env:
     deps: AppDeps
     agent: ScriptedChat
     settings: Settings
+    aclose_later: Any
+
+    def as_user(self, token: str) -> AsyncClient:
+        """A client for another user: the shared secret plus `Bearer <token>` (map the token in
+        `deps.verifier.tokens`)."""
+        return signed_in_client(self.app, token, self.aclose_later)
 
     async def new_thread(self, world_id: str = W) -> str:
         r = await self.client.post("/api/threads", json={"world_id": world_id})
@@ -237,11 +252,12 @@ def make_env(store, tmp_path, aclose_later):
             memory_locks=memory_locks,
             model_for=lambda role: roles[role],
             wiki=wiki,
+            verifier=FakeVerifier({TOKEN_A: USER_A}),
+            directory=FakeDirectory(),
         )
         app = create_app(settings, deps)
-        client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=HEADERS)
-        aclose_later(client)
-        return Env(client, app, deps, agent, settings)
+        client = signed_in_client(app, TOKEN_A, aclose_later)  # signed in as `user_a` by default
+        return Env(client, app, deps, agent, settings, aclose_later)
 
     return build
 

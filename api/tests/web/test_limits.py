@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from httpx import ASGITransport, AsyncClient
 
 from sagaloom.web.limits import TURN_PATH, BodyLimitMiddleware, RateLimitMiddleware
+from stubs import TOKEN_A, USER_A, FakeDirectory, FakeVerifier, bearer
 
 PEER = frozenset({"127.0.0.1"})  # httpx's ASGITransport reports the client as 127.0.0.1
 
@@ -70,6 +71,12 @@ def limiter_of(app: FastAPI) -> RateLimitMiddleware:
     while not isinstance(limiter, RateLimitMiddleware):
         limiter = limiter.app
     return limiter
+
+
+def signed_in_deps():
+    from sagaloom.web.app import AppDeps
+
+    return AppDeps(verifier=FakeVerifier({TOKEN_A: USER_A}), directory=FakeDirectory())
 
 
 def scope_from(peer: str | None, *xff: str) -> dict:
@@ -186,9 +193,9 @@ async def test_untrusted_peer_is_keyed_by_socket_whatever_the_header_says(tmp_pa
     # The default trusts no proxy, so rotating X-Forwarded-For buys no fresh window.
     settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
     assert settings.trusted_proxies == []
-    app = create_app(settings, rate_limits={"total_limit": 2})
+    app = create_app(settings, signed_in_deps(), rate_limits={"total_limit": 2})
     async with client(app) as c:
-        h = {"X-Sagaloom-Secret": "s"}
+        h = {"X-Sagaloom-Secret": "s", **bearer()}  # not a JWT: keyed by address
         assert (await c.get("/api/worlds", headers={**h, "X-Forwarded-For": "1.1.1.1"})).status_code == 200
         assert (await c.get("/api/worlds", headers={**h, "X-Forwarded-For": "2.2.2.2"})).status_code == 200
         assert (await c.get("/api/worlds", headers={**h, "X-Forwarded-For": "3.3.3.3"})).status_code == 429
@@ -202,9 +209,9 @@ async def test_trusted_proxies_setting_reaches_the_limiter(monkeypatch, tmp_path
     monkeypatch.setenv("TRUSTED_PROXIES", '["127.0.0.1"]')
     settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
     assert settings.trusted_proxies == ["127.0.0.1"]
-    app = create_app(settings, rate_limits={"total_limit": 1})
+    app = create_app(settings, signed_in_deps(), rate_limits={"total_limit": 1})
     async with client(app) as c:
-        h = {"X-Sagaloom-Secret": "s"}
+        h = {"X-Sagaloom-Secret": "s", **bearer()}  # not a JWT: keyed by address
         assert (await c.get("/api/worlds", headers={**h, "X-Forwarded-For": "1.1.1.1"})).status_code == 200
         assert (await c.get("/api/worlds", headers={**h, "X-Forwarded-For": "2.2.2.2"})).status_code == 200
         assert (await c.get("/api/worlds", headers={**h, "X-Forwarded-For": "1.1.1.1"})).status_code == 429
@@ -336,3 +343,45 @@ async def test_cap_sweep_stops_at_first_live_key():
         await c.get("/api/worlds", headers={"X-Forwarded-For": "5.5.5.5"})
         assert list(limiter._totals) == ["3.3.3.3", "4.4.4.4", "5.5.5.5"]
         assert len(limiter._totals) <= 4 and set(limiter._turns) <= set(limiter._totals)
+
+
+def jwt_for(sub) -> str:
+    """A JWT-shaped token; the limiter reads its `sub` without verifying (auth does that)."""
+    import jwt
+
+    return jwt.encode({"sub": sub}, "not-the-real-key-but-32-bytes-long", algorithm="HS256")
+
+
+def test_client_key_reads_the_token_sub():
+    limiter = RateLimitMiddleware(None)
+    scope = scope_from("8.8.8.8")
+    scope["headers"].append((b"authorization", f"Bearer {jwt_for('user_a')}".encode()))
+    assert limiter.client_key(scope) == "user:user_a"
+    for bad in ("Bearer not-a-jwt", "Bearer", f"Basic {jwt_for('user_a')}", f"Bearer {jwt_for(42)}",
+                f"Bearer {jwt_for('')}"):
+        scope = scope_from("8.8.8.8")
+        scope["headers"].append((b"authorization", bad.encode()))
+        assert limiter.client_key(scope) == "8.8.8.8", bad
+
+
+async def test_rate_limit_keyed_per_user_behind_proxy():
+    app = build(total_limit=2, clock=Clock(), trusted_proxies=PEER)
+    async with client(app) as c:
+        a = {"Authorization": f"Bearer {jwt_for('user_a')}", "X-Forwarded-For": "1.1.1.1"}
+        b = {"Authorization": f"Bearer {jwt_for('user_b')}", "X-Forwarded-For": "1.1.1.1"}
+        assert (await c.get("/api/worlds", headers=a)).status_code == 200
+        assert (await c.get("/api/worlds", headers=a)).status_code == 200
+        assert (await c.get("/api/worlds", headers=a)).status_code == 429
+        # Same proxy, same forwarded address: user_b has a bucket of its own.
+        assert (await c.get("/api/worlds", headers=b)).status_code == 200
+        assert (await c.get("/api/worlds", headers=b)).status_code == 200
+        assert list(limiter_of(app)._totals) == ["user:user_a", "user:user_b"]
+
+
+async def test_no_token_keyed_by_peer():
+    app = build(total_limit=2, clock=Clock(), trusted_proxies=PEER)
+    async with client(app) as c:
+        for _ in range(2):
+            assert (await c.get("/api/worlds", headers={"X-Forwarded-For": "1.1.1.1"})).status_code == 200
+        assert (await c.get("/api/worlds", headers={"X-Forwarded-For": "1.1.1.1"})).status_code == 429
+        assert list(limiter_of(app)._totals) == ["1.1.1.1"]

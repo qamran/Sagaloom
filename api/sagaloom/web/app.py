@@ -7,11 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.store.base import BaseStore
 from pydantic import ValidationError
 
+from sagaloom.auth import ClerkDirectory, ClerkVerifier, ProfileDirectory, TokenVerifier
 from sagaloom.config import Settings, load_env_files
 from sagaloom.llm import install_warning_filters
 from sagaloom.locks import KeyedLocks
@@ -20,7 +22,9 @@ from sagaloom.promptlog import PromptLog
 from sagaloom.seed import ensure_first_run
 from sagaloom.settings_store import DevSettingsStore
 from sagaloom.store.threads import ThreadRegistry
+from sagaloom.store.users import UserRegistry
 from sagaloom.store.worlds import WorldRegistry
+from sagaloom.web.access import UnconfiguredVerifier, current_user
 from sagaloom.web.limits import BodyLimitMiddleware, RateLimitMiddleware
 from sagaloom.web.routes import router
 from sagaloom.wiki.client import WikiClient
@@ -54,6 +58,10 @@ class AppDeps:
     model_for: Callable[[str], Any] | None = None
     # Running turns, shielded from client disconnects; cancelled at shutdown.
     tasks: set[asyncio.Task] = field(default_factory=set)
+    users: UserRegistry | None = None
+    verifier: TokenVerifier | None = None  # Clerk session tokens -> claims
+    directory: ProfileDirectory | None = None  # Clerk profiles; built at startup from the secret key
+    user_locks: KeyedLocks = field(default_factory=KeyedLocks)  # one account write per user
 
 
 # Roles that run on another role's model choice; not switchable on their own.
@@ -129,6 +137,12 @@ async def _open_runtime(app: FastAPI):
                 memory_store=deps.memory,
                 memory_locks=deps.memory_locks,
             )
+        if isinstance(deps.verifier, UnconfiguredVerifier):
+            log.error("CLERK_ISSUER is not set: every sign-in will be rejected (set it in .env)")
+        if deps.directory is None and settings.clerk_secret_key is not None:
+            http = await stack.enter_async_context(httpx.AsyncClient(timeout=10))
+            deps.directory = ClerkDirectory(settings.clerk_secret_key.get_secret_value(), http=http)
+            stack.callback(setattr, deps, "directory", None)  # a restart opens a fresh client
         if deps.seed_dir is not None:
             await asyncio.to_thread(ensure_first_run, deps.store, deps.worlds, deps.seed_dir)
         try:
@@ -177,6 +191,13 @@ def create_app(
     deps.promptlog = deps.promptlog or PromptLog(data / "prompts.sqlite")
     deps.model_settings = deps.model_settings or ModelSettings(data / "model_settings.json", settings)
     deps.dev_settings = deps.dev_settings or DevSettingsStore(data / "settings.json")
+    deps.users = deps.users or UserRegistry(data / "users.sqlite")
+    if deps.verifier is None:
+        deps.verifier = (
+            ClerkVerifier(settings.clerk_issuer, settings.web_origin)
+            if settings.clerk_issuer
+            else UnconfiguredVerifier()
+        )
     app.state.settings = settings
     app.state.deps = deps
 
@@ -197,11 +218,15 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    # The shared secret guards every /api route; `authed` adds the signed-in user. Routers are
+    # copied when included, so `authed` is filled before it goes into `protected`. A secret-only
+    # route goes straight into `protected`.
     protected = APIRouter(
         prefix="/api", dependencies=[Depends(make_require_secret(settings.api_shared_secret.get_secret_value()))]
     )
-
-    protected.include_router(router)
+    authed = APIRouter(dependencies=[Depends(current_user)])
+    authed.include_router(router)
+    protected.include_router(authed)
     app.include_router(protected)
     return app
 

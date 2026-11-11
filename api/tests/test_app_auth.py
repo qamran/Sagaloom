@@ -2,7 +2,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from sagaloom.config import Settings
-from sagaloom.web.app import create_app
+from sagaloom.web.app import AppDeps, create_app
+from stubs import TOKEN_A, USER_A, FakeDirectory, FakeVerifier, bearer
 
 SECRET = "test-secret"
 ORIGIN = "http://localhost:3000"
@@ -17,7 +18,7 @@ def client(aclose_later, tmp_path):
         web_origin=ORIGIN,
         data_dir=tmp_path,  # never the developer's api/data/
     )
-    app = create_app(settings)
+    app = create_app(settings, AppDeps(verifier=FakeVerifier({TOKEN_A: USER_A}), directory=FakeDirectory()))
     c = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     aclose_later(c)
     return c
@@ -41,7 +42,7 @@ async def test_protected_route_rejects_wrong_secret(client):
 
 
 async def test_protected_route_accepts_right_secret(client):
-    r = await client.get("/api/worlds", headers={"X-Sagaloom-Secret": SECRET})
+    r = await client.get("/api/worlds", headers={"X-Sagaloom-Secret": SECRET, **bearer()})
     assert r.status_code == 200
     assert r.json() == []
 
