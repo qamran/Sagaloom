@@ -441,6 +441,10 @@ async def test_llm_failure_emits_friendly_error_event(make_env):
     ]
     assert "Traceback" not in r.text and "openrouter.ai" not in r.text
     assert "done" not in names(events)
+    # A turn that spent money and then failed with no reply still gets its cost line (design 3.3).
+    body = (await env.client.get(f"/api/threads/{tid}")).json()
+    [user] = [m for m in body["messages"] if m["role"] == "user"]
+    assert user["turn_id"] and user["turn_id"] in [t["turn_id"] for t in body["turns"]]
 
 
 async def test_recursion_limit_becomes_error_event(make_env):

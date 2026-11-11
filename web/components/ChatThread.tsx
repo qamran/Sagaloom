@@ -278,7 +278,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
                 showSecrets={threadShowSecrets}
                 done={s.messages.slice(i + 1).some((n) => n.role === "tool" || n.role === "assistant") || !busy}
               />
-              {cost && <TurnCost turn={cost} />}
+              {cost && <TurnCost key={cost.turn_id} turn={cost} />}
             </Fragment>
           );
         })}

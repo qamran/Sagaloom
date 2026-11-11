@@ -85,6 +85,8 @@ async def test_decision_turn_has_its_own_turn_id(make_env):
     [second] = ids
     assert second != first
     assert run_ids(env, tid) == [first, second]
+    turns = (await env.client.get(f"/api/threads/{tid}")).json()["turns"]
+    assert len(turns) == 2 and turns[1]["turn_id"] == second
 
 
 async def test_guard_notice_carries_turn_id(make_env):

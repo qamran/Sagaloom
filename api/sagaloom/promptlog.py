@@ -158,7 +158,7 @@ class PromptLog:
                 (thread_id,),
             ).fetchall()
         turns: dict[str, dict[str | None, dict]] = {}
-        totals: dict[str, Usage] = {}  # summed in record order, as `usage()` does
+        totals: dict[str, Usage] = {}  # records are inserted at request start, so rowid order is `started_at` order: sums match `usage()`
         for (raw,) in rows:
             rec = PromptRecord.model_validate_json(raw)
             p, c, usd = _amounts(rec.response)
