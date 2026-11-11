@@ -63,6 +63,7 @@ class AppDeps:
     directory: ProfileDirectory | None = None  # Clerk profiles; built at startup from the secret key
     user_locks: KeyedLocks = field(default_factory=KeyedLocks)  # one account write per user
     now: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))  # tests move the clock
+    refresh_failures: dict[str, datetime] = field(default_factory=dict)  # user id -> last failed Clerk refresh
 
 
 # Roles that run on another role's model choice; not switchable on their own.

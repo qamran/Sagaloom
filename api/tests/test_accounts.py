@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import threading
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -284,3 +285,80 @@ async def test_startup_migrates_record_ids_first(store, tmp_path, monkeypatch):
     async with app.router.lifespan_context(app):
         pass
     assert calls == ["migrate"]
+
+
+class CountingDown:
+    """A Clerk that fails every lookup (after `delay` seconds) and counts them."""
+
+    def __init__(self, delay: float = 0.0):
+        self.delay = delay
+        self.calls = 0
+
+    async def fetch(self, user_id):
+        self.calls += 1
+        await asyncio.sleep(self.delay)
+        raise AuthError("Clerk lookup failed: ReadTimeout")
+
+
+async def test_failed_refresh_backs_off_for_a_minute(deps, clock):
+    as_admin(deps)
+    await ensure_user(deps, Claims(sub="user_boss"))
+    down = CountingDown()
+    deps.directory = down
+    clock.advance(hours=25)
+    for _ in range(2):
+        assert (await ensure_user(deps, Claims(sub="user_boss"))).is_admin is True
+    assert down.calls == 1
+    clock.advance(seconds=59)
+    await ensure_user(deps, Claims(sub="user_boss"))
+    assert down.calls == 1
+    clock.advance(seconds=2)
+    await ensure_user(deps, Claims(sub="user_boss"))
+    assert down.calls == 2
+
+
+async def test_slow_failing_refresh_is_tried_once_by_parallel_requests(deps, clock):
+    as_admin(deps)
+    await ensure_user(deps, Claims(sub="user_boss"))
+    down = CountingDown(delay=0.05)
+    deps.directory = down
+    clock.advance(hours=25)
+    users = await asyncio.gather(*(ensure_user(deps, Claims(sub="user_boss")) for _ in range(4)))
+    assert all(u.is_admin for u in users)
+    assert down.calls == 1
+
+
+async def test_cancelled_first_request_still_leaves_one_velmar(deps, store):
+    started, go = threading.Event(), threading.Event()
+    real = store.upsert_entry
+
+    def slow(entry, **kw):
+        started.set()
+        go.wait(5)
+        return real(entry, **kw)
+
+    store.upsert_entry = slow
+    first = asyncio.create_task(ensure_user(deps, Claims(sub="user_a")))
+    while not started.is_set():
+        await asyncio.sleep(0.01)
+    first.cancel()
+    second = asyncio.create_task(ensure_user(deps, Claims(sub="user_a")))
+    await asyncio.sleep(0.05)
+    go.set()
+    a = await second
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    [world] = deps.worlds.owned_by("user_a")
+    assert len(deps.worlds.all_worlds()) == 1 and a.last_world_id == world.id
+
+
+async def test_naive_profile_timestamp_is_read_as_utc(deps, clock):
+    deps.users.upsert_profile(
+        "user_a", email="a@example.test", email_verified=True, display_name="A",
+        checked_at=clock().replace(tzinfo=None),
+    )
+    await ensure_user(deps, Claims(sub="user_a"))
+    assert deps.directory.fetched == []  # fresh, not a TypeError
+    clock.advance(hours=25)
+    await ensure_user(deps, Claims(sub="user_a"))
+    assert deps.directory.fetched == ["user_a"]
