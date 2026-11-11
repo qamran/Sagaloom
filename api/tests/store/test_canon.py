@@ -344,3 +344,44 @@ def test_migrate_record_ids_works_in_chunks(store, monkeypatch):
     assert store.migrate_record_ids() == 5
     assert sizes and max(sizes) <= 2
     assert sorted(real_get(include=[])["ids"]) == [f"velmar/ent_{i:04d}" for i in range(1, 6)]
+
+
+class BatchCountingEmbeddings(DeterministicFakeEmbedding):
+    """Counts `embed_documents` calls (not texts)."""
+
+    batches: int = 0
+
+    def embed_documents(self, texts):
+        self.batches += 1
+        return super().embed_documents(texts)
+
+
+def test_upsert_entries_embeds_in_one_call():
+    emb = BatchCountingEmbeddings(size=16)
+    store = CanonStore(chromadb.EphemeralClient(), emb, collection_name=f"e_{uuid.uuid4().hex}")
+    entries = [mk(id=f"ent_{i:04d}", title=f"Place {i}") for i in range(1, 6)]
+    stored = store.upsert_entries(entries)
+    assert emb.batches == 1
+    assert [e.id for e in store.list_entries("w1")] == [e.id for e in entries]
+    assert [e.title for e in stored] == [e.title for e in entries]
+    assert all(e.updated_at for e in stored)
+    assert store.get_entry("w1", "ent_0003") == stored[2]
+    assert store.find_by_name("w1", "place 4").id == "ent_0004"
+
+
+def test_upsert_entries_keeps_the_single_write_checks(store):
+    store.upsert_entry(mk(id="ent_0001", title="Ister"))
+    with pytest.raises(DuplicateTitleError):  # against the stored entries
+        store.upsert_entries([mk(id="ent_0002", title="Ostra"), mk(id="ent_0003", title=" ISTER ")])
+    with pytest.raises(DuplicateTitleError):  # within the batch
+        store.upsert_entries([mk(id="ent_0002", title="Ostra"), mk(id="ent_0003", title="ostra")])
+    with pytest.raises(VersionConflictError):  # new entries only: an existing id is refused
+        store.upsert_entries([mk(id="ent_0002", title="Ostra"), mk(id="ent_0001", title="Other")])
+    assert [e.id for e in store.list_entries("w1")] == ["ent_0001"]  # nothing written
+    assert store.upsert_entries([]) == []
+
+
+def test_has_world(store):
+    assert not store.has_world("w1")
+    store.upsert_entry(mk())
+    assert store.has_world("w1") and not store.has_world("w2")

@@ -1,11 +1,18 @@
 import json
 import os
 import re
+import secrets
+import string
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from sagaloom.models import World
+
+# On a slug collision: `-` and this many random lowercase letters and digits (spec §5.4).
+SUFFIX_LEN = 4
+_SUFFIX_ALPHABET = string.ascii_lowercase + string.digits
 
 
 class WorldRegistry:
@@ -37,21 +44,31 @@ class WorldRegistry:
                 Path(tmp).unlink(missing_ok=True)
                 raise
 
-    def _free_id(self, name: str, worlds: list[World]) -> str:
-        """The registry's slug rule: the name's slug, then `-2`, `-3`, ... until unused."""
+    def _free_id(
+        self, name: str, worlds: list[World], in_use: Callable[[str], bool] | None = None
+    ) -> str:
+        """The registry's slug rule (spec §5.4): the name's slug, or on a collision the slug and
+        `-` plus `SUFFIX_LEN` random lowercase letters and digits (drawn again until free), never
+        a counter, so an id tells nothing about other accounts' worlds. A candidate is taken
+        when a world or a reservation holds it, or when `in_use(id)` says so (the canon store
+        still holds records under it, e.g. after a lost worlds.json)."""
         slug = re.sub(r"[^a-z0-9]+", "-", name.casefold()).strip("-") or "world"
         taken = {w.id for w in worlds} | self._reserved
-        world_id, n = slug, 2
-        while world_id in taken:
-            world_id, n = f"{slug}-{n}", n + 1
+
+        def free(world_id: str) -> bool:
+            return world_id not in taken and not (in_use is not None and in_use(world_id))
+
+        world_id = slug
+        while not free(world_id):
+            world_id = f"{slug}-" + "".join(secrets.choice(_SUFFIX_ALPHABET) for _ in range(SUFFIX_LEN))
         return world_id
 
-    def reserve_id(self, name: str) -> str:
+    def reserve_id(self, name: str, *, in_use: Callable[[str], bool] | None = None) -> str:
         """A fresh id for a world named `name` that no other create will take until the
         caller creates it with `world_id=` or calls `release`. For a world whose data is written
         before the world record (the demo copy)."""
         with self._lock:
-            world_id = self._free_id(name, self._load())
+            world_id = self._free_id(name, self._load(), in_use)
             self._reserved.add(world_id)
             return world_id
 
@@ -91,11 +108,14 @@ class WorldRegistry:
         owner_id: str | None = None,
         world_id: str | None = None,
         is_demo: bool = False,
+        in_use: Callable[[str], bool] | None = None,
     ) -> World:
+        """A new world. Without `world_id`, a free id by the slug rule (`_free_id`, which also
+        skips ids `in_use` reports)."""
         with self._lock:
             worlds = self._load()
             if world_id is None:
-                world_id = self._free_id(name, worlds)
+                world_id = self._free_id(name, worlds, in_use)
             elif any(w.id == world_id for w in worlds):
                 raise ValueError(f"World {world_id!r} already exists")
             world = World(id=world_id, name=name, is_demo=is_demo, owner_id=owner_id)

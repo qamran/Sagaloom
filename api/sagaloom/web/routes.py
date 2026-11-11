@@ -3,7 +3,6 @@
 import asyncio
 import uuid
 from collections.abc import Callable
-from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -11,6 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
+from sagaloom.budget import budget_reset_date, check_budget
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
 from sagaloom.graph.nodes import RoleModel
@@ -21,7 +21,7 @@ from sagaloom.importing.extract import MAX_CHARS
 from sagaloom.memory import CAP, count_items, forget, read_preferences
 from sagaloom.models import Decision, Entry, MentionRef, PreferenceKey, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
-from sagaloom.promptlog import PromptLogHandler, PromptRecord, next_month_start
+from sagaloom.promptlog import PromptLogHandler, PromptRecord
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
 from sagaloom.text import first_line, message_text
@@ -142,6 +142,7 @@ def _turn_config(
             secrets=secrets,
             turn_id=turn_id,
             user_id=world.owner_id if world is not None else None,
+            clock=d.now,  # the clock `month_spend` and the budget check read
         )
     ]
     return cfg
@@ -231,7 +232,9 @@ def list_worlds(request: Request) -> list[World]:
 
 @router.post("/worlds")
 def create_world(body: NewWorld, request: Request) -> World:
-    return _deps(request).worlds.create(body.name.strip() or "World", owner_id=user_of(request).id)
+    d = _deps(request)
+    # An id the canon store still holds records under is skipped (a lost worlds.json).
+    return d.worlds.create(body.name.strip() or "World", owner_id=user_of(request).id, in_use=d.store.has_world)
 
 
 @router.get("/worlds/{world_id}/entries")
@@ -294,6 +297,7 @@ async def post_import(world_id: str, body: NewImport, request: Request):
     import fetches its pages first (M3 design §5)."""
     world_for(request, world_id)
     d = _deps(request)
+    check_budget(d, user_of(request))  # before any import kind starts (spec §5.5a)
     if isinstance(body, WikiImport):
         return await _post_wiki_import(world_id, body, request)
     if not body.text.strip():
@@ -382,14 +386,17 @@ def _memory_world(request: Request, world_id: str):
     return d
 
 
-def _memory_payload(d, settings, world_id: str, prefs: dict) -> dict:
+CHECKPOINT_FILE = "checkpoints.sqlite"
+
+
+def _memory_payload(d, world_id: str, prefs: dict) -> dict:
     return {
         "preferences": prefs,
         "count": count_items(prefs),
         "cap": CAP,
         "short_term": {
             "threads": len(d.threads.list(world_id)),
-            "checkpoint_file": (Path(settings.data_dir) / "checkpoints.sqlite").as_posix(),
+            "checkpoint_file": CHECKPOINT_FILE,  # the name only: a path is the server's business
         },
     }
 
@@ -397,7 +404,7 @@ def _memory_payload(d, settings, world_id: str, prefs: dict) -> dict:
 @router.get("/worlds/{world_id}/memory")
 async def get_memory(world_id: str, request: Request) -> dict:
     d = _memory_world(request, world_id)
-    return _memory_payload(d, request.app.state.settings, world_id, await read_preferences(d.memory, world_id))
+    return _memory_payload(d, world_id, await read_preferences(d.memory, world_id))
 
 
 @router.delete("/worlds/{world_id}/memory")
@@ -408,7 +415,7 @@ async def delete_memory(
     d = _memory_world(request, world_id)
     async with d.memory_locks.hold(world_id):
         prefs = await forget(d.memory, world_id, key, item)
-    return _memory_payload(d, request.app.state.settings, world_id, prefs)
+    return _memory_payload(d, world_id, prefs)
 
 
 # ---------- threads ----------
@@ -464,6 +471,7 @@ async def get_thread(thread_id: str, request: Request) -> dict:
 @router.post("/threads/{thread_id}/messages")
 async def post_message(thread_id: str, body: NewMessage, request: Request):
     t = thread_for(request, thread_id)
+    check_budget(_deps(request), user_of(request))  # before the lock: a refusal changes nothing
     release = await _take_turn(request, thread_id)
     try:
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
@@ -493,6 +501,7 @@ async def post_message(thread_id: str, body: NewMessage, request: Request):
 @router.post("/threads/{thread_id}/decisions")
 async def post_decisions(thread_id: str, body: DecisionBody, request: Request):
     t = thread_for(request, thread_id)
+    check_budget(_deps(request), user_of(request))  # before the lock: a refusal changes nothing
     release = await _take_turn(request, thread_id)
     try:
         state = await _deps(request).graph.aget_state({"configurable": {"thread_id": thread_id}})
@@ -674,7 +683,7 @@ def _me(request: Request, last_world_id: str | None) -> Me:
         last_world_id=last_world_id,
         month_spend_usd=d.promptlog.month_spend(user.id, now),
         monthly_budget_usd=None if user.is_admin else d.dev_settings.get().monthly_budget_usd,
-        budget_resets_on=next_month_start(now).date().isoformat(),
+        budget_resets_on=budget_reset_date(now).isoformat(),
     )
 
 

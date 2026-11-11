@@ -106,10 +106,15 @@ async def _provision(deps: Any, sub: str) -> User:
         if _is_admin(deps, user):
             assigned = await asyncio.to_thread(deps.worlds.assign_unowned, user.id)
             if assigned and deps.promptlog is not None and deps.threads is not None:
-                # The legacy worlds' costs are the admin's now, not only after a restart.
-                await asyncio.to_thread(deps.promptlog.backfill_user_ids, thread_owner(deps))
+                # The legacy worlds' costs are the admin's now, not only after a restart. A
+                # failure here must not fail the sign-in: the takeover stands, and the startup
+                # backfill fills the records on the next start.
+                try:
+                    await asyncio.to_thread(deps.promptlog.backfill_user_ids, thread_owner(deps))
+                except Exception as exc:
+                    log.warning("prompt-log backfill after the admin takeover failed: %s", exc)
         if deps.seed_dir is not None and not deps.worlds.owned_by(user.id):
-            # 19 embedding calls: keep them off the event loop.
+            # Chroma and the embedding call block: keep them off the event loop.
             world = await asyncio.to_thread(copy_velmar, deps.store, deps.worlds, deps.seed_dir, user.id)
             deps.users.set_last_world(user.id, world.id)
             user = user.model_copy(update={"last_world_id": world.id})

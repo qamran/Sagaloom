@@ -24,22 +24,17 @@ def test_email_lowercased(tmp_path):
     reg = _reg(tmp_path)
     user = reg.upsert_profile("user_1", email="Ann@X.io", email_verified=True, display_name="Ann")
     assert user.email == "ann@x.io"
-    assert reg.find_by_email("ANN@x.IO") == user
-    assert reg.find_by_email("nobody@x.io") is None
+    assert reg.get("user_1") == user
 
 
-def test_two_users_may_share_an_email_find_takes_newest_verified(tmp_path):
+def test_two_users_may_share_an_email(tmp_path):
     reg = _reg(tmp_path)
     t0 = datetime(2026, 11, 1, tzinfo=UTC)
     old = reg.upsert_profile("u1", email="ann@x.io", email_verified=True, display_name="A", checked_at=t0)
     new = reg.upsert_profile(
         "u2", email="ann@x.io", email_verified=True, display_name="B", checked_at=t0 + timedelta(hours=1)
     )
-    reg.upsert_profile(
-        "u3", email="ann@x.io", email_verified=False, display_name="C", checked_at=t0 + timedelta(hours=2)
-    )
-    assert reg.get("u1") == old
-    assert reg.find_by_email("ann@x.io") == new  # u3 is newer but unverified
+    assert reg.get("u1") == old and reg.get("u2") == new
     assert new.profile_checked_at == (t0 + timedelta(hours=1)).isoformat()
 
 

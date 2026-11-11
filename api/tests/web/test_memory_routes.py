@@ -19,7 +19,7 @@ def empty_payload(env, threads: int = 0) -> dict:
         "cap": 20,
         "short_term": {
             "threads": threads,
-            "checkpoint_file": (env.settings.data_dir / "checkpoints.sqlite").as_posix(),
+            "checkpoint_file": "checkpoints.sqlite",  # the name only, never a server path
         },
     }
 

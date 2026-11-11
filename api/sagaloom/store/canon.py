@@ -108,23 +108,54 @@ class CanonStore:
             if (0 if actual is None else actual) != expected_version:
                 raise VersionConflictError(entry.id, expected_version, actual)
         entry = entry.model_copy(update={"updated_at": datetime.now(UTC).isoformat()})
-        doc = f"{entry.title}\n\n{entry.body}"
+        self._write([entry])
+        return entry
+
+    def upsert_entries(self, entries: list[Entry]) -> list[Entry]:
+        """Write new entries with one embedding call and one Chroma write (a world's seed
+        copy). The checks of `upsert_entry(e, expected_version=0)` hold for every entry: its id
+        must not exist yet (VersionConflictError), and its title must clash with no stored entry
+        of its world nor another entry of the batch (DuplicateTitleError). A refused batch
+        writes nothing."""
+        seen: set[tuple[str, str]] = set()
+        for e in entries:
+            key = (e.world_id, norm(e.title))
+            clash = self.col.get(where=_and({"world_id": e.world_id}, {"title_norm": key[1]}), include=[])
+            if key in seen or clash["ids"]:
+                raise DuplicateTitleError(e.title)
+            seen.add(key)
+            prev = self._read(e.world_id, e.id)
+            if prev is not None:
+                raise VersionConflictError(e.id, 0, prev.version)
+        now = datetime.now(UTC).isoformat()
+        entries = [e.model_copy(update={"updated_at": now}) for e in entries]
+        if entries:
+            self._write(entries)
+        return entries
+
+    def _write(self, entries: list[Entry]) -> None:
+        """Embeds `entries` in one call and upserts them; the callers have checked them."""
+        docs = [f"{e.title}\n\n{e.body}" for e in entries]
         self.col.upsert(
-            ids=[rid],
-            documents=[doc],
-            embeddings=[self.embeddings.embed_documents([doc])[0]],
+            ids=[_record_id(e.world_id, e.id) for e in entries],
+            documents=docs,
+            embeddings=self.embeddings.embed_documents(docs),
             metadatas=[
                 {
-                    "world_id": entry.world_id,
-                    "entry_id": entry.id,
-                    "type": entry.type,
-                    "status": entry.status,
-                    "title_norm": tn,
-                    "entry_json": entry.model_dump_json(),
+                    "world_id": e.world_id,
+                    "entry_id": e.id,
+                    "type": e.type,
+                    "status": e.status,
+                    "title_norm": norm(e.title),
+                    "entry_json": e.model_dump_json(),
                 }
+                for e in entries
             ],
         )
-        return entry
+
+    def has_world(self, world_id: str) -> bool:
+        """Whether any record (keyed or legacy) belongs to this world, so its id is in use."""
+        return bool(self.col.get(where={"world_id": world_id}, limit=1, include=[])["ids"])
 
     def delete_entry(self, world_id: str, entry_id: str) -> None:
         self.col.delete(ids=[_record_id(world_id, entry_id)])

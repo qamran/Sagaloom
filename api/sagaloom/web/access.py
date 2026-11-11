@@ -37,7 +37,8 @@ class UnconfiguredVerifier:
 async def current_user(request: Request) -> User:
     """Verifies the bearer token and returns its user, also stored on `request.state.user`.
     401 `sign in required` for a missing or untrusted token; the verifier's reason is logged at
-    INFO, the token never. 503 when the token cannot be checked or the profile not fetched."""
+    INFO, the token never. 503 when the token cannot be checked, the profile not fetched, or
+    the account not provisioned (any other failure of `ensure_user`, logged)."""
     token = bearer_token(request.headers.get("authorization"))
     if token is None:
         raise HTTPException(status_code=401, detail=SIGN_IN_REQUIRED)
@@ -57,6 +58,12 @@ async def current_user(request: Request) -> User:
     except AuthError as exc:
         # The token is good but the Clerk profile lookup failed: not the user's fault.
         log.warning("Clerk profile lookup failed for a signed-in user: %s", exc)
+        raise HTTPException(status_code=503, detail=UNAVAILABLE) from None
+    except Exception:
+        # Provisioning failed on our side (e.g. the embeddings provider is down during the
+        # Velmar copy): not the user's fault, and the next request retries it. The traceback
+        # holds no token (it is never part of an exception message).
+        log.exception("account provisioning failed for a signed-in user")
         raise HTTPException(status_code=503, detail=UNAVAILABLE) from None
     request.state.user = user
     return user

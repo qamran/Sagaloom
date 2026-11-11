@@ -33,15 +33,14 @@ def load_seed(
 
 def copy_velmar(store: CanonStore, worlds: WorldRegistry, seed_dir: Path, owner_id: str) -> World:
     """A new account's own Velmar (spec §5.4): a fresh world id by the registry's slug rule
-    (`velmar`, `velmar-2`, ...), reserved so no concurrent create takes it, holding the seed
-    entries at their seed ids. As in `load_seed`, the world record is created only after every
-    upsert succeeded; on a failure the entries written so far are deleted and the id released."""
-    world_id = worlds.reserve_id(VELMAR_NAME)
+    (`velmar`, else `velmar-` and a random suffix; an id the store still holds records under is
+    skipped), reserved so no concurrent create takes it, holding the seed entries at their seed
+    ids, embedded in one batched call. As in `load_seed`, the world record is created only after
+    the entries are written; on a failure they are deleted again and the id released."""
+    world_id = worlds.reserve_id(VELMAR_NAME, in_use=store.has_world)
     written: list[str] = []
     try:
-        for e in _seed_entries(seed_dir, world_id):
-            store.upsert_entry(e)
-            written.append(e.id)
+        written = [e.id for e in store.upsert_entries(_seed_entries(seed_dir, world_id))]
         return worlds.create(VELMAR_NAME, owner_id=owner_id, world_id=world_id, is_demo=True)
     except BaseException:
         for entry_id in written:

@@ -81,17 +81,6 @@ class UserRegistry:
             row = conn.execute(_SELECT + " WHERE id = ?", (user_id,)).fetchone()
         return _user(row) if row else None
 
-    def find_by_email(self, email: str) -> User | None:
-        """The user holding this verified email whose profile was checked most recently; an
-        unverified address names nobody."""
-        with closing(self._connect()) as conn:
-            row = conn.execute(
-                _SELECT + " WHERE email = ? AND email_verified = 1 "
-                "ORDER BY profile_checked_at DESC LIMIT 1",
-                (email.casefold(),),
-            ).fetchone()
-        return _user(row) if row else None
-
     def upsert_profile(
         self,
         user_id: str,

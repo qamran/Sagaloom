@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import threading
 from datetime import UTC, datetime, timedelta
 
@@ -202,20 +203,10 @@ async def test_fresh_user_skips_the_lock(deps):
 
 
 async def test_user_left_without_a_world_is_provisioned_on_the_next_request(deps, store):
-    real = store.upsert_entry
-    calls = {"n": 0}
-
-    def flaky(entry, **kw):
-        calls["n"] += 1
-        if calls["n"] == 5:
-            raise RuntimeError("embedding failed")
-        return real(entry, **kw)
-
-    store.upsert_entry = flaky
+    store.embeddings = Embedder(store.embeddings, fail=1)
     with pytest.raises(RuntimeError):
         await ensure_user(deps, Claims(sub="user_a"))
     assert deps.worlds.all_worlds() == []
-    store.upsert_entry = real
     a = await ensure_user(deps, Claims(sub="user_a"))
     [world] = deps.worlds.owned_by("user_a")
     assert a.last_world_id == world.id and len(store.list_entries(world.id)) == 19
@@ -231,23 +222,38 @@ async def test_admin_email_set_later_assigns_on_the_next_request(deps, store):
     assert deps.worlds.get(legacy.id).owner_id == "user_boss"
 
 
+class Embedder:
+    """Wraps embeddings: records each `embed_documents` batch size; the first `fail` calls raise
+    (the provider down)."""
+
+    def __init__(self, inner, fail: int = 0):
+        self.inner, self.fail, self.batches = inner, fail, []
+
+    def embed_documents(self, texts):
+        if self.fail:
+            self.fail -= 1
+            raise RuntimeError("embedding provider unavailable")
+        self.batches.append(len(texts))
+        return self.inner.embed_documents(texts)
+
+    def embed_query(self, text):
+        return self.inner.embed_query(text)
+
+
 def test_copy_velmar_failure_leaves_no_world_or_entries(store, tmp_path):
     worlds = WorldRegistry(tmp_path / "worlds.json")
-    real = store.upsert_entry
-    calls = {"n": 0}
-
-    def flaky(entry, **kw):
-        calls["n"] += 1
-        if calls["n"] == 5:
-            raise RuntimeError("embedding failed")
-        return real(entry, **kw)
-
-    store.upsert_entry = flaky
+    store.embeddings = Embedder(store.embeddings, fail=1)
     with pytest.raises(RuntimeError):
         copy_velmar(store, worlds, SEED_DIR, "user_a")
     assert worlds.all_worlds() == []
     assert store.list_entries(VELMAR_ID) == []
-    store.upsert_entry = real
+    # A failure after the entries are written (the world record) deletes them again.
+    real_create = worlds.create
+    worlds.create = lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full"))
+    with pytest.raises(OSError):
+        copy_velmar(store, worlds, SEED_DIR, "user_a")
+    assert store.list_entries(VELMAR_ID) == [] and not store.has_world(VELMAR_ID)
+    worlds.create = real_create
     world = copy_velmar(store, worlds, SEED_DIR, "user_a")
     assert world.id == VELMAR_ID and world.owner_id == "user_a" and world.is_demo
     assert len(store.list_entries(world.id)) == 19
@@ -330,14 +336,14 @@ async def test_slow_failing_refresh_is_tried_once_by_parallel_requests(deps, clo
 
 async def test_cancelled_first_request_still_leaves_one_velmar(deps, store):
     started, go = threading.Event(), threading.Event()
-    real = store.upsert_entry
+    real = store.upsert_entries
 
-    def slow(entry, **kw):
+    def slow(entries):
         started.set()
         go.wait(5)
-        return real(entry, **kw)
+        return real(entries)
 
-    store.upsert_entry = slow
+    store.upsert_entries = slow
     first = asyncio.create_task(ensure_user(deps, Claims(sub="user_a")))
     while not started.is_set():
         await asyncio.sleep(0.01)
@@ -421,3 +427,41 @@ async def test_admin_first_request_takes_legacy_costs(deps, store, tmp_path):
     assert deps.worlds.get(legacy.id).owner_id == "user_boss"
     assert deps.promptlog.usage(user_id="user_boss").cost_usd == 0.5
     assert deps.promptlog.usage().cost_usd == 1.0  # the gone thread's call stays nobody's
+
+
+async def test_failed_backfill_after_takeover_does_not_fail_the_request(deps, tmp_path, caplog):
+    """The takeover stands even if the prompt-log backfill fails; startup backfill retries it."""
+    from sagaloom.promptlog import PromptLog
+    from sagaloom.store.threads import ThreadRegistry
+
+    class BrokenLog(PromptLog):
+        def backfill_user_ids(self, owner_of_thread):
+            raise RuntimeError("database is locked")
+
+    deps.threads = ThreadRegistry(tmp_path / "threads.sqlite")
+    deps.promptlog = BrokenLog(tmp_path / "prompts.sqlite")
+    legacy = deps.worlds.create("Legacy")
+    as_admin(deps)
+    caplog.set_level(logging.WARNING)
+    boss = await ensure_user(deps, Claims(sub="user_boss"))
+    assert boss.is_admin and deps.worlds.get(legacy.id).owner_id == "user_boss"
+    assert "database is locked" in caplog.text
+
+
+def test_copy_velmar_embeds_in_one_call(store, tmp_path):
+    worlds = WorldRegistry(tmp_path / "worlds.json")
+    store.embeddings = Embedder(store.embeddings)
+    world = copy_velmar(store, worlds, SEED_DIR, "user_a")
+    assert store.embeddings.batches == [19] and len(store.list_entries(world.id)) == 19
+
+
+def test_copy_velmar_skips_an_id_with_records_left(store, tmp_path):
+    """A lost worlds.json: records under `velmar` remain, so a new account must not get them."""
+    from sagaloom.models import Entry
+
+    store.upsert_entry(Entry(id="ent_0001", world_id=VELMAR_ID, title="Old", type="place", body="x"))
+    worlds = WorldRegistry(tmp_path / "worlds.json")
+    world = copy_velmar(store, worlds, SEED_DIR, "user_a")
+    assert re.fullmatch(r"velmar-[a-z0-9]{4}", world.id), world.id
+    assert store.get_entry(VELMAR_ID, "ent_0001").title == "Old"
+    assert len(store.list_entries(world.id)) == 19

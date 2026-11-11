@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, Request
 
 from fakes import TOKEN_B, USER_B, W, create_call
 from sagaloom.auth import ClerkProfile
-from sagaloom.models import Entry
+from sagaloom.memory import apply_updates, read_preferences
+from sagaloom.models import Entry, MemoryUpdate
 from sagaloom.web.access import ADMIN_ONLY, current_user, require_admin
 
 WB = "wb"  # user B's own world
@@ -106,6 +107,18 @@ async def test_thread_list_filtered_by_other_users_world_is_empty(make_env):
         assert r.status_code == 200 and r.json() == [], params
     r = await env.client.get("/api/threads", params={"world_id": W})
     assert [t["thread_id"] for t in r.json()] == [tid]
+
+
+async def test_other_users_memory_delete_leaves_preferences(make_env):
+    """The only destructive id route: B's DELETE on A's world is a 404 and forgets nothing."""
+    env, _, b = await two_users(make_env)
+    updates = [MemoryUpdate(key="tone", value="grim")]
+    assert all(r.stored for r in await apply_updates(env.deps.memory, W, updates, "Keep it grim."))
+    for params in ({"key": "tone"}, {"key": "tone", "item": "grim"}):
+        r = await b.delete(f"/api/worlds/{W}/memory", params=params)
+        assert r.status_code == 404, params
+    assert (await read_preferences(env.deps.memory, W))["tone"] == "grim"
+    assert (await env.client.get(f"/api/worlds/{W}/memory")).json()["preferences"]["tone"] == "grim"
 
 
 async def test_create_world_belongs_to_creator(make_env):

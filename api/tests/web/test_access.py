@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends, Request
 from httpx import ASGITransport, AsyncClient
 from langchain_core.messages import AIMessage
 
-from fakes import TOKEN_A, USER_A, W, bearer, names
+from fakes import TOKEN_A, TOKEN_B, USER_A, W, bearer, names
 from sagaloom.accounts import ensure_user
 from sagaloom.auth import AuthError, AuthUnavailable, Claims, ClerkDirectory, ClerkProfile
 from sagaloom.config import Settings
 from sagaloom.web.access import current_user, user_of
-from sagaloom.web.app import AppDeps, create_app
+from sagaloom.web.app import SEED_DIR, AppDeps, create_app
 
 
 async def test_no_token_401(make_env):
@@ -201,3 +201,35 @@ async def test_secret_key_set_logs_no_error(store, tmp_path, caplog):
     async with app.router.lifespan_context(app):
         pass
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+class FailingEmbeddings:
+    """Embeddings whose provider is down for the first `fail` document calls."""
+
+    def __init__(self, inner, fail: int):
+        self.inner, self.fail = inner, fail
+
+    def embed_documents(self, texts):
+        if self.fail:
+            self.fail -= 1
+            raise RuntimeError("embedding provider unavailable")
+        return self.inner.embed_documents(texts)
+
+    def embed_query(self, text):
+        return self.inner.embed_query(text)
+
+
+async def test_provisioning_failure_is_503_and_retried(make_env, caplog):
+    """Carry item 2: a non-Clerk failure while provisioning (the embeddings provider down during
+    the Velmar copy) is the server's fault: 503, logged without the token; the next request
+    provisions the account."""
+    env = make_env()
+    env.deps.seed_dir = SEED_DIR
+    env.deps.store.embeddings = FailingEmbeddings(env.deps.store.embeddings, fail=1)
+    b = env.as_user(TOKEN_B)
+    caplog.set_level(logging.WARNING)
+    r = await b.get("/api/worlds")
+    assert r.status_code == 503 and r.json() == {"detail": "account service unavailable"}
+    assert "embedding provider unavailable" in caplog.text and TOKEN_B not in caplog.text
+    r = await b.get("/api/worlds")
+    assert r.status_code == 200 and [w["name"] for w in r.json()] == ["Velmar"]

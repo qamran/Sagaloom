@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 
 import pytest
@@ -100,13 +101,46 @@ def test_failed_write_leaves_the_old_file(tmp_path, monkeypatch):
     assert [w["id"] for w in json.loads(before)] == ["a"]
 
 
+SUFFIXED = r"velmar-[a-z0-9]{4}"
+
+
 def test_reserved_id_is_skipped_until_created_or_released(tmp_path):
     reg = WorldRegistry(tmp_path / "worlds.json")
     reg.create("Velmar", world_id="velmar")
     rid = reg.reserve_id("Velmar")
-    assert rid == "velmar-2"
-    assert reg.create("Velmar").id == "velmar-3"  # another create does not take it
-    assert reg.create("Velmar", owner_id="u1", world_id=rid).id == "velmar-2"
+    assert re.fullmatch(SUFFIXED, rid)
+    other = reg.create("Velmar").id  # another create does not take it
+    assert re.fullmatch(SUFFIXED, other) and other != rid
+    assert reg.create("Velmar", owner_id="u1", world_id=rid).id == rid
     gone = reg.reserve_id("Gone")
     reg.release(gone)
     assert reg.create("Gone").id == gone
+
+
+def test_collision_gets_a_random_suffix_not_a_counter(tmp_path):
+    """Spec §5.4: ids reveal nothing about other accounts' worlds or how many there are."""
+    reg = WorldRegistry(tmp_path / "worlds.json")
+    assert reg.create("Secret Project", owner_id="u1").id == "secret-project"
+    second = reg.create("Secret Project", owner_id="u2").id
+    assert re.fullmatch(r"secret-project-[a-z0-9]{4}", second), second
+    ids = {reg.create("Secret Project", owner_id="u3").id for _ in range(5)}
+    assert len(ids) == 5 and "secret-project-2" not in ids
+
+
+def test_suffix_retries_on_collision(tmp_path, monkeypatch):
+    reg = WorldRegistry(tmp_path / "worlds.json")
+    reg.create("Velmar")
+    reg.create("Velmar", world_id="velmar-aaaa")
+    picks = iter("aaaa" + "bbbb")
+    monkeypatch.setattr(worlds_module.secrets, "choice", lambda alphabet: next(picks))
+    assert reg.create("Velmar").id == "velmar-bbbb"
+
+
+def test_candidate_with_existing_records_is_skipped(tmp_path):
+    """A lost worlds.json must not hand a new account the old world's records."""
+    reg = WorldRegistry(tmp_path / "worlds.json")
+    has_records = {"velmar", "atlas"}.__contains__
+    assert reg.create("Atlas", in_use=has_records).id != "atlas"
+    rid = reg.reserve_id("Velmar", in_use=has_records)
+    assert re.fullmatch(SUFFIXED, rid)
+    assert reg.create("Fresh", in_use=has_records).id == "fresh"

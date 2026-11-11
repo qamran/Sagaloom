@@ -299,8 +299,12 @@ class PromptLogHandler(AsyncCallbackHandler):
         secrets: Iterable[str] = (),
         turn_id: str | None = None,
         user_id: str | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ):
         self.log = log
+        # Stamps `started_at`; the app passes its own clock, so the records and the monthly
+        # spend (`month_spend`, the budget check) read one clock (M5 spec §5.5a).
+        self.clock = clock
         self.user_id = user_id  # whose cost these calls are (M5 spec §5.2)
         self.thread_id = thread_id
         self.emit = emit
@@ -365,7 +369,7 @@ class PromptLogHandler(AsyncCallbackHandler):
             role=(metadata or {}).get("role"),
             params=self._clean(params),
             request=request,
-            started_at=datetime.now(UTC).isoformat(),
+            started_at=self.clock().astimezone(UTC).isoformat(),  # UTC: `month_spend` compares text
         )
         self._started[rec.id] = time.monotonic()
         self.log.add(rec, user_id=self.user_id)
