@@ -306,3 +306,116 @@ def test_usage_by_turn_other_thread_excluded(tmp_path):
     log.add(_turn_rec("b", "X", "agent", "2026-01-01T00:00:02", thread_id="t2"))
     assert [t.turn_id for t in log.usage_by_turn("t1")] == ["A"]
     assert log.usage_by_turn("nope") == []
+
+
+# ---- per-user records (M5 spec §5.2, §5.5a) ----
+
+
+async def test_records_carry_user_id(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    handler = PromptLogHandler(log, "t1", lambda n, d: None, settings=S, user_id="user_a")
+    rid = await start(handler, [HumanMessage(content="hi")])
+    await handler.on_llm_end(
+        result(AIMessage(content="ok", usage_metadata={"input_tokens": 10, "output_tokens": 2, "total_tokens": 12})),
+        run_id=rid,
+    )
+    with closing(sqlite3.connect(tmp_path / "prompts.sqlite")) as conn:
+        assert conn.execute("SELECT user_id FROM prompt_log").fetchall() == [("user_a",)]
+    mine = log.usage(user_id="user_a")
+    assert mine.prompt_tokens == 10 and mine == log.usage()
+    assert log.usage(user_id="user_b").prompt_tokens == 0
+    assert "user_id" not in log.list("t1")[0].model_dump()  # a column, not part of the record
+
+
+def test_user_filters_on_every_reader(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_turn_rec("a", "A", "guard", "2026-01-01T00:00:01"), user_id="user_a")
+    log.add(_turn_rec("b", "B", "guard", "2026-01-01T00:00:02", thread_id="t2"), user_id="user_b")
+    log.add(_turn_rec("c", "C", "guard", "2026-01-01T00:00:03", thread_id="t3"))  # nobody's
+    assert [r.id for r in log.list_by_role("guard", user_id="user_a")] == ["a"]
+    assert [r.id for r in log.list_by_role("guard")] == ["c", "b", "a"]  # all users, NULL too
+    assert [m["calls"] for m in log.usage_by_model(user_id="user_b")] == [1]
+    assert [m["calls"] for m in log.usage_by_model()] == [3]
+    assert log.total_usage(user_id="user_a").prompt_tokens == 10
+    assert log.total_usage().prompt_tokens == 30
+
+
+def test_list_by_role_limits_after_the_user_filter(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_rec("mine", "guard", "2026-01-01T00:00:01"), user_id="user_a")
+    for i in range(5):
+        log.add(_rec(f"b{i}", "guard", f"2026-01-01T00:00:1{i}"), user_id="user_b")
+    assert [r.id for r in log.list_by_role("guard", 2, user_id="user_a")] == ["mine"]
+
+
+def test_backfill_via_thread_owner(tmp_path):
+    path = tmp_path / "prompts.sqlite"
+    # A prompt log from before M5: no `user_id` column.
+    with closing(sqlite3.connect(path)) as conn, conn:
+        conn.execute(
+            "CREATE TABLE prompt_log (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, "
+            "run_id TEXT NOT NULL, started_at TEXT NOT NULL, record TEXT NOT NULL)"
+        )
+        for id, tid in (("a", "t1"), ("b", "t2"), ("c", "gone")):
+            rec = _turn_rec(id, "R", "agent", "2026-01-01T00:00:01", thread_id=tid)
+            conn.execute(
+                "INSERT INTO prompt_log VALUES (?, ?, ?, ?, ?)",
+                (id, tid, "R", rec.started_at, rec.model_dump_json()),
+            )
+    log = PromptLog(path)
+    log.add(_turn_rec("d", "R", "agent", "2026-01-01T00:00:02", thread_id="t1"), user_id="user_z")
+    owners = {"t1": "user_a", "t2": "user_b"}
+    asked: list[str] = []
+
+    def owner(tid):
+        asked.append(tid)
+        return owners.get(tid)
+
+    assert log.backfill_user_ids(owner) == 2
+    with closing(sqlite3.connect(path)) as conn:
+        rows = dict(conn.execute("SELECT id, user_id FROM prompt_log").fetchall())
+    # Only NULL rows are filled; a gone thread stays NULL (it counts for nobody).
+    assert rows == {"a": "user_a", "b": "user_b", "c": None, "d": "user_z"}
+    assert sorted(asked) == ["gone", "t1", "t2"]  # one lookup per thread with NULL rows
+    assert log.backfill_user_ids(owner) == 0
+
+
+def test_deleted_thread_cost_still_counts_for_user(tmp_path):
+    from sagaloom.store.threads import ThreadRegistry
+
+    threads = ThreadRegistry(tmp_path / "threads.sqlite")
+    tid = threads.create("w1", kind="import", title="Failed import")
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_turn_rec("a", "R", "extractor", "2026-01-01T00:00:01", thread_id=tid), user_id="user_a")
+    threads.delete(tid)
+    assert threads.get(tid) is None
+    assert log.usage(user_id="user_a").cost_usd == pytest.approx(0.001)
+    assert log.backfill_user_ids(lambda t: None) == 0  # a filled row is never cleared
+
+
+def test_month_spend_window(tmp_path):
+    from datetime import UTC, datetime, timedelta, timezone
+
+    log = PromptLog(tmp_path / "prompts.sqlite")
+
+    def add(id, at, user="user_a", cost=0.25):
+        rec = _turn_rec(id, "R", "agent", at)
+        rec.response = {"prompt_tokens": 1, "completion_tokens": 1, "cost_usd": cost}
+        log.add(rec, user_id=user)
+
+    add("oct", "2026-10-31T23:59:59.999999+00:00")
+    add("nov1", "2026-11-01T00:00:00+00:00")
+    add("nov2", "2026-11-30T23:59:59+00:00", cost=0.5)
+    add("dec", "2026-12-01T00:00:00+00:00")
+    add("other", "2026-11-15T12:00:00+00:00", user="user_b")
+    now = datetime(2026, 11, 11, 16, 37, tzinfo=UTC)
+    assert log.month_spend("user_a", now) == pytest.approx(0.75)
+    assert log.month_spend("user_b", now) == pytest.approx(0.25)
+    # `now` in another zone is read in UTC: 2026-12-01 01:00 at +02:00 is still November.
+    assert log.month_spend("user_a", datetime(2026, 12, 1, 1, 0, tzinfo=timezone(timedelta(hours=2)))) == pytest.approx(0.75)
+    # December rolls over into January.
+    add("dec2", "2026-12-31T23:00:00+00:00")
+    add("jan", "2027-01-01T00:00:00+00:00", cost=1.0)
+    assert log.month_spend("user_a", datetime(2026, 12, 15, tzinfo=UTC)) == pytest.approx(0.5)
+    assert log.month_spend("user_a", datetime(2027, 1, 2, tzinfo=UTC)) == pytest.approx(1.0)
+    assert log.month_spend("nobody", now) == 0.0

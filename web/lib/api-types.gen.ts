@@ -13,7 +13,8 @@ export interface paths {
         };
         /**
          * Guard Log
-         * @description Recent input-guard verdicts, read from the prompt log (role `guard`).
+         * @description Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,
+         *     or everyone's for the admin with `scope=all`.
          */
         get: operations["guard_log_api_guard_log_get"];
         put?: never;
@@ -34,6 +35,27 @@ export interface paths {
         /** Health */
         get: operations["health_api_health_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Me */
+        get: operations["get_me_api_me_get"];
+        /**
+         * Put Me
+         * @description Remembers the world picker's choice; 404 for a world that is not the user's.
+         */
+        put: operations["put_me_api_me_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -84,7 +106,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Studio */
+        /**
+         * Studio
+         * @description Usage and the Feature map's cost line are the caller's own; the admin may ask for
+         *     `scope=all` (every user's calls, ownerless ones too).
+         */
         get: operations["studio_api_studio_get"];
         put?: never;
         post?: never;
@@ -386,6 +412,11 @@ export interface components {
             /** Guard Enabled */
             guard_enabled?: boolean | null;
             /**
+             * Monthly Budget Usd
+             * @default 1
+             */
+            monthly_budget_usd?: number;
+            /**
              * Reset System Prompt
              * @default false
              */
@@ -578,6 +609,30 @@ export interface components {
             /** Target Id */
             target_id: string;
         };
+        /** Me */
+        Me: {
+            /** Budget Resets On */
+            budget_resets_on: string;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /** Id */
+            id: string;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Last World Id */
+            last_world_id: string | null;
+            /** Month Spend Usd */
+            month_spend_usd: number;
+            /** Monthly Budget Usd */
+            monthly_budget_usd: number | null;
+        };
+        /** MePatch */
+        MePatch: {
+            /** Last World Id */
+            last_world_id: string | null;
+        };
         /**
          * MentionRef
          * @description An entry that names another in its text ("Mentioned in"); the web masks a secret one.
@@ -717,6 +772,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                scope?: "mine" | "all";
             };
             header?: {
                 "x-sagaloom-secret"?: string | null;
@@ -766,6 +822,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    get_me_api_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-sagaloom-secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_me_api_me_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-sagaloom-secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -912,7 +1034,9 @@ export interface operations {
     };
     studio_api_studio_get: {
         parameters: {
-            query?: never;
+            query?: {
+                scope?: "mine" | "all";
+            };
             header?: {
                 "x-sagaloom-secret"?: string | null;
             };

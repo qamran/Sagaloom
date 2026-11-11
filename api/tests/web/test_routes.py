@@ -469,7 +469,7 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
         raise AssertionError("make_tools must not be called")
 
     monkeypatch.setattr(routes, "make_tools", boom, raising=False)
-    env = make_env()
+    env = make_env(admin=True)
     tools = (await env.client.get("/api/tools")).json()
     assert {t["name"] for t in tools} == {
         "search_canon", "create_or_update_entry", "check_contradiction",
@@ -489,7 +489,7 @@ async def test_tools_endpoint_reports_enabled_and_core_without_building_tools(ma
 async def test_studio_endpoint_shape(make_env):
     env = make_env()
     body = (await env.client.get("/api/studio")).json()
-    assert len(body["features"]) == 13 and len(body["providers"]) == 2
+    assert len(body["features"]) == 14 and len(body["providers"]) == 2
     assert set(body["usage"]) >= {"prompt_tokens", "completion_tokens", "cost_usd"}
 
 

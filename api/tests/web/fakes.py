@@ -36,6 +36,7 @@ SECRET = "test-secret"
 KEY = "sk-or-TEST-KEY-999"
 HEADERS = {"X-Sagaloom-Secret": SECRET}  # the shared secret only
 W = "w1"
+ADMIN_A = f"{USER_A}@example.test"  # `ADMIN_EMAIL` that makes the default user the admin
 
 
 class ScriptedChat(BaseChatModel):
@@ -213,13 +214,14 @@ class Env:
 def make_env(store, tmp_path, aclose_later):
     def build(
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
-        guard=None, router=None, extraction=None, wiki=None,
+        guard=None, router=None, extraction=None, wiki=None, admin=False,
     ) -> Env:
         # No `ADMIN_EMAIL`: the default users are not the admin, so its "inherit ownerless
-        # worlds" cannot hide a missing owner check. A test that needs the admin sets it.
+        # worlds" cannot hide a missing owner check. `admin=True` makes `user_a` the admin
+        # (`FakeDirectory` gives it a verified `user_a@example.test`).
         settings = Settings(
             _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path,
-            admin_email=None,
+            admin_email=ADMIN_A if admin else None,
         )
         agent = ScriptedChat(script=iter(script), usage=usage)
         roles = {

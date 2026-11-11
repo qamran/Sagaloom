@@ -10,7 +10,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterable
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -28,6 +28,18 @@ from sagaloom.usage import extract_usage
 DROPPED_KEYS = frozenset({"api_key", "openai_api_key", "authorization", "headers"})
 REDACTED = "[redacted]"
 _ROLE_EXPR = "json_extract(record, '$.role')"
+_COLUMNS = "id, thread_id, run_id, started_at, record, user_id"
+
+
+def _month_start(now: datetime) -> datetime:
+    """The first instant of `now`'s calendar month in UTC."""
+    now = now.astimezone(UTC)
+    return datetime(now.year, now.month, 1, tzinfo=UTC)
+
+
+def next_month_start(now: datetime) -> datetime:
+    """The first instant of the calendar month after `now`'s, in UTC (when a budget resets)."""
+    return _month_start(_month_start(now) + timedelta(days=32))
 
 
 class PromptRecord(BaseModel):
@@ -66,7 +78,13 @@ class PromptLog:
             "id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, run_id TEXT NOT NULL, "
             "started_at TEXT NOT NULL, record TEXT NOT NULL)"
         )
+        # M5 (spec §5.2): whose cost a call is, the owner of its thread's world when it ran. A
+        # column, not part of the record, so it outlives the thread; NULL for records from before
+        # M5 until `backfill_user_ids` fills them.
+        if "user_id" not in {row[1] for row in conn.execute("PRAGMA table_info(prompt_log)")}:
+            conn.execute("ALTER TABLE prompt_log ADD COLUMN user_id TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS prompt_log_thread ON prompt_log(thread_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS prompt_log_user ON prompt_log(user_id, started_at)")
         # `list_by_role` filters in SQL on this exact expression, so the index serves it.
         conn.execute(
             f"CREATE INDEX IF NOT EXISTS prompt_log_role ON prompt_log({_ROLE_EXPR}, started_at)"
@@ -88,17 +106,41 @@ class PromptLog:
                     self._ready = True
         return conn
 
-    def add(self, record: PromptRecord) -> None:
+    def add(self, record: PromptRecord, *, user_id: str | None = None) -> None:
         with closing(self._connect()) as conn, conn:
             conn.execute(
-                "INSERT OR REPLACE INTO prompt_log VALUES (?, ?, ?, ?, ?)",
+                f"INSERT OR REPLACE INTO prompt_log ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     record.id,
                     record.thread_id,
                     record.run_id,
                     record.started_at,
                     record.model_dump_json(),
+                    user_id,
                 ),
+            )
+
+    def backfill_user_ids(self, owner_of_thread: Callable[[str], str | None]) -> int:
+        """Fills `user_id` on records that have none with the owner of their thread's world
+        (`owner_of_thread`, one call per thread). A thread that is gone, or whose world has no
+        owner, stays NULL: it counts for nobody. Returns the number of records filled."""
+        with closing(self._connect()) as conn:
+            tids = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT thread_id FROM prompt_log WHERE user_id IS NULL"
+                ).fetchall()
+            ]
+        owners = {tid: owner for tid in tids if (owner := owner_of_thread(tid)) is not None}
+        if not owners:
+            return 0
+        with closing(self._connect()) as conn, conn:
+            return sum(
+                conn.execute(
+                    "UPDATE prompt_log SET user_id = ? WHERE thread_id = ? AND user_id IS NULL",
+                    (owner, tid),
+                ).rowcount
+                for tid, owner in owners.items()
             )
 
     def complete(self, id: str, response: dict) -> None:
@@ -117,27 +159,50 @@ class PromptLog:
             ).fetchall()
         return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
-    def list_by_role(self, role: str, limit: int = 20) -> "builtins.list[PromptRecord]":
-        """The newest records of one model role (e.g. `guard`), newest first."""
+    def list_by_role(
+        self, role: str, limit: int = 20, user_id: str | None = None
+    ) -> "builtins.list[PromptRecord]":
+        """The newest records of one model role (e.g. `guard`), newest first; only `user_id`'s
+        when given, else everyone's (ownerless records too)."""
+        mine, args = (" AND user_id = ?", [user_id]) if user_id is not None else ("", [])
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                f"SELECT record FROM prompt_log WHERE {_ROLE_EXPR} = ? "
+                f"SELECT record FROM prompt_log WHERE {_ROLE_EXPR} = ?{mine} "
                 "ORDER BY started_at DESC, rowid DESC LIMIT ?",
-                (role, limit),
+                (role, *args, limit),
             ).fetchall()
         return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
-    def total_usage(self) -> Usage:
-        return self.usage()
+    def total_usage(self, user_id: str | None = None) -> Usage:
+        return self.usage(user_id=user_id)
 
-    def usage(self, thread_id: str | None = None, run_id: str | None = None) -> Usage:
+    def usage(
+        self, thread_id: str | None = None, run_id: str | None = None, user_id: str | None = None
+    ) -> Usage:
         """Sum of the recorded calls (agent, judge, extractor): the single source of truth for
-        per-turn (`run_id`), per-thread (`thread_id`) and overall usage (R16 ruling)."""
+        per-turn (`run_id`), per-thread (`thread_id`), per-user (`user_id`, M5 spec §5.2) and
+        overall usage (R16 ruling)."""
         sql, args = "SELECT record FROM prompt_log", []
-        where = [(c, v) for c, v in (("thread_id", thread_id), ("run_id", run_id)) if v is not None]
+        where = [
+            (c, v)
+            for c, v in (("thread_id", thread_id), ("run_id", run_id), ("user_id", user_id))
+            if v is not None
+        ]
         if where:
             sql += " WHERE " + " AND ".join(f"{c} = ?" for c, _ in where)
             args = [v for _, v in where]
+        return self._sum(sql, args)
+
+    def month_spend(self, user_id: str, now: datetime) -> float:
+        """`user_id`'s cost in US$ over the calendar month (UTC) that holds `now` (spec §5.5a).
+        `started_at` is stored as a UTC ISO time, so the window compares as text."""
+        return self._sum(
+            "SELECT record FROM prompt_log WHERE user_id = ? AND started_at >= ? AND started_at < ?",
+            [user_id, _month_start(now).isoformat(), next_month_start(now).isoformat()],
+        ).cost_usd
+
+    def _sum(self, sql: str, args: "builtins.list") -> Usage:
+        """The summed amounts of the records `sql` selects."""
         with closing(self._connect()) as conn:
             rows = conn.execute(sql, args).fetchall()
         prompt = completion = 0
@@ -183,10 +248,12 @@ class PromptLog:
             for run_id, roles in turns.items()
         ]
 
-    def usage_by_model(self) -> "builtins.list[dict]":
-        """Calls, tokens and cost per (role, model) over every recorded call (Studio usage panel)."""
+    def usage_by_model(self, user_id: str | None = None) -> "builtins.list[dict]":
+        """Calls, tokens and cost per (role, model) over `user_id`'s recorded calls, or every
+        call when None (Studio usage panel)."""
+        mine, args = (" WHERE user_id = ?", (user_id,)) if user_id is not None else ("", ())
         with closing(self._connect()) as conn:
-            rows = conn.execute("SELECT record FROM prompt_log").fetchall()
+            rows = conn.execute(f"SELECT record FROM prompt_log{mine}", args).fetchall()
         agg: dict[tuple, dict] = {}
         for (raw,) in rows:
             rec = PromptRecord.model_validate_json(raw)
@@ -231,8 +298,10 @@ class PromptLogHandler(AsyncCallbackHandler):
         settings: Settings,
         secrets: Iterable[str] = (),
         turn_id: str | None = None,
+        user_id: str | None = None,
     ):
         self.log = log
+        self.user_id = user_id  # whose cost these calls are (M5 spec §5.2)
         self.thread_id = thread_id
         self.emit = emit
         self.settings = settings
@@ -299,7 +368,7 @@ class PromptLogHandler(AsyncCallbackHandler):
             started_at=datetime.now(UTC).isoformat(),
         )
         self._started[rec.id] = time.monotonic()
-        self.log.add(rec)
+        self.log.add(rec, user_id=self.user_id)
         self.emit(
             "llm_request",
             {"id": rec.id, "provider": provider, "model": model, "role": rec.role, "params": rec.params, **request},

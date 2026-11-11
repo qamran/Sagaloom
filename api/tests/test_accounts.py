@@ -362,3 +362,33 @@ async def test_naive_profile_timestamp_is_read_as_utc(deps, clock):
     clock.advance(hours=25)
     await ensure_user(deps, Claims(sub="user_a"))
     assert deps.directory.fetched == ["user_a"]
+
+
+async def test_startup_backfills_prompt_log_user_ids(store, tmp_path):
+    """Spec §5.2: prompt records from before M5 get the owner of their thread's world at start;
+    a record whose thread is gone stays ownerless."""
+    from sagaloom.promptlog import PromptLog, PromptRecord
+    from sagaloom.store.threads import ThreadRegistry
+
+    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
+    worlds = WorldRegistry(tmp_path / "worlds.json")
+    worlds.create("Mine", world_id="mine", owner_id="user_a")
+    threads = ThreadRegistry(tmp_path / "threads.sqlite")
+    tid = threads.create("mine")
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    for id, thread_id in (("kept", tid), ("orphan", "gone")):
+        log.add(
+            PromptRecord(
+                id=id, thread_id=thread_id, run_id="r", provider="openrouter", model="m",
+                request={"messages": [], "tools": []},
+                response={"prompt_tokens": 1, "completion_tokens": 1, "cost_usd": 0.5},
+                started_at="2026-11-01T00:00:00+00:00",
+            )
+        )
+    assert log.usage(user_id="user_a").cost_usd == 0
+    deps = AppDeps(store=store, graph="graph", worlds=worlds, threads=threads, promptlog=log, directory=FakeDirectory())
+    app = create_app(settings, deps)
+    async with app.router.lifespan_context(app):
+        pass
+    assert log.usage(user_id="user_a").cost_usd == 0.5
+    assert log.usage().cost_usd == 1.0

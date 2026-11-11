@@ -6,10 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import run_config
@@ -21,12 +21,12 @@ from sagaloom.importing.extract import MAX_CHARS
 from sagaloom.memory import CAP, count_items, forget, read_preferences
 from sagaloom.models import Decision, Entry, MentionRef, PreferenceKey, Usage, World
 from sagaloom.studio import build_feature_map, providers_status
-from sagaloom.promptlog import PromptLogHandler, PromptRecord
+from sagaloom.promptlog import PromptLogHandler, PromptRecord, next_month_start
 from sagaloom.settings_store import DevSettingsPatch, enabled_tool_names
 from sagaloom.store.threads import ThreadKind
 from sagaloom.text import first_line, message_text
 from sagaloom.tools.specs import TOOL_SPECS
-from sagaloom.web.access import thread_for, user_of, world_for
+from sagaloom.web.access import require_admin, thread_for, user_of, world_for
 from sagaloom.web.imports import import_events, wiki_import_events
 from sagaloom.web.sse import run_turn_events, shielded, sse_response
 from sagaloom.web.thread_list import (
@@ -130,9 +130,18 @@ def _turn_config(
         secrets.append(s.gemini_api_key.get_secret_value())
     cfg = run_config(thread.thread_id, thread.world_id)
     cfg["configurable"]["turn_id"] = turn_id  # the nodes stamp it on what they append (M4 §3.3)
+    # The calls are the cost of the world's owner, not of whoever asked (the same today: only
+    # owners reach a thread), so it stays right when sharing comes (M5 spec §5.2).
+    world = d.worlds.get(thread.world_id)
     cfg["callbacks"] = [
         PromptLogHandler(
-            d.promptlog, thread.thread_id, emit, settings=s, secrets=secrets, turn_id=turn_id
+            d.promptlog,
+            thread.thread_id,
+            emit,
+            settings=s,
+            secrets=secrets,
+            turn_id=turn_id,
+            user_id=world.owner_id if world is not None else None,
         )
     ]
     return cfg
@@ -547,7 +556,7 @@ def get_models(request: Request) -> dict:
     return _models_payload(request)
 
 
-@router.put("/settings/models")
+@router.put("/settings/models", dependencies=[Depends(require_admin)])
 def put_models(body: ModelChoice, request: Request) -> dict:
     try:
         _deps(request).model_settings.set_model(body.role, body.model)  # type: ignore[arg-type]
@@ -569,17 +578,31 @@ def get_dev_settings(request: Request) -> dict:
     return _dev_payload(request)
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_admin)])
 def put_dev_settings(body: DevSettingsPatch, request: Request) -> dict:
     _deps(request).dev_settings.update(body)
     return _dev_payload(request)
 
 
+Scope = Literal["mine", "all"]
+
+
+def _scope_user(request: Request, scope: Scope) -> str | None:
+    """Whose prompt records a Studio panel reads: the caller's (`mine`), or everyone's (`all`,
+    the admin's "All users" switch; 403 for anyone else). M5 spec §5.2."""
+    if scope == "all":
+        require_admin(request)
+        return None
+    return user_of(request).id
+
+
 @router.get("/guard/log")
-def guard_log(request: Request, limit: int = 20) -> list[dict]:
-    """Recent input-guard verdicts, read from the prompt log (role `guard`)."""
+def guard_log(request: Request, limit: int = 20, scope: Scope = "mine") -> list[dict]:
+    """Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,
+    or everyone's for the admin with `scope=all`."""
     rows = []
-    for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100))):
+    user_id = _scope_user(request, scope)
+    for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100)), user_id):
         if rec.response is None:  # the call raised (and the guard blocked the message)
             verdict, reason = "error", ""
         else:  # a response that does not parse is "unknown"
@@ -605,12 +628,65 @@ def _mermaid(graph: Any) -> str:
 
 
 @router.get("/studio")
-def studio(request: Request) -> dict:
+def studio(request: Request, scope: Scope = "mine") -> dict:
+    """Usage and the Feature map's cost line are the caller's own; the admin may ask for
+    `scope=all` (every user's calls, ownerless ones too)."""
     d = _deps(request)
     log = d.promptlog
+    user_id = _scope_user(request, scope)
     return {
-        "features": [c.model_dump() for c in build_feature_map(d.settings, d)],
+        "features": [c.model_dump() for c in build_feature_map(d.settings, d, user_id)],
         "providers": [p.model_dump() for p in providers_status(d.settings, d.model_settings.get_model_settings())],
-        "usage": {**log.total_usage().model_dump(), "by_model": log.usage_by_model()},
+        "usage": {**log.total_usage(user_id).model_dump(), "by_model": log.usage_by_model(user_id)},
         "mermaid": _mermaid(d.graph),
     }
+
+
+# ---------- the signed-in account (M5 spec §5.4, §5.5a) ----------
+
+
+class Me(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    is_admin: bool
+    last_world_id: str | None
+    month_spend_usd: float  # this calendar month (UTC), from the prompt log
+    monthly_budget_usd: float | None  # None: no limit (the admin)
+    budget_resets_on: str  # the first day of next month (UTC), YYYY-MM-DD
+
+
+class MePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    last_world_id: str | None
+
+
+def _me(request: Request, last_world_id: str | None) -> Me:
+    d = _deps(request)
+    user = user_of(request)
+    now = d.now()
+    return Me(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        is_admin=user.is_admin,
+        last_world_id=last_world_id,
+        month_spend_usd=d.promptlog.month_spend(user.id, now),
+        monthly_budget_usd=None if user.is_admin else d.dev_settings.get().monthly_budget_usd,
+        budget_resets_on=next_month_start(now).date().isoformat(),
+    )
+
+
+@router.get("/me")
+def get_me(request: Request) -> Me:
+    return _me(request, user_of(request).last_world_id)
+
+
+@router.put("/me")
+def put_me(body: MePatch, request: Request) -> Me:
+    """Remembers the world picker's choice; 404 for a world that is not the user's."""
+    if body.last_world_id is not None:
+        world_for(request, body.last_world_id)
+    _deps(request).users.set_last_world(user_of(request).id, body.last_world_id)
+    return _me(request, body.last_world_id)

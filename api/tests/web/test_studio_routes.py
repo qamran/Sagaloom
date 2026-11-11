@@ -4,7 +4,7 @@ import itertools
 from urllib.parse import parse_qs, urlsplit
 
 from fakes import (
-    KEY, SECRET, TOKEN_A, USER_A, W, Env, FakeDirectory, FakeJudge, FakeVerifier, ScriptedChat, StubLLM,
+    ADMIN_A, KEY, SECRET, TOKEN_A, TOKEN_B, USER_A, USER_B, W, Env, FakeDirectory, FakeJudge, FakeVerifier, ScriptedChat, StubLLM,
     create_call, signed_in_client,
 )
 
@@ -18,6 +18,7 @@ from sagaloom.models import Entry
 from sagaloom.promptlog import PromptLog
 from sagaloom.store.threads import ThreadRegistry
 from sagaloom.store.worlds import WorldRegistry
+from sagaloom.web.access import ADMIN_ONLY
 from sagaloom.web.app import AppDeps, create_app, make_model_for
 
 
@@ -30,7 +31,10 @@ class NamedJudge(FakeJudge):
 
 
 def build_switchable_env(store, tmp_path, aclose_later) -> Env:
-    settings = Settings(_env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path)
+    settings = Settings(
+        _env_file=None, openrouter_api_key=KEY, api_shared_secret=SECRET, data_dir=tmp_path,
+        admin_email=ADMIN_A,  # the model switches below are admin-only
+    )
     ms = ModelSettings(tmp_path / "model_settings.json", settings)
     agent = ScriptedChat(script=itertools.cycle([create_call(title="Velmar Docks", content="Drafting.")]))
     built: list[tuple[str, str]] = []
@@ -69,7 +73,7 @@ def build_switchable_env(store, tmp_path, aclose_later) -> Env:
 
 
 async def test_set_model_rejects_model_not_on_allowlist_with_422(make_env):
-    env = make_env()
+    env = make_env(admin=True)
     r = await env.client.put("/api/settings/models", json={"role": "judge", "model": "evil/not-allowed"})
     assert r.status_code == 422
     r = await env.client.put("/api/settings/models", json={"role": "nobody", "model": "openai/gpt-6-luna"})
@@ -124,7 +128,7 @@ async def test_studio_returns_features_providers_mermaid_and_no_keys(make_env):
     )
     r = await env.client.get("/api/studio")
     body = r.json()
-    assert len(body["features"]) == 13
+    assert len(body["features"]) == 14
     assert [p["name"] for p in body["providers"]] == ["OpenRouter", "Gemini"]
     assert body["providers"][1]["key_set"] is True
     assert "agent" in body["mermaid"] and "graph" in body["mermaid"]
@@ -143,7 +147,7 @@ async def test_reference_try_it_states_a_fact(make_env):
 
 
 async def test_gemini_never_in_model_for(make_env):
-    env = make_env()
+    env = make_env(admin=True)
     r = await env.client.put(
         "/api/settings/models", json={"role": "agent", "model": "gemini-3.5-flash-lite"}
     )
@@ -153,3 +157,70 @@ async def test_gemini_never_in_model_for(make_env):
     import sagaloom.web.app as app_mod
 
     assert "make_gemini_model" not in inspect.getsource(app_mod)
+
+
+# ---- M5: per-user usage, the admin's "All users", the accounts card (spec §5.2, §5.5) ----
+
+
+def _cost_rec(id: str, thread_id: str, cost: float):
+    from sagaloom.promptlog import PromptRecord
+
+    return PromptRecord(
+        id=id, thread_id=thread_id, run_id="r", provider="openrouter", model="openai/gpt-6-luna",
+        role="agent", request={"messages": [], "tools": []},
+        response={"prompt_tokens": 7, "completion_tokens": 3, "cost_usd": cost},
+        started_at="2026-01-01T00:00:01+00:00",
+    )
+
+
+async def test_studio_usage_is_mine(make_env):
+    env = make_env([create_call()])
+    tid = await env.new_thread()
+    r, _ = await env.send(tid)
+    assert r.status_code == 200
+    log = env.deps.promptlog
+    mine = log.usage(user_id=USER_A)
+    assert mine.prompt_tokens > 0  # the turn's records were written with A's id (the world's owner)
+    assert log.usage(thread_id=tid) == mine
+    log.add(_cost_rec("b-call", "tb", 0.5), user_id=USER_B)
+    log.add(_cost_rec("nobody", "gone", 0.25))
+
+    body = (await env.client.get("/api/studio")).json()
+    assert body["usage"]["prompt_tokens"] == mine.prompt_tokens
+    assert body["usage"]["cost_usd"] == mine.cost_usd
+    assert sum(m["calls"] for m in body["usage"]["by_model"]) == len(log.list(tid))
+    token_card = next(f for f in body["features"] if f["id"] == "token_cost")
+    assert f"${mine.cost_usd:.4f}" in token_card["detail"]
+
+    b = (await env.as_user(TOKEN_B).get("/api/studio?scope=mine")).json()
+    assert (b["usage"]["prompt_tokens"], b["usage"]["cost_usd"]) == (7, 0.5)
+    assert [m["calls"] for m in b["usage"]["by_model"]] == [1]
+    assert "$0.5000" in next(f for f in b["features"] if f["id"] == "token_cost")["detail"]
+
+
+async def test_studio_scope_all_admin_only(make_env):
+    env = make_env(admin=True)
+    log = env.deps.promptlog
+    log.add(_cost_rec("a-call", "ta", 0.125), user_id=USER_A)
+    log.add(_cost_rec("b-call", "tb", 0.5), user_id=USER_B)
+    log.add(_cost_rec("nobody", "gone", 0.25))
+    all_users = (await env.client.get("/api/studio?scope=all")).json()["usage"]
+    assert (all_users["prompt_tokens"], all_users["cost_usd"]) == (21, 0.875)
+    assert [m["calls"] for m in all_users["by_model"]] == [3]
+    mine = (await env.client.get("/api/studio")).json()["usage"]
+    assert (mine["prompt_tokens"], mine["cost_usd"]) == (7, 0.125)
+    r = await env.as_user(TOKEN_B).get("/api/studio?scope=all")
+    assert r.status_code == 403 and r.json() == {"detail": ADMIN_ONLY}
+    assert (await env.client.get("/api/studio?scope=everyone")).status_code == 422
+
+
+async def test_feature_map_has_accounts_card(make_env):
+    env = make_env()
+    env.deps.settings.clerk_issuer = None
+    card = next(f for f in (await env.client.get("/api/studio")).json()["features"] if f["id"] == "accounts")
+    assert card["status"] == "off"
+    env.deps.settings.clerk_issuer = "https://clerk.example.test"
+    card = next(f for f in (await env.client.get("/api/studio")).json()["features"] if f["id"] == "accounts")
+    assert (card["title"], card["status"], card["try_href"]) == ("User accounts", "live", "/canon")
+    assert card["detail"] == "Sign-in by Clerk; every author sees only their own worlds."
+    assert card["brief_ref"] == "Medium 4"

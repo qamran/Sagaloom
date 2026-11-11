@@ -29,6 +29,8 @@ class DevSettings(BaseModel):
     guard_enabled: bool = True
     # None means every tool. Core tools are always on, whatever this lists (R11.G3).
     enabled_tools: list[str] | None = None
+    # Each non-admin account's AI spend per calendar month (UTC), in US$ (M5 spec §5.5a).
+    monthly_budget_usd: float = Field(default=1.0, ge=0, le=1000)
 
     _check_tools = field_validator("enabled_tools")(_known_tools)
 
@@ -47,6 +49,8 @@ class DevSettingsPatch(BaseModel):
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool | None = None
     enabled_tools: list[str] | None = None
+    # Not nullable; only a field the request sets is written (`update` reads `model_fields_set`).
+    monthly_budget_usd: float = Field(default=1.0, ge=0, le=1000)
     reset_system_prompt: bool = False
 
     _check_tools = field_validator("enabled_tools")(_known_tools)

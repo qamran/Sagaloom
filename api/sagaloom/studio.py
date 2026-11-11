@@ -58,7 +58,8 @@ def prompt_href(text: str) -> str:
     return "/chat?prompt=" + quote(text)
 
 
-def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
+def build_feature_map(settings: Settings, deps: Any, user_id: str | None = None) -> list[FeatureCard]:
+    """The cards; the cost line sums `user_id`'s calls, or every call when None (M5 spec §5.2)."""
     threads = None
     if getattr(deps, "threads", None) is not None:
         try:
@@ -68,7 +69,7 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
     cost = None
     if getattr(deps, "promptlog", None) is not None:
         try:
-            cost = deps.promptlog.total_usage().cost_usd
+            cost = deps.promptlog.total_usage(user_id).cost_usd
         except Exception:
             pass
     guard_on = True
@@ -224,6 +225,15 @@ def build_feature_map(settings: Settings, deps: Any) -> list[FeatureCard]:
             detail="Imported text is extracted with structured output and no tools, wrapped as untrusted "
             "data, and kept verbatim: every candidate goes through the check and the approval gate.",
             try_href="/import",
+        ),
+        FeatureCard(
+            id="accounts",
+            title="User accounts",
+            brief_ref="Medium 4",
+            req_ids=["R21.1", "R21.2", "R21.3"],
+            status="live" if settings.clerk_issuer else "off",
+            detail="Sign-in by Clerk; every author sees only their own worlds.",
+            try_href="/canon",
         ),
     ]
 

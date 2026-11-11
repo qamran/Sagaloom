@@ -129,6 +129,13 @@
             ],
             "title": "Guard Enabled"
           },
+          "monthly_budget_usd": {
+            "default": 1.0,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Monthly Budget Usd",
+            "type": "number"
+          },
           "reset_system_prompt": {
             "default": false,
             "title": "Reset System Prompt",
@@ -636,6 +643,89 @@
         "title": "Link",
         "type": "object"
       },
+      "Me": {
+        "properties": {
+          "budget_resets_on": {
+            "title": "Budget Resets On",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_admin": {
+            "title": "Is Admin",
+            "type": "boolean"
+          },
+          "last_world_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last World Id"
+          },
+          "month_spend_usd": {
+            "title": "Month Spend Usd",
+            "type": "number"
+          },
+          "monthly_budget_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Budget Usd"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "is_admin",
+          "last_world_id",
+          "month_spend_usd",
+          "monthly_budget_usd",
+          "budget_resets_on"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
+      "MePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "last_world_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last World Id"
+          }
+        },
+        "required": [
+          "last_world_id"
+        ],
+        "title": "MePatch",
+        "type": "object"
+      },
       "MentionRef": {
         "description": "An entry that names another in its text (\"Mentioned in\"); the web masks a secret one.",
         "properties": {
@@ -961,7 +1051,7 @@
   "paths": {
     "/api/guard/log": {
       "get": {
-        "description": "Recent input-guard verdicts, read from the prompt log (role `guard`).",
+        "description": "Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,\nor everyone's for the admin with `scope=all`.",
         "operationId": "guard_log_api_guard_log_get",
         "parameters": [
           {
@@ -972,6 +1062,20 @@
               "default": 20,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "mine",
+              "enum": [
+                "mine",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
             }
           },
           {
@@ -1041,6 +1145,107 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/me": {
+      "get": {
+        "operationId": "get_me_api_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Me"
+      },
+      "put": {
+        "description": "Remembers the world picker's choice; 404 for a world that is not the user's.",
+        "operationId": "put_me_api_me_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Me"
       }
     },
     "/api/settings": {
@@ -1253,8 +1458,23 @@
     },
     "/api/studio": {
       "get": {
+        "description": "Usage and the Feature map's cost line are the caller's own; the admin may ask for\n`scope=all` (every user's calls, ownerless ones too).",
         "operationId": "studio_api_studio_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "mine",
+              "enum": [
+                "mine",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "x-sagaloom-secret",

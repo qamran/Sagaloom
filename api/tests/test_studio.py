@@ -48,11 +48,11 @@ def test_feature_map_langsmith_live_only_when_env_set(tmp_path, monkeypatch):
 
 def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypatch):
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
-    cards = build_feature_map(make_settings(tmp_path), AppDeps())
+    cards = build_feature_map(make_settings(tmp_path, clerk_issuer=None), AppDeps())
     assert [c.id for c in cards] == [
         "agent_purpose", "agentic_rag", "human_in_the_loop", "router", "memory", "token_cost",
         "langsmith", "multi_provider", "security_guard", "tools", "external_tools",
-        "official_canon_licence", "injection_safe_extraction",
+        "official_canon_licence", "injection_safe_extraction", "accounts",
     ]
     assert all(c.req_ids and c.title and c.brief_ref and c.detail for c in cards)
     live = {c.id for c in cards if c.status == "live"}
@@ -274,3 +274,11 @@ def test_memory_card_describes_both_memories(tmp_path, monkeypatch):
     assert c.req_ids == ["R10.1", "R10.2", "R18.6", "R18.7"]
     assert "LangGraph Store" in c.detail
     assert c.detail.startswith("Short-term: a SQLite checkpointer")
+
+
+def test_accounts_card_is_live_with_clerk_issuer(tmp_path):
+    off = card(build_feature_map(make_settings(tmp_path, clerk_issuer=None), AppDeps()), "accounts")
+    on = card(build_feature_map(make_settings(tmp_path, clerk_issuer="https://clerk.example.test"), AppDeps()), "accounts")
+    assert (off.status, on.status) == ("off", "live")
+    assert (on.title, on.brief_ref, on.try_href) == ("User accounts", "Medium 4", "/canon")
+    assert on.detail == off.detail == "Sign-in by Clerk; every author sees only their own worlds."
