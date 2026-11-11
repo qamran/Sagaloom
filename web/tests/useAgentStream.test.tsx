@@ -392,6 +392,19 @@ describe("useAgentStream", () => {
     expect(result.current.error).toBe(copy);
   });
 
+  it("shows the API's 402 sentence verbatim, before any stream starts", async () => {
+    const detail = "You've used this month's AI budget ($1.00). It resets on 2026-12-01.";
+    getThreadMock.mockResolvedValue(thread());
+    fetchMock.mockResolvedValue(errorResponse(402, detail));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => {
+      await result.current.send("Hello");
+    });
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toBe(detail);
+  });
+
   it("sends a signed-out author to sign-in on a 401 'sign in required'", async () => {
     const assign = vi.fn();
     getThreadMock.mockResolvedValue(thread());

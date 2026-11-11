@@ -10,6 +10,7 @@ import { EntityText } from "@/components/EntityText";
 import { TurnCost } from "@/components/TurnCost";
 import { UnderTheHood } from "@/components/UnderTheHood";
 import { getEntries, getLlmLog, getSettings } from "@/lib/api";
+import { overBudgetMessage, useMe } from "@/lib/me";
 import type { Named } from "@/lib/mentions";
 import { checkSummary } from "@/lib/review";
 import { useShowSecrets } from "@/lib/secrets";
@@ -125,6 +126,7 @@ function Message({
 export function ChatThread({ threadId, initialPrompt }: { threadId: string; initialPrompt?: string | null }) {
   const s = useAgentStream(threadId);
   const { world, setThreadId } = useWorld();
+  const overBudget = overBudgetMessage(useMe());
   const bottom = useRef<HTMLDivElement>(null);
   const [hood, setHood] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
@@ -316,6 +318,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
                   chosen={many ? s.chosen[p.proposal_id] : undefined}
                   onUndo={() => s.unchoose(p.proposal_id)}
                   disabled={busy}
+                  approvalsBlocked={!!overBudget}
                   onDecide={(d) => void s.choose(d)}
                 />
               );
@@ -328,7 +331,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
             Connection lost. Reconnecting…
           </p>
         )}
-        {s.error && !(pending && s.error === PENDING_HINT) && (
+        {s.error && !(pending && s.error === PENDING_HINT) && s.error !== overBudget && (
           <p role="alert" className="m-0 text-sm text-conflict">
             {s.error}
           </p>
@@ -344,6 +347,7 @@ export function ChatThread({ threadId, initialPrompt }: { threadId: string; init
           prefill={initialPrompt}
           entries={threadEntries}
           showSecrets={threadShowSecrets}
+          blocked={overBudget}
           placeholder={`Ask about ${world?.name ?? "your world"}, add a fact, or brainstorm.`}
         />
       </div>

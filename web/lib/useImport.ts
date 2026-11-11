@@ -80,6 +80,7 @@ export function useImport(): ImportRun {
           if (auth === "redirected") return;
           if (auth === "rejected") fail(SESSION_REJECTED);
           else if (res.status === 503) fail(ACCOUNT_UNAVAILABLE);
+          else if (res.status === 402) fail(detail || "You've used this month's AI budget.");
           else if (res.status === 413) fail("That text is too large.");
           else if (res.status === 429) fail("Too many requests. Wait a moment and try again.");
           else if (res.status === 422) fail(detail || "That text was not accepted.");
@@ -124,6 +125,7 @@ export function useImport(): ImportRun {
       } finally {
         busyRef.current = false;
         if (abortRef.current === ctrl) abortRef.current = null;
+        void qc.invalidateQueries({ queryKey: ["me"], exact: true });
       }
     },
     [qc, router],

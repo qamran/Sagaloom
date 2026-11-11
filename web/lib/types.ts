@@ -15,6 +15,7 @@ export type Link = Schemas["Link"];
 export type World = Schemas["World"];
 export type MentionRef = Schemas["MentionRef"];
 export type Decision = Schemas["Decision"];
+export type Me = Schemas["Me"];
 
 // EntryDraft only appears in the schema as a request body (Decision.edited), where defaulted fields
 // are optional. A draft inside a proposal always carries aliases, facts and status, so those stay
@@ -285,6 +286,8 @@ export interface DevSettings {
   guard_enabled: boolean;
   /** null means every tool; the core tools are on whatever this lists. */
   enabled_tools: string[] | null;
+  /** US$ per account per calendar month; the admin has no limit. */
+  monthly_budget_usd: number;
 }
 
 export interface ToolInfo {

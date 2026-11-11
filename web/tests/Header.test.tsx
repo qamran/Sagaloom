@@ -2,9 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/components/Header";
-import { getReviewThreads } from "@/lib/api";
+import { getMe, getReviewThreads } from "@/lib/api";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
-import type { ThreadSummary } from "@/lib/types";
+import type { Me, ThreadSummary } from "@/lib/types";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/canon", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/world", () => ({
@@ -12,7 +12,14 @@ vi.mock("@/lib/world", () => ({
     worlds: [], world: { id: "w1", name: "Velmar" }, threadId: null, setWorldId: vi.fn(), startWorld: vi.fn(),
   }),
 }));
-vi.mock("@/lib/api", () => ({ getThread: vi.fn(), getReviewThreads: vi.fn() }));
+vi.mock("@/lib/api", () => ({ getThread: vi.fn(), getReviewThreads: vi.fn(), getMe: vi.fn() }));
+const auth = vi.hoisted(() => ({ value: { isLoaded: true, isSignedIn: true } }));
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => auth.value, UserButton: () => <div data-testid="user-button" /> }));
+
+const me = (over: Partial<Me> = {}): Me => ({
+  id: "user_a", email: "a@b.c", display_name: "A", is_admin: false, last_world_id: null,
+  month_spend_usd: 0.2345, monthly_budget_usd: 1, budget_resets_on: "2026-12-01", over_budget: false, ...over,
+});
 
 const row = (thread_id: string, pending: number): ThreadSummary => ({
   thread_id, world_id: "w1", pending, created_at: "", kind: "chat", title: null, badge: null, approved: 0, rejected: 0, running: false,
@@ -27,7 +34,9 @@ const renderHeader = () =>
 
 beforeEach(() => {
   qc.clear();
-  vi.mocked(getReviewThreads).mockReset();
+  vi.mocked(getReviewThreads).mockReset().mockResolvedValue([]);
+  vi.mocked(getMe).mockReset().mockResolvedValue(me());
+  auth.value = { isLoaded: true, isSignedIn: true };
 });
 
 describe("Header Review tab", () => {
@@ -105,5 +114,29 @@ describe("Header Show secrets toggle", () => {
     btn.click();
     await waitFor(() => expect(sessionStorage.getItem(SHOW_SECRETS_KEY("w1"))).toBe("true"));
     sessionStorage.clear();
+  });
+});
+
+describe("Header account", () => {
+  it("shows the spend line against the budget and the account menu", async () => {
+    renderHeader();
+    expect(await screen.findByLabelText("AI spend this month")).toHaveTextContent("This month: $0.23 of $1.00");
+    expect(screen.getByTestId("user-button")).toBeInTheDocument();
+  });
+
+  it("shows only the spend for the admin, with no limit", async () => {
+    vi.mocked(getMe).mockResolvedValue(me({ is_admin: true, monthly_budget_usd: null }));
+    renderHeader();
+    expect(await screen.findByLabelText("AI spend this month")).toHaveTextContent(/^This month: \$0\.23$/);
+  });
+
+  it("offers Sign in and Sign up free, and nothing else, when signed out", () => {
+    auth.value = { isLoaded: true, isSignedIn: false };
+    renderHeader();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
+    expect(screen.getByRole("link", { name: "Sign up free" })).toHaveAttribute("href", "/sign-up");
+    expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
+    expect(screen.queryByTestId("user-button")).toBeNull();
+    expect(getMe).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { AdminOnlyNote } from "@/components/AdminOnlyNote";
 import { ApiError, putSettings } from "@/lib/api";
 import type { SettingsPatch, SettingsPayload } from "@/lib/types";
 
@@ -12,12 +13,13 @@ const promptOf = (p: SettingsPayload) => p.settings.agent_system_prompt ?? p.def
 
 /** Developer settings (R12.4): the agent's temperature, token cap and system prompt. Judge,
  * extractor and guard temperatures are pinned at 0 and have no inputs. */
-export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
+export function SettingsPanel({ payload, readOnly = false }: { payload: SettingsPayload; readOnly?: boolean }) {
   const qc = useQueryClient();
   const [base, setBase] = useState(payload);
   const [temp, setTemp] = useState(String(payload.settings.agent_temperature));
   const [tokens, setTokens] = useState(payload.settings.agent_max_tokens?.toString() ?? "");
   const [prompt, setPrompt] = useState(promptOf(payload));
+  const [budget, setBudget] = useState(String(payload.settings.monthly_budget_usd));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -26,12 +28,15 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
   const n = tokens.trim() === "" ? null : Number(tokens);
   const tokensOk = n === null || (Number.isInteger(n) && n >= 256 && n <= 16000);
   const promptOk = prompt.length >= 1 && prompt.length <= 8000;
+  const b = budget.trim() === "" ? NaN : Number(budget);
+  const budgetOk = Number.isFinite(b) && b >= 0;
 
   const patch: SettingsPatch = {};
   if (tempOk && t !== base.settings.agent_temperature) patch.agent_temperature = t;
   if (tokensOk && n !== base.settings.agent_max_tokens) patch.agent_max_tokens = n;
   if (promptOk && prompt !== promptOf(base)) patch.agent_system_prompt = prompt;
-  const valid = tempOk && tokensOk && promptOk;
+  if (budgetOk && b !== base.settings.monthly_budget_usd) patch.monthly_budget_usd = b;
+  const valid = tempOk && tokensOk && promptOk && budgetOk;
   const dirty = Object.keys(patch).length > 0;
   const saveable = valid && dirty;
 
@@ -41,10 +46,12 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
     if (!promptOnly) {
       setTemp(String(next.settings.agent_temperature));
       setTokens(next.settings.agent_max_tokens?.toString() ?? "");
+      setBudget(String(next.settings.monthly_budget_usd));
     }
     setPrompt(promptOf(next));
     void qc.invalidateQueries({ queryKey: ["settings"], exact: true });
     void qc.invalidateQueries({ queryKey: ["studio"] });
+    void qc.invalidateQueries({ queryKey: ["me"], exact: true });
   }
 
   async function send(body: SettingsPatch, promptOnly = false) {
@@ -83,6 +90,7 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
             value={temp}
             aria-label="Agent temperature"
             aria-invalid={!tempOk}
+            disabled={readOnly}
             onChange={(e) => setTemp(e.target.value)}
             className={`${FIELD} w-28`}
           />
@@ -97,10 +105,26 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
             placeholder="Provider default"
             aria-label="Agent max tokens"
             aria-invalid={!tokensOk}
+            disabled={readOnly}
             onChange={(e) => setTokens(e.target.value)}
             className={`${FIELD} w-40`}
           />
           <span>256 to 16000, empty for the provider default</span>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Monthly AI budget (US$)
+          <input
+            type="number"
+            step="0.25"
+            min={0}
+            value={budget}
+            aria-label="Monthly AI budget (US$)"
+            aria-invalid={!budgetOk}
+            disabled={readOnly}
+            onChange={(e) => setBudget(e.target.value)}
+            className={`${FIELD} w-28`}
+          />
+          <span>per account per month; the admin has no limit</span>
         </label>
       </div>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -110,6 +134,7 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
           value={prompt}
           aria-label="Agent system prompt"
           aria-invalid={!promptOk}
+          disabled={readOnly}
           onChange={(e) => setPrompt(e.target.value)}
           className={`${FIELD} font-mono text-xs leading-[1.55]`}
         />
@@ -127,8 +152,8 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
         <button
           type="button"
           className={BTN}
-          disabled={!saveable || saving}
-          aria-describedby={saveable ? undefined : "save-why"}
+          disabled={readOnly || !saveable || saving}
+          aria-describedby={saveable || readOnly ? undefined : "save-why"}
           onClick={() => void send(patch)}
         >
           Save
@@ -136,13 +161,14 @@ export function SettingsPanel({ payload }: { payload: SettingsPayload }) {
         <button
           type="button"
           className={BTN}
-          disabled={base.settings.agent_system_prompt === null || saving}
+          disabled={readOnly || base.settings.agent_system_prompt === null || saving}
           onClick={() => void send({ reset_system_prompt: true }, true)}
         >
           Reset to default
         </button>
       </div>
-      {!saveable && (
+      {readOnly && <AdminOnlyNote />}
+      {!readOnly && !saveable && (
         <p id="save-why" className="m-0 text-xs text-muted-foreground">{valid ? "No changes to save" : "Fix the highlighted value"}</p>
       )}
     </section>

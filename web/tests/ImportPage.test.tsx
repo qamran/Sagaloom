@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ImportPage from "@/app/import/page";
 import type { ImportRun } from "@/lib/useImport";
 
+const me = vi.hoisted(() => ({ value: undefined as import("@/lib/types").Me | undefined }));
+vi.mock("@/lib/me", async (orig) => ({ ...(await orig<typeof import("@/lib/me")>()), useMe: () => me.value }));
 vi.mock("@/lib/world", () => ({ useWorld: () => ({ world: { id: "w1", name: "Velmar" } }) }));
 vi.mock("@/components/RecentImports", () => ({ RecentImports: () => null }));
 vi.mock("@/components/ImportProgress", () => ({ ImportProgress: () => <p>Extracting…</p> }));
@@ -17,6 +19,7 @@ const runOf = (over: Partial<ImportRun> = {}): ImportRun => ({
 });
 
 beforeEach(() => {
+  me.value = undefined;
   run = runOf();
 });
 
@@ -47,5 +50,17 @@ describe("ImportPage", () => {
     await userEvent.paste("https://en.wikipedia.org/wiki/Gandalf");
     await userEvent.click(card.getByRole("button", { name: "Extract entries" }));
     expect(run.start).toHaveBeenCalledWith("w1", { kind: "wiki", urls: ["https://en.wikipedia.org/wiki/Gandalf"] });
+  });
+});
+
+describe("ImportPage over budget", () => {
+  it("shows the budget message in place of the Extract buttons", () => {
+    me.value = {
+  id: "u", email: "a@b.c", display_name: "A", is_admin: false, last_world_id: null,
+  month_spend_usd: 1.02, monthly_budget_usd: 1, budget_resets_on: "2026-12-01", over_budget: true,
+};
+    render(<ImportPage />);
+    expect(screen.getByRole("alert")).toHaveTextContent("You've used this month's AI budget ($1.00). It resets on 2026-12-01.");
+    expect(screen.queryByRole("button", { name: "Extract entries" })).toBeNull();
   });
 });

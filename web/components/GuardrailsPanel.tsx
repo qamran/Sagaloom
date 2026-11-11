@@ -2,7 +2,8 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { getGuardLog, putSettings } from "@/lib/api";
+import { AdminOnlyNote } from "@/components/AdminOnlyNote";
+import { getGuardLog, putSettings, type Scope } from "@/lib/api";
 import type { GuardLogRow, SettingsPayload } from "@/lib/types";
 
 const BADGE: Record<GuardLogRow["verdict"], string> = {
@@ -14,12 +15,21 @@ const BADGE: Record<GuardLogRow["verdict"], string> = {
 };
 
 /** The input guard (R13.1): an on/off switch, the policy read-only, and the recent verdicts. */
-export function GuardrailsPanel({ payload }: { payload: SettingsPayload }) {
+export function GuardrailsPanel({
+  payload,
+  readOnly = false,
+  scope = "mine",
+}: {
+  payload: SettingsPayload;
+  readOnly?: boolean;
+  /** `all` (the admin's "All users" switch) lists every account's verdicts. */
+  scope?: Scope;
+}) {
   const qc = useQueryClient();
   const [on, setOn] = useState(payload.settings.guard_enabled);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const log = useQuery({ queryKey: ["guard-log"], queryFn: () => getGuardLog(20) });
+  const log = useQuery({ queryKey: ["guard-log", scope], queryFn: () => getGuardLog(20, scope) });
 
   async function toggle() {
     setError(null);
@@ -49,7 +59,7 @@ export function GuardrailsPanel({ payload }: { payload: SettingsPayload }) {
           role="switch"
           aria-checked={on}
           aria-label="Input guard"
-          disabled={saving}
+          disabled={readOnly || saving}
           onClick={() => void toggle()}
           className={`min-h-9 rounded-full border px-4 text-[13px] ${
             on ? "border-myth text-myth" : "border-border-strong text-muted-foreground"
@@ -62,6 +72,7 @@ export function GuardrailsPanel({ payload }: { payload: SettingsPayload }) {
           closed.
         </span>
       </div>
+      {readOnly && <AdminOnlyNote />}
       {error && (
         <p role="alert" className="m-0 text-xs text-conflict">
           {error}

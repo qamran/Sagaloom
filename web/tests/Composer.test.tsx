@@ -74,3 +74,14 @@ describe("Composer @ autocomplete", () => {
     expect(onSend).toHaveBeenCalledWith("one\ntwo");
   });
 });
+
+describe("Composer over budget", () => {
+  const detail = "You've used this month's AI budget ($1.00). It resets on 2026-12-01.";
+
+  it("shows the budget message in place of the input", () => {
+    render(<Composer onSend={vi.fn()} blocked={detail} />);
+    expect(screen.getByText(detail)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  });
+});

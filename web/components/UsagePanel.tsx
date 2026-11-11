@@ -1,5 +1,7 @@
+import { spendLine } from "@/lib/me";
 import { stepName, stepOf } from "@/lib/steps";
-import type { StudioData } from "@/lib/types";
+import type { Me, StudioData } from "@/lib/types";
+import type { Scope } from "@/lib/api";
 
 /** "Check (Luna)" for role judge on openai/gpt-6-luna; the bare model id when the role is unknown. */
 export function usageLabel(role: string | null | undefined, model: string): string {
@@ -15,7 +17,19 @@ export function usageLabel(role: string | null | undefined, model: string): stri
 const n = (v: number) => v.toLocaleString("en-US");
 
 /** Usage (R20.4): totals over every recorded model call, and the cost split by step. */
-export function UsagePanel({ usage }: { usage: StudioData["usage"] }) {
+export function UsagePanel({
+  usage,
+  me,
+  scope = "mine",
+  onScope,
+}: {
+  usage: StudioData["usage"];
+  /** The account, for the "This month" line. */
+  me?: Me;
+  scope?: Scope;
+  /** Given only to the admin: adds the "All users" switch. */
+  onScope?: (scope: Scope) => void;
+}) {
   const max = Math.max(0, ...usage.by_model.map((m) => m.cost_usd));
   return (
     <section
@@ -24,6 +38,18 @@ export function UsagePanel({ usage }: { usage: StudioData["usage"] }) {
       className="flex scroll-mt-4 flex-col gap-3 rounded-xl border border-border bg-panel-2 px-5 py-[18px]"
     >
       <h2 className="m-0 font-heading text-[22px] font-medium">Usage</h2>
+      {me && <p className="m-0 text-[13px] text-muted-foreground">{spendLine(me)}</p>}
+      {onScope && (
+        <label className="flex items-center gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={scope === "all"}
+            onChange={(e) => onScope(e.target.checked ? "all" : "mine")}
+          />
+          All users
+        </label>
+      )}
       <dl className="m-0 grid grid-cols-3 gap-2.5">
         {[
           ["Tokens in", n(usage.prompt_tokens)],

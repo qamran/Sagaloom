@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { AgentGraph } from "@/components/AgentGraph";
 import { FeatureMap } from "@/components/FeatureMap";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
@@ -11,7 +11,8 @@ import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ToolsPanel } from "@/components/ToolsPanel";
 import { UsagePanel } from "@/components/UsagePanel";
-import { getModels, getSettings, getStudio } from "@/lib/api";
+import { getModels, getSettings, getStudio, type Scope } from "@/lib/api";
+import { useMe } from "@/lib/me";
 
 const SECTIONS = [
   ["feature-map", "Feature map"],
@@ -27,7 +28,12 @@ const SECTIONS = [
 /** The Developer page (R20.4): kept apart from the author's screens. */
 function Studio() {
   const highlight = useSearchParams().get("card") ?? undefined;
-  const studio = useQuery({ queryKey: ["studio"], queryFn: getStudio });
+  const me = useMe();
+  // Every account sees its own usage; only the admin can switch to everyone's.
+  const [scope, setScope] = useState<Scope>("mine");
+  const readOnly = !me?.is_admin;
+  const shownScope = me?.is_admin ? scope : "mine";
+  const studio = useQuery({ queryKey: ["studio", shownScope], queryFn: () => getStudio(shownScope) });
   const models = useQuery({ queryKey: ["settings", "models"], queryFn: getModels });
   const dev = useQuery({ queryKey: ["settings"], queryFn: getSettings });
 
@@ -72,18 +78,18 @@ function Studio() {
               <AgentGraph mermaid={studio.data.mermaid} />
             </section>
             {models.data ? (
-              <ProvidersPanel providers={studio.data.providers} models={models.data} />
+              <ProvidersPanel providers={studio.data.providers} models={models.data} readOnly={readOnly} />
             ) : (
               <p className="m-0 text-muted-foreground">
                 {models.isError ? "Could not load the model list." : "Loading models…"}
               </p>
             )}
-            <ToolsPanel />
+            <ToolsPanel readOnly={readOnly} />
             <MemoryPanel />
             {dev.data ? (
               <>
-                <GuardrailsPanel payload={dev.data} />
-                <SettingsPanel payload={dev.data} />
+                <GuardrailsPanel payload={dev.data} readOnly={readOnly} scope={shownScope} />
+                <SettingsPanel payload={dev.data} readOnly={readOnly} />
               </>
             ) : (
               <p id="guardrails" className="m-0 text-muted-foreground">
@@ -91,7 +97,12 @@ function Studio() {
                 {dev.isError ? "Could not load the guardrails and settings." : "Loading settings…"}
               </p>
             )}
-            <UsagePanel usage={studio.data.usage} />
+            <UsagePanel
+              usage={studio.data.usage}
+              me={me}
+              scope={shownScope}
+              onScope={me?.is_admin ? setScope : undefined}
+            />
           </>
         )}
       </main>

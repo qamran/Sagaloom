@@ -101,3 +101,16 @@ describe("ToolsPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("not saved");
   });
 });
+
+describe("ToolsPanel read-only", () => {
+  it("disables the switches and says why for a non-admin", async () => {
+    vi.mocked(getTools).mockResolvedValue(TOOLS);
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ToolsPanel readOnly />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("switch", { name: "export_world" })).toBeDisabled();
+    expect(screen.getByText("Only the admin can change developer settings.")).toBeInTheDocument();
+  });
+});

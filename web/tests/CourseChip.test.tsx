@@ -11,7 +11,8 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/chat", useRouter: () =>
 vi.mock("@/lib/world", () => ({
   useWorld: () => ({ worlds: [], world: null, threadId: null, setWorldId: vi.fn(), startWorld: vi.fn() }),
 }));
-vi.mock("@/lib/api", () => ({ getThread: vi.fn() }));
+vi.mock("@/lib/api", () => ({ getThread: vi.fn(), getReviewThreads: vi.fn(async () => []), getMe: vi.fn(async () => undefined) }));
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ isLoaded: true, isSignedIn: true }), UserButton: () => null }));
 
 const page = () => (
   <QueryClientProvider client={new QueryClient()}>

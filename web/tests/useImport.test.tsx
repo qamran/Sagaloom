@@ -184,6 +184,17 @@ describe("useImport", () => {
     expect(result.current.error).toBe(SESSION_REJECTED);
   });
 
+  it("shows the API's 402 sentence verbatim", async () => {
+    const detail = "You've used this month's AI budget ($1.00). It resets on 2026-12-01.";
+    fetchMock.mockResolvedValue(errorResponse(402, detail));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start("w1", { text: "x" });
+    });
+    expect(result.current.phase).toBe("error");
+    expect(result.current.error).toBe(detail);
+  });
+
   it("shows the account-service copy on a 503", async () => {
     fetchMock.mockResolvedValue(errorResponse(503, "account service unavailable"));
     const { result } = setup();

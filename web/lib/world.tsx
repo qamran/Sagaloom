@@ -1,9 +1,12 @@
 "use client";
 
+import { useAuth } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { createWorld, getWorlds } from "./api";
-import type { World } from "./types";
+import { createWorld, getMe, getWorlds, putMe } from "./api";
+import { ME_KEY } from "./me";
+import { setTourUser } from "./tour";
+import type { Me, World } from "./types";
 
 const WORLD_KEY = "sagaloom.world";
 
@@ -34,22 +37,35 @@ const WorldContext = createContext<WorldContextValue | null>(null);
 
 export function WorldProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: ["worlds"], queryFn: getWorlds });
-  const [storedId, setStoredId] = useState<string | null>(readStoredWorld);
+  const { isSignedIn } = useAuth();
+  const query = useQuery({ queryKey: ["worlds"], queryFn: getWorlds, enabled: !!isSignedIn });
+  const meQuery = useQuery({ queryKey: ME_KEY, queryFn: getMe, enabled: !!isSignedIn });
+  // The author's own pick this session; before one, the account's last world, then this browser's.
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [storedId] = useState<string | null>(readStoredWorld);
   const [threadId, setThreadId] = useState<string | null>(null);
 
   const worlds = useMemo(() => query.data ?? [], [query.data]);
-  const world = worlds.find((w) => w.id === storedId) ?? worlds[0] ?? null;
+  // The Get Started flags are per user; set before any child reads them.
+  setTourUser(meQuery.data?.id ?? null);
+  // Wait for /me (when it is coming) so the first world is the remembered one, not a flash of another.
+  const meSettled = !isSignedIn || meQuery.isFetched;
+  const lastId = meQuery.data?.last_world_id;
+  const known = (id: string | null | undefined) => worlds.find((w) => w.id === id);
+  const world = meSettled ? (known(pickedId) ?? known(lastId) ?? known(storedId) ?? worlds[0] ?? null) : null;
 
   const setWorldId = useCallback((id: string) => {
-    setStoredId(id);
+    setPickedId(id);
     setThreadId(null);
+    qc.setQueryData<Me>(ME_KEY, (m) => (m ? { ...m, last_world_id: id } : m));
+    // The server's copy is only a memory for the next visit: a failed save must not block the switch.
+    putMe(id).catch(() => undefined);
     try {
       localStorage.setItem(WORLD_KEY, id);
     } catch {
       /* storage unavailable: the choice lasts for this page only */
     }
-  }, []);
+  }, [qc]);
 
   const startWorld = useCallback(
     async (name: string) => {
@@ -64,7 +80,7 @@ export function WorldProvider({ children }: { children: ReactNode }) {
   const value: WorldContextValue = {
     worlds,
     world,
-    isLoading: query.isLoading,
+    isLoading: query.isLoading || !meSettled,
     error: query.error,
     setWorldId,
     startWorld,

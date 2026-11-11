@@ -9,7 +9,7 @@ import type { SettingsPayload } from "@/lib/types";
 vi.mock("@/lib/api", () => ({ putSettings: vi.fn(), getGuardLog: vi.fn() }));
 
 const payload: SettingsPayload = {
-  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled: true, enabled_tools: null },
+  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled: true, enabled_tools: null, monthly_budget_usd: 1 },
   defaults: { agent_system_prompt: "x" },
   guard_policy: "You are the input guard.",
 };
@@ -87,5 +87,19 @@ describe("GuardrailsPanel", () => {
     const badge = within(row).getByText("error");
     expect(badge.className).not.toContain("undefined");
     expect(badge.className).toContain("text-failed");
+  });
+});
+
+describe("GuardrailsPanel read-only", () => {
+  it("disables the guard switch and says why for a non-admin", async () => {
+    vi.mocked(getGuardLog).mockResolvedValue([]);
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <GuardrailsPanel payload={payload} readOnly />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("switch", { name: "Input guard" })).toBeDisabled();
+    expect(screen.getByText("Only the admin can change developer settings.")).toBeInTheDocument();
+    await waitFor(() => expect(getGuardLog).toHaveBeenCalledWith(20, "mine"));
   });
 });

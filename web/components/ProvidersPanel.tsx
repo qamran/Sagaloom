@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AdminOnlyNote } from "@/components/AdminOnlyNote";
 import { putModel } from "@/lib/api";
 import type { ModelRole, ModelsPayload, ProviderStatus } from "@/lib/types";
 
@@ -32,7 +33,15 @@ function KeyBadge({ set, on, off }: { set: boolean; on: string; off: string }) {
 
 /** Models and providers (R20.7, R11.G10): a dropdown per role limited to the allowlist. The key
  * status is shown, never a key value. */
-export function ProvidersPanel({ providers, models }: { providers: ProviderStatus[]; models: ModelsPayload }) {
+export function ProvidersPanel({
+  providers,
+  models,
+  readOnly = false,
+}: {
+  providers: ProviderStatus[];
+  models: ModelsPayload;
+  readOnly?: boolean;
+}) {
   const [mapping, setMapping] = useState(models.mapping);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<ModelRole | null>(null);
@@ -83,7 +92,7 @@ export function ProvidersPanel({ providers, models }: { providers: ProviderStatu
                 <select
                   aria-label={aria}
                   value={mapping[role]}
-                  disabled={saving === role}
+                  disabled={readOnly || saving === role}
                   onChange={(e) => void change(role, e.target.value)}
                   className="min-h-9 w-full rounded-md border border-border-strong bg-background px-1.5 py-1 font-mono text-xs text-foreground"
                 >
@@ -111,6 +120,7 @@ export function ProvidersPanel({ providers, models }: { providers: ProviderStatu
           </>
         )}
       </div>
+      {readOnly && <AdminOnlyNote />}
       {error && (
         <p role="alert" className="m-0 text-xs text-conflict">
           {error}

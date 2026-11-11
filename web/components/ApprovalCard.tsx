@@ -51,6 +51,8 @@ interface Props {
   chosen?: Decision;
   onUndo?: () => void;
   disabled?: boolean;
+  /** Over the monthly budget: Approve, Edit and Save as myth are off; Reject stays (the API allows it). */
+  approvalsBlocked?: boolean;
 }
 
 /** "Commit to canon?" (R5.2, R5.3, R5.6, R12.3): one proposal as a card; its secrets follow the proposal's own world's toggle. */
@@ -62,7 +64,7 @@ export function ApprovalCard(props: Props) {
   );
 }
 
-function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, disabled }: Props) {
+function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, disabled, approvalsBlocked }: Props) {
   const [editing, setEditing] = useState(false);
   const [toldBy, setToldBy] = useState("");
   const [entryRevealed, setEntryRevealed] = useState(false);
@@ -299,18 +301,18 @@ function ApprovalCardBody({ proposal, check, onDecide, canon, chosen, onUndo, di
             )}
             <div className="flex flex-wrap gap-2.5">
               {canMyth && (
-                <button type="button" disabled={disabled} onClick={() => decide("save_as_myth")} className={BTN_PRIMARY}>
+                <button type="button" disabled={disabled || approvalsBlocked} onClick={() => decide("save_as_myth")} className={BTN_PRIMARY}>
                   Save as myth
                 </button>
               )}
               {proposal.action !== "delete" && (
-                <button type="button" disabled={disabled} onClick={() => setEditing(true)} className={BTN_SECONDARY}>
+                <button type="button" disabled={disabled || approvalsBlocked} onClick={() => setEditing(true)} className={BTN_SECONDARY}>
                   Edit
                 </button>
               )}
               <button
                 type="button"
-                disabled={disabled}
+                disabled={disabled || approvalsBlocked}
                 onClick={() => decide("approve")}
                 className={canMyth || failed ? BTN_SECONDARY : BTN_PRIMARY}
               >

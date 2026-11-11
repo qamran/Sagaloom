@@ -16,6 +16,7 @@ export function Composer({
   prefill,
   entries,
   showSecrets = false,
+  blocked,
 }: {
   onSend: (text: string) => void;
   disabled?: boolean;
@@ -28,6 +29,8 @@ export function Composer({
   entries?: Named[];
   /** Whether secret entries may be suggested (the thread's world toggle). */
   showSecrets?: boolean;
+  /** The monthly-budget message; when set it replaces the input (nothing can be sent). */
+  blocked?: string | null;
 }) {
   const [text, setText] = useState("");
   const [applied, setApplied] = useState<string | null>(null);
@@ -98,6 +101,14 @@ export function Composer({
       e.preventDefault();
       submit();
     }
+  }
+
+  if (blocked) {
+    return (
+      <p role="alert" className="mx-auto m-0 w-full max-w-[860px] rounded-xl border border-conflict-line bg-conflict-bg px-3.5 py-3 text-sm text-conflict-text">
+        {blocked}
+      </p>
+    );
   }
 
   return (

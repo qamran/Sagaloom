@@ -12,6 +12,7 @@ import type {
   ThreadState,
   LastRun,
   MentionRef,
+  Me,
   ThreadSummary,
   World,
 } from "./types";
@@ -150,7 +151,11 @@ export const createThread = (worldId: string) =>
 export const getThread = (id: string) => request<ThreadState>(`/threads/${encodeURIComponent(id)}`);
 export const getReviewThreads = (worldId: string) =>
   request<ThreadSummary[]>(`/threads?pending=true&world_id=${encodeURIComponent(worldId)}`);
-export const getStudio = () => request<StudioData>("/studio");
+export type Scope = "all" | "mine";
+export const getStudio = (scope: Scope = "mine") => request<StudioData>(`/studio?scope=${scope}`);
+export const getMe = () => request<Me>("/me");
+export const putMe = (lastWorldId: string | null) =>
+  request<Me>("/me", { method: "PUT", body: JSON.stringify({ last_world_id: lastWorldId }) });
 export const getModels = () => request<ModelsPayload>("/settings/models");
 export const putModel = (role: ModelRole, model: string) =>
   request<ModelsPayload>("/settings/models", { method: "PUT", body: JSON.stringify({ role, model }) });
@@ -160,7 +165,8 @@ export const getSettings = () => request<SettingsPayload>("/settings");
 export const putSettings = (patch: SettingsPatch) =>
   request<SettingsPayload>("/settings", { method: "PUT", body: JSON.stringify(patch) });
 export const getTools = () => request<ToolInfo[]>("/tools");
-export const getGuardLog = (limit = 20) => request<GuardLogRow[]>(`/guard/log?limit=${limit}`);
+export const getGuardLog = (limit = 20, scope: Scope = "mine") =>
+  request<GuardLogRow[]>(`/guard/log?limit=${limit}&scope=${scope}`);
 
 /** The Markdown zip download for a world (R11.5.4), through the proxy. */
 export function exportUrl(worldId: string, excludeSecrets: boolean): string {

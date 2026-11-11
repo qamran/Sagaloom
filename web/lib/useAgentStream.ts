@@ -64,6 +64,7 @@ export interface AgentStream {
 const PENDING_FIRST = "Decide on the pending change first";
 const BUSY = "A reply is still running. Wait for it to finish.";
 const UNREACHABLE = "Could not reach Sagaloom. Please try again.";
+const BUDGET_USED = "You've used this month's AI budget.";
 const LOST = "Lost the connection and could not reload this conversation. Refresh the page.";
 
 const hasConflict = (p: PendingInterrupt) =>
@@ -253,6 +254,11 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
             setError(ACCOUNT_UNAVAILABLE);
             return;
           }
+          // Over the monthly budget: the API's own sentence, word for word.
+          if (res.status === 402) {
+            setError(detail || BUDGET_USED);
+            return;
+          }
           if (res.status === 409 && detail === "turn in progress") {
             setError(BUSY);
             return;
@@ -349,6 +355,8 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
         void qc.invalidateQueries({ queryKey: ["llm-log", threadId] });
         if (kind === "decision") void qc.invalidateQueries({ queryKey: ["entries"] });
         void qc.invalidateQueries({ queryKey: ["review"] });
+        // The spend line and the over-budget state follow every turn, decision batch and 402.
+        void qc.invalidateQueries({ queryKey: ["me"], exact: true });
       }
     },
     [threadId, qc, restore, setPending],

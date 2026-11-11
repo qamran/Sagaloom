@@ -2,12 +2,13 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { AdminOnlyNote } from "@/components/AdminOnlyNote";
 import { getTools, putSettings } from "@/lib/api";
 import type { ToolInfo } from "@/lib/types";
 
 /** The agent's tools (R11.G3): core tools are always on; the others have a switch that applies
  * from the next turn. A switch sends the full list of enabled optional tools. */
-export function ToolsPanel() {
+export function ToolsPanel({ readOnly = false }: { readOnly?: boolean }) {
   const qc = useQueryClient();
   const tools = useQuery({ queryKey: ["tools"], queryFn: getTools });
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function ToolsPanel() {
       <p className="m-0 text-xs text-muted-foreground">
         The agent can only use the tools that are on. A change applies from the next turn.
       </p>
+      {readOnly && <AdminOnlyNote />}
       {tools.isError && <p className="m-0 text-xs text-conflict">Could not load the tools.</p>}
       {tools.isLoading && <p className="m-0 text-xs text-muted-foreground">Loading tools…</p>}
       {error && (
@@ -58,7 +60,7 @@ export function ToolsPanel() {
               role="switch"
               aria-checked={t.enabled}
               aria-label={t.name}
-              disabled={t.core || saving}
+              disabled={t.core || saving || readOnly}
               onClick={() => void toggle(t)}
               className={`min-h-9 min-w-24 rounded-full border px-4 text-[13px] ${
                 t.enabled ? "border-myth text-myth" : "border-border-strong text-muted-foreground"

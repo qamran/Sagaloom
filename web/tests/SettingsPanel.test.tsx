@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const payload: SettingsPayload = {
-  settings: { agent_temperature: 0.2, agent_max_tokens: 1000, agent_system_prompt: null, guard_enabled: true, enabled_tools: null },
+  settings: { agent_temperature: 0.2, agent_max_tokens: 1000, agent_system_prompt: null, guard_enabled: true, enabled_tools: null, monthly_budget_usd: 1 },
   defaults: { agent_system_prompt: "You are the Sagaloom agent." },
   guard_policy: "policy text",
 };
@@ -30,10 +30,10 @@ const custom: SettingsPayload = {
   settings: { ...payload.settings, agent_system_prompt: "My own prompt." },
 };
 
-function setup(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }), given = payload) {
+function setup(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }), given = payload, readOnly = false) {
   render(
     <QueryClientProvider client={qc}>
-      <SettingsPanel payload={given} />
+      <SettingsPanel payload={given} readOnly={readOnly} />
     </QueryClientProvider>,
   );
 }
@@ -148,5 +148,27 @@ describe("SettingsPanel", () => {
   it("has no inputs for judge, extractor or guard temperature", () => {
     setup();
     expect(screen.queryByLabelText(/judge|extractor|guard/i)).toBeNull();
+  });
+});
+
+describe("SettingsPanel budget and admin rules", () => {
+  it("shows the monthly budget and saves a change as monthly_budget_usd", async () => {
+    setup();
+    const b = screen.getByLabelText("Monthly AI budget (US$)");
+    expect(b).toHaveValue(1);
+    await userEvent.clear(b);
+    await userEvent.type(b, "2.5");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(putSettings).toHaveBeenCalledWith({ monthly_budget_usd: 2.5 }));
+  });
+
+  it("disables every control and says why for a non-admin", () => {
+    setup(undefined, payload, true);
+    expect(screen.getByText("Only the admin can change developer settings.")).toBeInTheDocument();
+    for (const name of ["Agent temperature", "Agent max tokens", "Agent system prompt", "Monthly AI budget (US$)"]) {
+      expect(screen.getByLabelText(name)).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reset to default" })).toBeDisabled();
   });
 });

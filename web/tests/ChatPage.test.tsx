@@ -23,6 +23,8 @@ vi.mock("@/lib/world", () => ({
     setThreadId: () => undefined,
   }),
 }));
+const me = vi.hoisted(() => ({ value: undefined as import("@/lib/types").Me | undefined }));
+vi.mock("@/lib/me", async (orig) => ({ ...(await orig<typeof import("@/lib/me")>()), useMe: () => me.value }));
 vi.mock("@/lib/api", () => ({
   createThread: vi.fn(),
   getReviewThreads: vi.fn(),
@@ -34,12 +36,13 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const settings = (guard_enabled: boolean): SettingsPayload => ({
-  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled, enabled_tools: null },
+  settings: { agent_temperature: 0, agent_max_tokens: null, agent_system_prompt: null, guard_enabled, enabled_tools: null, monthly_budget_usd: 1 },
   defaults: { agent_system_prompt: "x" },
   guard_policy: "p",
 });
 
 beforeEach(() => {
+  me.value = undefined;
   vi.mocked(getSettings).mockReset().mockResolvedValue(settings(true));
   replace.mockReset();
   vi.mocked(createThread).mockReset().mockResolvedValue({ thread_id: "t_new" });
@@ -454,5 +457,26 @@ describe("assistant entity chips", () => {
       active.id = "w1";
       sessionStorage.clear();
     }
+  });
+});
+
+describe("chat over budget", () => {
+  it("shows the budget message in place of the composer", async () => {
+    me.value = {
+      id: "u", email: "a@b.c", display_name: "A", is_admin: false, last_world_id: null,
+      month_spend_usd: 1.02, monthly_budget_usd: 1, budget_resets_on: "2026-12-01", over_budget: true,
+    };
+    vi.mocked(getThread).mockResolvedValue({
+      thread_id: "t1", kind: "chat", title: null, world_id: "w1", messages: [], pending_interrupt: null,
+      usage: { prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 },
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatThread threadId="t1" />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("You've used this month's AI budget ($1.00). It resets on 2026-12-01.")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).toBeNull();
   });
 });

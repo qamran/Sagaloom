@@ -7,6 +7,7 @@ import { ApprovalCard } from "@/components/ApprovalCard";
 import { CourseChip } from "@/components/CourseChip";
 import { ReviewQueue } from "@/components/ReviewQueue";
 import { getEntries } from "@/lib/api";
+import { overBudgetMessage, useMe } from "@/lib/me";
 import { entryIsSecret } from "@/lib/review";
 import { SecretsWorldProvider, useWorldShowSecrets } from "@/lib/secrets";
 import { entryIsNc, licenceText } from "@/lib/sources";
@@ -105,6 +106,7 @@ function ErrorLine({ text }: { text?: string | null }) {
 export function ReviewDetail({ threadId }: { threadId: string }) {
   const s = useAgentStream(threadId, { autoSubmit: false });
   const { world } = useWorld();
+  const overBudget = overBudgetMessage(useMe());
   const [selected, setSelected] = useState<string | null>(null);
   // How many review notes the thread had when the author submitted; later ones are this turn's.
   const [notesBefore, setNotesBefore] = useState<number | null>(null);
@@ -228,7 +230,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
             {clean.length > 0 && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !!overBudget}
                 onClick={() => void s.chooseMany(clean.map((p) => ({ proposal_id: p.proposal_id, action: "approve" })))}
                 className={BTN_PRIMARY}
               >
@@ -264,6 +266,7 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
               chosen={chosen[current.proposal_id]}
               onUndo={() => s.unchoose(current.proposal_id)}
               disabled={busy}
+              approvalsBlocked={!!overBudget}
               onDecide={(d) => void s.choose(d)}
             />
           )}
@@ -272,7 +275,12 @@ export function ReviewDetail({ threadId }: { threadId: string }) {
               Sending your decisions…
             </p>
           )}
-          <ErrorLine text={s.error} />
+          {overBudget && (
+            <p role="status" className="m-0 text-sm text-conflict-text">
+              {overBudget} You can still reject changes.
+            </p>
+          )}
+          <ErrorLine text={overBudget && s.error === overBudget ? null : s.error} />
           <div>
             <button type="button" disabled={!complete || busy} onClick={submit} className={BTN_PRIMARY}>
               Submit {n} {n === 1 ? "decision" : "decisions"}

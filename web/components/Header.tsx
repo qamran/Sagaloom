@@ -1,11 +1,13 @@
 "use client";
 
+import { useAuth, UserButton } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { getReviewThreads, getThread } from "@/lib/api";
 import { useCourseNotes } from "@/lib/courseNotes";
+import { spendLine, useMe } from "@/lib/me";
 import { SecretsToggle } from "@/components/SecretsToggle";
 import { REVIEW_KEY, reviewPollMs } from "@/lib/review";
 import { useWorld } from "@/lib/world";
@@ -191,10 +193,55 @@ function CourseNotesToggle() {
   );
 }
 
+/** This month's AI spend against the budget (the admin has none); updates after every turn. */
+function SpendLine() {
+  const me = useMe();
+  if (!me) return null;
+  return (
+    <div
+      aria-label="AI spend this month"
+      className={`rounded-full border px-3 py-[5px] text-xs ${
+        me.over_budget ? "border-conflict text-conflict-text" : "border-border text-muted-foreground"
+      }`}
+    >
+      {spendLine(me)}
+    </div>
+  );
+}
+
+const HEADER = "flex flex-wrap items-center gap-x-[18px] gap-y-2.5 border-b border-border bg-panel px-5 py-2.5";
+const AUTH_LINK =
+  "flex min-h-11 items-center rounded-lg px-3.5 text-[13px] no-underline hover:no-underline sm:min-h-9";
+
 export function Header() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded || !isSignedIn) {
+    return (
+      <header className={HEADER}>
+        <Link href="/" className="no-underline hover:no-underline">
+          <Logo />
+        </Link>
+        <div className="flex-1" />
+        {isLoaded && (
+          <div className="flex items-center gap-2">
+            <Link href="/sign-in" className={`${AUTH_LINK} border border-border-strong text-foreground hover:text-foreground`}>
+              Sign in
+            </Link>
+            <Link href="/sign-up" className={`${AUTH_LINK} bg-accent font-semibold text-accent-foreground hover:text-accent-foreground`}>
+              Sign up free
+            </Link>
+          </div>
+        )}
+      </header>
+    );
+  }
+  return <SignedInHeader />;
+}
+
+function SignedInHeader() {
   const pathname = usePathname();
   return (
-    <header className="flex flex-wrap items-center gap-x-[18px] gap-y-2.5 border-b border-border bg-panel px-5 py-2.5">
+    <header className={HEADER}>
       <Link href="/canon" className="no-underline hover:no-underline">
         <Logo />
       </Link>
@@ -221,6 +268,7 @@ export function Header() {
       </nav>
       <div className="hidden flex-1 sm:block" />
       <CostPill />
+      <SpendLine />
       <SecretsToggle />
       <CourseNotesToggle />
       <div className="flex items-center gap-2 sm:border-l sm:border-border sm:pl-4">
@@ -239,6 +287,7 @@ export function Header() {
           Studio
         </Link>
       </div>
+      <UserButton />
     </header>
   );
 }

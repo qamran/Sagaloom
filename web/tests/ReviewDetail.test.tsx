@@ -9,6 +9,8 @@ import type { AgentStream } from "@/lib/useAgentStream";
 import { getEntries } from "@/lib/api";
 import type { CheckResult, Entry, Decision, Flag, PendingInterrupt, Proposal } from "@/lib/types";
 
+const me = vi.hoisted(() => ({ value: undefined as import("@/lib/types").Me | undefined }));
+vi.mock("@/lib/me", async (orig) => ({ ...(await orig<typeof import("@/lib/me")>()), useMe: () => me.value }));
 vi.mock("@/lib/world", () => ({
   useWorld: () => ({ world: { id: "w1", name: "Velmar" }, isLoading: false, error: null }),
 }));
@@ -54,6 +56,7 @@ const ui = () => (
 );
 
 beforeEach(() => {
+  me.value = undefined;
   vi.mocked(getEntries).mockReset().mockResolvedValue([]);
   stream = base({ pending: two });
 });
@@ -466,5 +469,28 @@ describe("ReviewDetail for a wiki import thread", () => {
     expect(screen.getByRole("link", { name: "Course note: Injection-safe extraction" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Official canon/ })).toBeNull();
     expect(screen.queryByText(/^Licence:/)).toBeNull();
+  });
+});
+
+describe("ReviewDetail over budget", () => {
+
+  it("keeps Reject on, turns Approve, Edit and bulk approve off, and says why once", async () => {
+    me.value = {
+  id: "u", email: "a@b.c", display_name: "A", is_admin: false, last_world_id: null,
+  month_spend_usd: 1.02, monthly_budget_usd: 1, budget_resets_on: "2026-12-01", over_budget: true,
+};
+    render(ui());
+    expect(screen.getAllByText(/resets on 2026-12-01/)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Approve 1 with no issues" })).toBeDisabled();
+    const card = within(screen.getByRole("region", { name: "Review proposal: Tide Council" }));
+    expect(card.getByRole("button", { name: "Edit" })).toBeDisabled();
+    expect(card.getByRole("button", { name: /^Approve/ })).toBeDisabled();
+    expect(card.getByRole("button", { name: "Reject" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Reject all" })).toBeEnabled();
+  });
+
+  it("changes nothing while under budget", () => {
+    render(ui());
+    expect(screen.getByRole("button", { name: "Approve 1 with no issues" })).toBeEnabled();
   });
 });
