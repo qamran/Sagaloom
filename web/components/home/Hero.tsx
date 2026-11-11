@@ -53,15 +53,15 @@ function HeroSample() {
         <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
           <dt className="text-[11px] uppercase tracking-[0.9px] text-muted-foreground">In canon</dt>
           <dd className="m-0 flex flex-wrap items-center gap-1.5">
-            One moon <span aria-hidden="true" className="text-muted-foreground">·</span>
+            One (Ister) <span aria-hidden="true" className="text-muted-foreground">·</span>
             <span className={`${CHIP} ${TYPE_CHIP.place}`}>Ister, the red moon</span>
             <span className="text-xs text-muted-foreground">ent_0012</span>
           </dd>
           <dt className="text-[11px] uppercase tracking-[0.9px] text-muted-foreground">Proposed</dt>
-          <dd className="m-0 font-semibold text-conflict-text-2">Three moons</dd>
+          <dd className="m-0 font-semibold text-conflict-text-2">Three</dd>
         </dl>
         <div className="flex flex-wrap gap-2 border-t border-border pt-3 text-[13px]">
-          {["Approve", "Edit", "Reject", "Save as myth"].map((a) => (
+          {["Save as myth", "Edit", "Approve anyway", "Reject"].map((a) => (
             <span key={a} className="rounded-lg border border-border-strong px-3 py-1.5 text-prose-muted">
               {a}
             </span>
@@ -69,7 +69,7 @@ function HeroSample() {
         </div>
       </div>
       <figcaption className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-        You choose what becomes canon.
+        An illustration: the real recorded card is in the preview below.
       </figcaption>
     </figure>
   );

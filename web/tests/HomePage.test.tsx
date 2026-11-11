@@ -131,6 +131,34 @@ describe("HomePage", () => {
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   });
 
+  it("falls back to 'Preview unavailable' when the recorded card cannot render", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const pid = preview.pending_interrupt.proposals[0].proposal_id;
+    const broken = {
+      ...preview,
+      pending_interrupt: { ...preview.pending_interrupt, checks: { [pid]: { ...preview.pending_interrupt.checks[pid], flags: null } } },
+    } as unknown as PublicPreview;
+    render(<HomePage preview={broken} />);
+    expect(screen.getByText("Preview unavailable right now.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    vi.mocked(console.error).mockRestore();
+  });
+
+  it("marks the hero's sample card as an illustration, worded like the real card", () => {
+    render(<HomePage preview={preview} />);
+    const hero = screen.getByRole("region", { name: /continuity editor/ });
+    expect(within(hero).getByText(/An illustration/)).toBeInTheDocument();
+    expect(within(hero).getByText("Approve anyway")).toBeInTheDocument();
+    expect(within(hero).queryByRole("button")).toBeNull();
+  });
+
+  it("words the Sagaloom comparison cells for visitors, not developers", () => {
+    render(<HomePage preview={preview} />);
+    const table = screen.getByRole("table", { name: /How Sagaloom compares/ });
+    expect(within(table).getByText("Always: nothing is written until you approve, edit, reject or save it as a myth")).toBeInTheDocument();
+    expect(table.textContent).not.toMatch(/interrupt\(\)|commit` node|node writes/);
+  });
+
   it("keeps headings in order: one h1, then h2 sections", () => {
     render(<HomePage preview={preview} />);
     const levels = [...document.querySelectorAll("h1, h2, h3, h4, h5, h6")].map((h) => Number(h.tagName[1]));

@@ -176,7 +176,11 @@ const STATUS_TAG: Record<Exclude<Fact["status"], "canon">, string> = {
   secret: "text-conflict border-conflict-line bg-conflict-bg",
 };
 
-const CELL = "px-3 py-2.5 align-top";
+// Below `sm` each row stacks: the fact as a small heading, then "In canon", "Proposed" and "Result"
+// as labelled lines (the label comes from data-label). From `sm` up it is the four-column table.
+const CELL = "block px-3 py-1.5 align-top sm:table-cell sm:py-2.5";
+const LABELLED =
+  "before:mb-0.5 before:block before:text-[11px] before:uppercase before:tracking-[0.9px] before:text-muted-foreground before:content-[attr(data-label)] sm:before:content-none";
 const HEAD = "px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.9px] text-muted-foreground";
 const LIST = "m-0 flex list-none flex-col gap-1 p-0";
 const DOT = (
@@ -283,8 +287,8 @@ export function FactTable({
   if (rows.length === 0) return null;
   return (
     <div className="overflow-x-auto rounded-[10px] border border-border">
-      <table className="w-full table-fixed border-collapse text-sm">
-        <thead className="bg-raised">
+      <table className="block w-full border-collapse text-sm sm:table sm:table-fixed">
+        <thead className="hidden bg-raised sm:table-header-group">
           <tr>
             {["Fact", "In canon", "Proposed", "Result"].map((h) => (
               <th key={h} scope="col" className={HEAD}>
@@ -293,7 +297,7 @@ export function FactTable({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="block sm:table-row-group">
           {rows.map((row, i) => {
             // A retcon's existing value is one of this entry's own facts (cited by none); every
             // other keyed flag comes from another entry, whose value sits next to its own Cite.
@@ -326,21 +330,24 @@ export function FactTable({
             const cells = { typeOf, citeSecret: secretOf.cite, ownEntry: secretOf.ownEntry };
             return (
               <Fragment key={`${row.key}-${i}`}>
-                <tr className="border-t border-border">
-                  <td className={`${CELL} break-words text-muted-foreground`}>
+                <tr className="block border-t border-border py-1.5 first:border-t-0 sm:table-row sm:py-0 sm:first:border-t">
+                  {/* Never broken inside a word: on a phone the fact is a heading line of its own. */}
+                  <td className={`${CELL} break-normal font-semibold text-foreground sm:font-normal sm:text-muted-foreground`}>
                     <SecretValue value={row.key} secret={hid || keySecret} revealable={!hid} />
                   </td>
-                  <td className={CELL}>
+                  <td data-label="In canon" className={`${CELL} ${LABELLED}`}>
                     <Values items={existing} empty="Not set" {...cells} />
                   </td>
-                  <td className={`${CELL} ${PROPOSED_CELL[row.result] ?? ""}`}>
+                  <td data-label="Proposed" className={`${CELL} ${LABELLED} ${PROPOSED_CELL[row.result] ?? ""}`}>
                     <Values items={proposed} empty={row.canon.length ? "Removed" : "Not set"} {...cells} />
                   </td>
-                  <td className={`${CELL} text-[13px] ${RESULT_TEXT[row.result]}`}>{row.result}</td>
+                  <td data-label="Result" className={`${CELL} ${LABELLED} text-[13px] ${RESULT_TEXT[row.result]}`}>
+                    {row.result}
+                  </td>
                 </tr>
                 {row.flags.length > 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-3 pb-3 pt-0">
+                  <tr className="block sm:table-row">
+                    <td colSpan={4} className="block px-3 pb-3 pt-1.5 sm:table-cell sm:pt-0">
                       <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px] text-prose-muted">
                         {row.flags.map((f, j) => (
                           <li key={j} className="flex flex-col gap-1">

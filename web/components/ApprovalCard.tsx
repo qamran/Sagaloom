@@ -34,7 +34,11 @@ const DECISION_LABEL: Record<Decision["action"], string> = {
   save_as_myth: "Save as myth",
 };
 
-const BTN = "min-h-11 rounded-lg px-4 text-[13px] disabled:opacity-50";
+// A disabled action reads as off, whatever its colour: outlined, grey text, no hover (the home page's
+// read-only preview, a decision in flight, the budget block).
+const BTN_OFF =
+  "disabled:cursor-not-allowed disabled:border disabled:border-dashed disabled:border-border disabled:bg-transparent disabled:font-normal disabled:text-muted-foreground disabled:hover:bg-transparent disabled:hover:brightness-100";
+const BTN = `min-h-11 rounded-lg px-4 text-[13px] ${BTN_OFF}`;
 const BTN_PRIMARY = `${BTN} bg-accent font-semibold text-accent-foreground hover:brightness-110`;
 const BTN_SECONDARY = `${BTN} border border-border-strong bg-transparent text-foreground hover:bg-panel-3`;
 const BTN_REJECT = `${BTN} border border-conflict-line bg-transparent text-conflict-text hover:bg-conflict-bg`;

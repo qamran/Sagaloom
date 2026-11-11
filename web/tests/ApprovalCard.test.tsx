@@ -1197,6 +1197,16 @@ describe("ApprovalCard readOnly (M5 home page preview)", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("styles disabled actions as off, the primary one included", () => {
+    card();
+    for (const name of ["Save as myth", "Approve anyway", "Reject"]) {
+      const cls = screen.getByRole("button", { name }).className;
+      expect(cls).toContain("disabled:bg-transparent");
+      expect(cls).toContain("disabled:text-muted-foreground");
+      expect(cls).toContain("disabled:cursor-not-allowed");
+    }
+  });
+
   it("links nowhere: no course chip, citations are plain chips", () => {
     card();
     expect(document.querySelectorAll("a")).toHaveLength(0);

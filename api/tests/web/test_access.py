@@ -1,6 +1,7 @@
 """`current_user`: every /api route but health needs the shared secret AND a verified Clerk user."""
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends, Request
 from httpx import ASGITransport, AsyncClient
@@ -233,3 +234,29 @@ async def test_provisioning_failure_is_503_and_retried(make_env, caplog):
     assert "embedding provider unavailable" in caplog.text and TOKEN_B not in caplog.text
     r = await b.get("/api/worlds")
     assert r.status_code == 200 and [w["name"] for w in r.json()] == ["Velmar"]
+
+
+# Routes that answer with the shared secret alone. Anything else must ask for a signed-in user.
+NO_USER_ROUTES = {"/api/health", "/api/public/preview"}
+
+
+async def test_every_route_but_the_allow_list_needs_a_user(make_env):
+    """A sweep over the whole schema: a router mounted on `protected` without `current_user` fails here."""
+    env = make_env()
+    env.client.headers.pop("Authorization")  # the shared secret stays
+    answered_without_user = set()
+    checked = 0
+    for path, ops in env.app.openapi()["paths"].items():
+        url = re.sub(r"\{[^}]+\}", "x", path)
+        for method in ops:
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            # A body that fails validation: the user check must still answer first.
+            kwargs = {"json": {}} if method in {"post", "put", "patch"} else {}
+            r = await env.client.request(method.upper(), url, **kwargs)
+            checked += 1
+            if r.status_code == 401 and r.json() == {"detail": "sign in required"}:
+                continue
+            answered_without_user.add(path)
+    assert checked > 20
+    assert answered_without_user == NO_USER_ROUTES

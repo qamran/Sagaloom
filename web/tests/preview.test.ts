@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPreview } from "@/lib/preview";
 
@@ -18,6 +20,19 @@ describe("getPreview (server only)", () => {
     vi.restoreAllMocks();
   });
 
+  it("accepts the API's own fixture", async () => {
+    const fixture = JSON.parse(readFileSync(join(__dirname, "..", "..", "api", "sagaloom", "public", "preview.json"), "utf8"));
+    fetchMock.mockResolvedValue(Response.json(fixture));
+    expect(await getPreview()).toEqual(fixture);
+  });
+
+  it("gives up after 2 s so a hung API cannot stall the page", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    await getPreview();
+    expect(timeout).toHaveBeenCalledWith(2000);
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].signal).toBe(timeout.mock.results[0].value);
+  });
+
   it("asks the API with the shared secret, cached for an hour", async () => {
     expect(await getPreview()).toEqual(body);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit & { next?: { revalidate?: number } }];
@@ -32,6 +47,9 @@ describe("getPreview (server only)", () => {
     ["the API is down", () => fetchMock.mockRejectedValue(new TypeError("fetch failed"))],
     ["the body is not a preview", () => fetchMock.mockResolvedValue(Response.json({ detail: "x" }))],
     ["the body is not JSON", () => fetchMock.mockResolvedValue(new Response("<html>"))],
+    ["an entry has no facts", () => fetchMock.mockResolvedValue(Response.json({ ...body, entries: [{ id: "e", title: "t", type: "place", body: "", status: "canon" }] }))],
+    ["a check has no flags", () => fetchMock.mockResolvedValue(Response.json({ ...body, pending_interrupt: { proposals: [], checks: { p: { dependents: [] } } } }))],
+    ["a message has no content", () => fetchMock.mockResolvedValue(Response.json({ ...body, messages: [{ role: "user" }] }))],
   ])("gives null when %s", async (_, arrange) => {
     arrange();
     expect(await getPreview()).toBeNull();

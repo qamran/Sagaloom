@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { EYEBROW, H2, LEDE, WRAP } from "@/components/home/styles";
 import { TYPE_CHIP, TYPE_DOT, TYPE_LABEL } from "@/lib/entity";
@@ -9,6 +9,18 @@ import type { Entry, PublicPreview } from "@/lib/types";
 /** The entry the recorded card cites, opened first so the clash can be read from both sides. */
 const CITED = "ent_0012";
 const noop = () => {};
+const UNAVAILABLE = <p className="m-0 mt-8 text-muted-foreground">Preview unavailable right now.</p>;
+
+/** Data the card cannot render must not take the home page down: the section says unavailable instead. */
+class PreviewBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 /**
  * The recorded Velmar example (M5 §5.7 item 3): the author's message, the real ApprovalCard in its
@@ -26,7 +38,13 @@ export function Preview({ preview }: { preview: PublicPreview | null }) {
           A recorded example from Velmar, the sample world every new account starts with. Nothing on this page calls a
           model or changes anything.
         </p>
-        {preview ? <Recorded preview={preview} /> : <p className="m-0 mt-8 text-muted-foreground">Preview unavailable right now.</p>}
+        {preview ? (
+          <PreviewBoundary fallback={UNAVAILABLE}>
+            <Recorded preview={preview} />
+          </PreviewBoundary>
+        ) : (
+          UNAVAILABLE
+        )}
       </div>
     </section>
   );

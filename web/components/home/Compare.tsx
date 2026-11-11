@@ -1,14 +1,13 @@
-import type { ReactNode } from "react";
 import { EYEBROW, H2, LEDE, WRAP } from "@/components/home/styles";
 
 // The README's caveat, verbatim.
 const CAVEAT =
   "\"Not advertised\" means we found no mention of it on the vendor's public pages (checked 2026-11-04); it is not independently verified, and it does not mean the product lacks the feature. These are the vendors' own claims.";
 const VENDORS = ["Sagaloom", "Realmweaver", "LitMemo", "StoryGuard"] as const;
-const code = (s: string) => <code className="rounded bg-panel-3 px-1 py-px text-[12px]">{s}</code>;
 
-// The first three rows of the README's "How Sagaloom compares" table (checked 2026-11-04), word for word.
-const ROWS: { label: string; cells: ReactNode[] }[] = [
+// The first three rows of the README's "How Sagaloom compares" table (checked 2026-11-04). The other
+// vendors' cells are word for word; Sagaloom's are the same claims without developer terms.
+const ROWS: { label: string; cells: string[] }[] = [
   {
     label: "Fact-level contradiction check",
     cells: [
@@ -21,10 +20,7 @@ const ROWS: { label: string; cells: ReactNode[] }[] = [
   {
     label: "Human approval before any write",
     cells: [
-      <>
-        Always: only the {code("commit")} node writes, after an {code("interrupt()")} for approve, edit, reject or save as
-        myth
-      </>,
+      "Always: nothing is written until you approve, edit, reject or save it as a myth",
       "Described for imports only",
       "Yes: new cards and AI paragraphs are confirmed",
       "Yes: every codex update",
