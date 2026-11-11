@@ -6,12 +6,13 @@ from fastapi import HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from sagaloom.accounts import ensure_user
-from sagaloom.auth import AuthError, Claims
+from sagaloom.auth import AuthError, AuthUnavailable, Claims
 from sagaloom.models import User
 
 log = logging.getLogger(__name__)
 
 SIGN_IN_REQUIRED = "sign in required"
+UNAVAILABLE = "account service unavailable"
 
 
 def bearer_token(authorization: str | None) -> str | None:
@@ -39,14 +40,18 @@ async def current_user(request: Request) -> User:
     try:
         # A JWKS cache miss fetches Clerk's keys: keep that off the event loop.
         claims = await run_in_threadpool(deps.verifier.verify, token)
+    except AuthUnavailable as exc:
+        # `AuthError` messages carry no token or key, so the reason is safe to log.
+        log.warning("Clerk token check unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=UNAVAILABLE) from None
     except AuthError:
         raise HTTPException(status_code=401, detail=SIGN_IN_REQUIRED) from None
     try:
         user = await ensure_user(deps, claims)
-    except AuthError:
+    except AuthError as exc:
         # The token is good but the Clerk profile lookup failed: not the user's fault.
-        log.warning("Clerk profile lookup failed for a signed-in user")
-        raise HTTPException(status_code=503, detail="account service unavailable") from None
+        log.warning("Clerk profile lookup failed for a signed-in user: %s", exc)
+        raise HTTPException(status_code=503, detail=UNAVAILABLE) from None
     request.state.user = user
     return user
 

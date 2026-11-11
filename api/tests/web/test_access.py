@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage
 
 from fakes import TOKEN_A, USER_A, W, bearer, names
 from sagaloom.accounts import ensure_user
-from sagaloom.auth import AuthError, Claims, ClerkDirectory, ClerkProfile
+from sagaloom.auth import AuthError, AuthUnavailable, Claims, ClerkDirectory, ClerkProfile
 from sagaloom.config import Settings
 from sagaloom.web.access import current_user, user_of
 from sagaloom.web.app import AppDeps, create_app
@@ -136,7 +136,6 @@ async def test_lifespan_builds_and_closes_the_clerk_directory(store, tmp_path):
     assert http.is_closed and deps.directory is None  # the next start builds a fresh one
 
 
-
 async def test_profile_lookup_failure_is_503_not_sign_in(make_env):
     class DownDirectory:
         async def fetch(self, user_id):
@@ -147,3 +146,54 @@ async def test_profile_lookup_failure_is_503_not_sign_in(make_env):
     r = await env.client.get("/api/worlds")
     assert r.status_code == 503 and r.json() == {"detail": "account service unavailable"}
     assert env.deps.users.get(USER_A) is None
+
+
+async def test_jwks_unreachable_is_503_not_sign_in(make_env, caplog):
+    class Unreachable:
+        def verify(self, token):
+            raise AuthUnavailable("Clerk keys unreachable: PyJWKClientConnectionError")
+
+    env = make_env()
+    env.deps.verifier = Unreachable()
+    caplog.set_level(logging.WARNING)
+    r = await env.client.get("/api/worlds")
+    assert r.status_code == 503 and r.json() == {"detail": "account service unavailable"}
+    assert "PyJWKClientConnectionError" in caplog.text and TOKEN_A not in caplog.text
+
+
+async def test_profile_failure_warning_carries_the_reason(make_env, caplog):
+    class DownDirectory:
+        async def fetch(self, user_id):
+            raise AuthError("Clerk lookup failed: ConnectError")
+
+    env = make_env()
+    env.deps.directory = DownDirectory()
+    caplog.set_level(logging.WARNING)
+    assert (await env.client.get("/api/worlds")).status_code == 503
+    assert "Clerk lookup failed: ConnectError" in caplog.text
+
+
+async def test_unset_secret_key_logs_once_at_startup(store, tmp_path, caplog):
+    settings = Settings(
+        _env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path,
+        clerk_issuer="https://clerk.example.test",
+    )
+    deps = AppDeps(store=store, graph="graph", seed_dir=None)
+    app = create_app(settings, deps)
+    caplog.set_level(logging.ERROR)
+    async with app.router.lifespan_context(app):
+        pass
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR and "CLERK_SECRET_KEY" in r.getMessage()]
+    assert len(errors) == 1
+
+
+async def test_secret_key_set_logs_no_error(store, tmp_path, caplog):
+    settings = Settings(
+        _env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path,
+        clerk_issuer="https://clerk.example.test", clerk_secret_key="sk_test_SECRET",
+    )
+    app = create_app(settings, AppDeps(store=store, graph="graph", seed_dir=None))
+    caplog.set_level(logging.ERROR)
+    async with app.router.lifespan_context(app):
+        pass
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]

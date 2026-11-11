@@ -5,7 +5,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from sagaloom.auth import AuthError, ClerkDirectory, ClerkVerifier
+from sagaloom.auth import AuthError, AuthUnavailable, ClerkDirectory, ClerkVerifier
 
 ISSUER = "https://clerk.example.test"
 ORIGIN = "http://localhost:3000"
@@ -130,3 +130,27 @@ async def test_secret_not_in_error_message():
     with pytest.raises(AuthError) as exc:
         await directory(lambda r: httpx.Response(500, text="boom")).fetch("user_1")
     assert SECRET not in str(exc.value)
+
+
+class UnreachableJwks:
+    def get_signing_key_from_jwt(self, token):
+        raise jwt.PyJWKClientConnectionError("Fail to fetch data from the url, err: secret-ish detail")
+
+
+class UnknownKidJwks:
+    def get_signing_key_from_jwt(self, token):
+        raise jwt.PyJWKClientError("Unable to find a signing key that matches")
+
+
+def test_unreachable_jwks_is_unavailable_not_invalid(key):
+    v = ClerkVerifier(ISSUER, ORIGIN, jwks_client=UnreachableJwks())
+    with pytest.raises(AuthUnavailable) as err:
+        v.verify(make_token(key))
+    assert isinstance(err.value, AuthError) and "detail" not in str(err.value)
+
+
+def test_unknown_signing_key_is_still_invalid(key):
+    v = ClerkVerifier(ISSUER, ORIGIN, jwks_client=UnknownKidJwks())
+    with pytest.raises(AuthError) as err:
+        v.verify(make_token(key))
+    assert not isinstance(err.value, AuthUnavailable)

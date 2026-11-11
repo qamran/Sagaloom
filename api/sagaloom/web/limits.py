@@ -5,6 +5,7 @@ with streaming. The rate limiter keeps its windows in process memory, so it is p
 holds at most `max_keys` clients.
 """
 
+import hmac
 import json
 import math
 import re
@@ -112,8 +113,9 @@ class RateLimitMiddleware:
     """Sliding-window limits per client key: `turn_limit` turn requests and `total_limit`
     requests overall per `window_s`. `/api/health` is exempt.
 
-    A request with a bearer token is keyed by its user (see `client_key`); otherwise by the socket
-    peer's address, reading `X-Forwarded-For` only when that peer is in `trusted_proxies`. At most `max_keys` clients are tracked: a new client first
+    A request with the shared `secret` and a bearer token is keyed by its user (see
+    `client_key`); otherwise by the socket peer's address, reading `X-Forwarded-For` only when
+    that peer is in `trusted_proxies`. At most `max_keys` clients are tracked: a new client first
     drops the expired keys at the least recently hit end and, if the map is still full, evicts
     the least recently hit one."""
 
@@ -126,6 +128,7 @@ class RateLimitMiddleware:
         clock: Callable[[], float] = time.monotonic,
         max_keys: int = 10_000,
         trusted_proxies: frozenset[str] = frozenset(),
+        secret: str | None = None,
     ):
         self.app = app
         self.turn_limit = turn_limit
@@ -134,19 +137,22 @@ class RateLimitMiddleware:
         self.clock = clock
         self.max_keys = max_keys
         self.trusted_proxies = trusted_proxies
+        self.secret = secret
         # Least recently hit first. Every key in `_turns` is also in `_totals`.
         self._turns: OrderedDict[str, deque[float]] = OrderedDict()
         self._totals: OrderedDict[str, deque[float]] = OrderedDict()
         self._last_sweep = clock()
 
     def client_key(self, scope) -> str:
-        """`user:<sub>` when the request carries a bearer JWT. Its `sub` is read without checking
-        the signature: `current_user` rejects a forged token, and the key only picks a bucket.
+        """`user:<sub>` when the request carries the shared secret and a bearer JWT. The `sub`
+        is read without checking the signature (`current_user` rejects a forged token); requiring
+        the secret means only the web proxy can pick a user's bucket, so nobody reaching the API
+        port directly can fill another user's bucket or mint fresh ones.
 
         Otherwise the socket peer's address. When that peer is a trusted proxy, the right-most
         `X-Forwarded-For` hop that is not itself a trusted proxy (the hops left of it are
         whatever the client chose to send); if there is none, the proxy's own address."""
-        sub = _token_sub(scope)
+        sub = _token_sub(scope) if self._has_secret(scope) else None
         if sub is not None:
             return "user:" + sub
         client = scope.get("client")
@@ -160,6 +166,12 @@ class RateLimitMiddleware:
             if hop and hop not in self.trusted_proxies:
                 return hop
         return peer
+
+    def _has_secret(self, scope) -> bool:
+        if not self.secret:
+            return False
+        supplied = next((v for n, v in scope["headers"] if n == b"x-sagaloom-secret"), b"")
+        return hmac.compare_digest(supplied, self.secret.encode())
 
     def _admit(self, key: str, now: float) -> None:
         """Mark `key` as the most recent client, making room for it if it is new."""

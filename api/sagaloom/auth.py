@@ -13,6 +13,10 @@ class AuthError(Exception):
     """The token or the Clerk lookup could not be trusted. Never carries a token or key."""
 
 
+class AuthUnavailable(AuthError):
+    """Clerk could not be reached to check the token (its keys did not load): not the user's fault."""
+
+
 class Claims(BaseModel):
     sub: str
 
@@ -30,7 +34,11 @@ class ClerkVerifier:
 
     def verify(self, token: str) -> Claims:
         try:
-            key = self._jwks.get_signing_key_from_jwt(token).key
+            try:
+                key = self._jwks.get_signing_key_from_jwt(token).key
+            except jwt.PyJWKClientConnectionError:
+                # Not the exception text: it carries the fetch error's details.
+                raise AuthUnavailable("Clerk keys unreachable: PyJWKClientConnectionError") from None
             payload = jwt.decode(
                 token,
                 key,

@@ -139,7 +139,9 @@ async def _open_runtime(app: FastAPI):
             )
         if isinstance(deps.verifier, UnconfiguredVerifier):
             log.error("CLERK_ISSUER is not set: every sign-in will be rejected (set it in .env)")
-        if deps.directory is None and settings.clerk_secret_key is not None:
+        if deps.directory is None and settings.clerk_secret_key is None:
+            log.error("CLERK_SECRET_KEY is not set: new users cannot sign in (set it in .env)")
+        elif deps.directory is None:
             http = await stack.enter_async_context(httpx.AsyncClient(timeout=10))
             deps.directory = ClerkDirectory(settings.clerk_secret_key.get_secret_value(), http=http)
             stack.callback(setattr, deps, "directory", None)  # a restart opens a fresh client
@@ -205,7 +207,12 @@ def create_app(
     # responses still carry CORS headers, and the rate limit counts requests the body cap rejects.
     app.add_middleware(BodyLimitMiddleware, max_bytes=max_body_bytes)
     app.add_middleware(
-        RateLimitMiddleware, **{"trusted_proxies": frozenset(settings.trusted_proxies), **(rate_limits or {})}
+        RateLimitMiddleware,
+        **{
+            "trusted_proxies": frozenset(settings.trusted_proxies),
+            "secret": settings.api_shared_secret.get_secret_value(),
+            **(rate_limits or {}),
+        },
     )
     app.add_middleware(
         CORSMiddleware,

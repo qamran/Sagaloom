@@ -352,23 +352,40 @@ def jwt_for(sub) -> str:
     return jwt.encode({"sub": sub}, "not-the-real-key-but-32-bytes-long", algorithm="HS256")
 
 
+LIMIT_SECRET = "limit-secret"
+
+
+def with_auth(scope: dict, authorization: str, secret: str | None = LIMIT_SECRET) -> dict:
+    scope["headers"].append((b"authorization", authorization.encode()))
+    if secret is not None:
+        scope["headers"].append((b"x-sagaloom-secret", secret.encode()))
+    return scope
+
+
 def test_client_key_reads_the_token_sub():
-    limiter = RateLimitMiddleware(None)
-    scope = scope_from("8.8.8.8")
-    scope["headers"].append((b"authorization", f"Bearer {jwt_for('user_a')}".encode()))
-    assert limiter.client_key(scope) == "user:user_a"
+    limiter = RateLimitMiddleware(None, secret=LIMIT_SECRET)
+    assert limiter.client_key(with_auth(scope_from("8.8.8.8"), f"Bearer {jwt_for('user_a')}")) == "user:user_a"
     for bad in ("Bearer not-a-jwt", "Bearer", f"Basic {jwt_for('user_a')}", f"Bearer {jwt_for(42)}",
                 f"Bearer {jwt_for('')}"):
-        scope = scope_from("8.8.8.8")
-        scope["headers"].append((b"authorization", bad.encode()))
-        assert limiter.client_key(scope) == "8.8.8.8", bad
+        assert limiter.client_key(with_auth(scope_from("8.8.8.8"), bad)) == "8.8.8.8", bad
+
+
+def test_forged_token_without_the_secret_keys_by_peer():
+    limiter = RateLimitMiddleware(None, secret=LIMIT_SECRET)
+    token = f"Bearer {jwt_for('user_victim')}"
+    assert limiter.client_key(with_auth(scope_from("8.8.8.8"), token, secret=None)) == "8.8.8.8"
+    assert limiter.client_key(with_auth(scope_from("8.8.8.8"), token, secret="wrong")) == "8.8.8.8"
+    assert limiter.client_key(with_auth(scope_from("8.8.8.8"), token, secret="")) == "8.8.8.8"
+    # A limiter built without a secret never trusts a token for its key.
+    assert RateLimitMiddleware(None).client_key(with_auth(scope_from("8.8.8.8"), token)) == "8.8.8.8"
 
 
 async def test_rate_limit_keyed_per_user_behind_proxy():
-    app = build(total_limit=2, clock=Clock(), trusted_proxies=PEER)
+    app = build(total_limit=2, clock=Clock(), trusted_proxies=PEER, secret=LIMIT_SECRET)
     async with client(app) as c:
-        a = {"Authorization": f"Bearer {jwt_for('user_a')}", "X-Forwarded-For": "1.1.1.1"}
-        b = {"Authorization": f"Bearer {jwt_for('user_b')}", "X-Forwarded-For": "1.1.1.1"}
+        h = {"X-Sagaloom-Secret": LIMIT_SECRET, "X-Forwarded-For": "1.1.1.1"}
+        a = {**h, "Authorization": f"Bearer {jwt_for('user_a')}"}
+        b = {**h, "Authorization": f"Bearer {jwt_for('user_b')}"}
         assert (await c.get("/api/worlds", headers=a)).status_code == 200
         assert (await c.get("/api/worlds", headers=a)).status_code == 200
         assert (await c.get("/api/worlds", headers=a)).status_code == 429
@@ -376,6 +393,19 @@ async def test_rate_limit_keyed_per_user_behind_proxy():
         assert (await c.get("/api/worlds", headers=b)).status_code == 200
         assert (await c.get("/api/worlds", headers=b)).status_code == 200
         assert list(limiter_of(app)._totals) == ["user:user_a", "user:user_b"]
+
+
+async def test_app_passes_the_shared_secret_to_the_limiter(tmp_path):
+    from sagaloom.config import Settings
+    from sagaloom.web.app import create_app
+
+    settings = Settings(_env_file=None, openrouter_api_key="k", api_shared_secret="s", data_dir=tmp_path)
+    app = create_app(settings, signed_in_deps(), rate_limits={"total_limit": 1})
+    async with client(app) as c:
+        forged = {"Authorization": f"Bearer {jwt_for('user_victim')}"}
+        await c.get("/api/worlds", headers=forged)  # no secret: 401, counted against the address
+        await c.get("/api/worlds", headers={**forged, "X-Sagaloom-Secret": "s"})
+        assert list(limiter_of(app)._totals) == ["127.0.0.1", "user:user_victim"]
 
 
 async def test_no_token_keyed_by_peer():
