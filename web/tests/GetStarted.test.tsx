@@ -5,8 +5,8 @@ import { GetStarted } from "@/components/GetStarted";
 import { TOUR_KEYS } from "@/lib/tour";
 import type { World } from "@/lib/types";
 
-const demo: World = { id: "w_velmar", name: "Velmar", is_demo: true, divergent: false };
-const own: World = { id: "w_2", name: "My World", is_demo: false, divergent: false };
+const demo: World = { id: "w_velmar", name: "Velmar", is_demo: true, divergent: false, owner_id: "user_a" };
+const own: World = { id: "w_2", name: "My World", is_demo: false, divergent: false, owner_id: "user_a" };
 
 describe("GetStarted", () => {
   it("ticks steps from localStorage and hides after dismiss", async () => {

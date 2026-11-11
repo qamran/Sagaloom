@@ -49,15 +49,14 @@ class DevSettingsPatch(BaseModel):
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool | None = None
     enabled_tools: list[str] | None = None
-    # Not nullable; only a field the request sets is written (`update` reads `model_fields_set`).
-    monthly_budget_usd: float = Field(default=1.0, ge=0, le=1000)
+    monthly_budget_usd: float | None = Field(default=None, ge=0, le=1000)
     reset_system_prompt: bool = False
 
     _check_tools = field_validator("enabled_tools")(_known_tools)
 
     @model_validator(mode="after")
     def _no_null_for_required(self):
-        for name in ("agent_temperature", "guard_enabled"):
+        for name in ("agent_temperature", "guard_enabled", "monthly_budget_usd"):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null")
         return self

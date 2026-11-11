@@ -411,11 +411,8 @@ export interface components {
             enabled_tools?: string[] | null;
             /** Guard Enabled */
             guard_enabled?: boolean | null;
-            /**
-             * Monthly Budget Usd
-             * @default 1
-             */
-            monthly_budget_usd?: number;
+            /** Monthly Budget Usd */
+            monthly_budget_usd?: number | null;
             /**
              * Reset System Prompt
              * @default false

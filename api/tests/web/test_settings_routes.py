@@ -203,3 +203,13 @@ async def test_admin_can_set_budget(make_env):
         r = await env.client.put("/api/settings", json={"monthly_budget_usd": bad})
         assert r.status_code == 422, bad
     assert (await env.client.put("/api/settings", json={"monthly_budget_usd": 0})).status_code == 200
+
+
+async def test_patch_without_budget_keeps_it(make_env):
+    env = make_env(admin=True)
+    assert (await env.client.put("/api/settings", json={"monthly_budget_usd": 4})).status_code == 200
+    r = await env.client.put("/api/settings", json={"agent_temperature": 0.3})
+    assert r.status_code == 200 and r.json()["settings"]["monthly_budget_usd"] == 4.0
+    r = await env.client.put("/api/settings", json={"monthly_budget_usd": None})
+    assert r.status_code == 422
+    assert env.deps.dev_settings.get().monthly_budget_usd == 4.0

@@ -59,11 +59,15 @@ def prompt_href(text: str) -> str:
 
 
 def build_feature_map(settings: Settings, deps: Any, user_id: str | None = None) -> list[FeatureCard]:
-    """The cards; the cost line sums `user_id`'s calls, or every call when None (M5 spec §5.2)."""
+    """The cards; the cost line and the thread count are `user_id`'s (the threads in their
+    worlds), or app-wide when None (M5 spec §5.2)."""
     threads = None
     if getattr(deps, "threads", None) is not None:
         try:
-            threads = len(deps.threads.list())
+            if user_id is None:
+                threads = len(deps.threads.list())
+            else:
+                threads = sum(len(deps.threads.list(w.id)) for w in deps.worlds.owned_by(user_id))
         except Exception:
             pass
     cost = None

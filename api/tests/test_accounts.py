@@ -392,3 +392,32 @@ async def test_startup_backfills_prompt_log_user_ids(store, tmp_path):
         pass
     assert log.usage(user_id="user_a").cost_usd == 0.5
     assert log.usage().cost_usd == 1.0
+
+
+async def test_admin_first_request_takes_legacy_costs(deps, store, tmp_path):
+    """Spec §5.2: pre-M5 prompt records of an ownerless world become the admin's cost when the
+    admin takes the world on their first request, without waiting for a restart."""
+    from sagaloom.promptlog import PromptLog, PromptRecord
+    from sagaloom.store.threads import ThreadRegistry
+
+    deps.threads = ThreadRegistry(tmp_path / "threads.sqlite")
+    deps.promptlog = PromptLog(tmp_path / "prompts.sqlite")
+    legacy = deps.worlds.create("Legacy")  # no owner, as before M5
+    tid = deps.threads.create(legacy.id)
+    for id, thread_id in (("legacy-call", tid), ("orphan", "gone")):
+        deps.promptlog.add(
+            PromptRecord(
+                id=id, thread_id=thread_id, run_id="r", provider="openrouter", model="m",
+                request={"messages": [], "tools": []},
+                response={"prompt_tokens": 1, "completion_tokens": 1, "cost_usd": 0.5},
+                started_at="2026-11-01T00:00:00+00:00",
+            )
+        )
+    assert deps.promptlog.backfill_user_ids(lambda t: None) == 0  # startup: nobody owns it yet
+    await ensure_user(deps, Claims(sub="user_a"))  # a non-admin takes nothing
+    assert deps.promptlog.usage(user_id="user_a").cost_usd == 0
+    as_admin(deps)
+    await ensure_user(deps, Claims(sub="user_boss"))
+    assert deps.worlds.get(legacy.id).owner_id == "user_boss"
+    assert deps.promptlog.usage(user_id="user_boss").cost_usd == 0.5
+    assert deps.promptlog.usage().cost_usd == 1.0  # the gone thread's call stays nobody's

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -32,6 +33,18 @@ def _done(task: asyncio.Task) -> None:
     # has gone, and the next request retries the provisioning.
     if not task.cancelled():
         task.exception()
+
+
+def thread_owner(deps: Any) -> Callable[[str], str | None]:
+    """thread id -> the owner of its world; None when the thread or world is gone, or ownerless.
+    The lookup `PromptLog.backfill_user_ids` takes (M5 spec §5.2)."""
+
+    def owner(thread_id: str) -> str | None:
+        info = deps.threads.get(thread_id)
+        world = deps.worlds.get(info.world_id) if info is not None else None
+        return world.owner_id if world is not None else None
+
+    return owner
 
 
 def _refresh_due(deps: Any, user: User, now: datetime) -> bool:
@@ -91,7 +104,10 @@ async def _provision(deps: Any, sub: str) -> User:
         if user is None or _refresh_due(deps, user, now):
             user = await _profile(deps, sub, user, now)
         if _is_admin(deps, user):
-            await asyncio.to_thread(deps.worlds.assign_unowned, user.id)
+            assigned = await asyncio.to_thread(deps.worlds.assign_unowned, user.id)
+            if assigned and deps.promptlog is not None and deps.threads is not None:
+                # The legacy worlds' costs are the admin's now, not only after a restart.
+                await asyncio.to_thread(deps.promptlog.backfill_user_ids, thread_owner(deps))
         if deps.seed_dir is not None and not deps.worlds.owned_by(user.id):
             # 19 embedding calls: keep them off the event loop.
             world = await asyncio.to_thread(copy_velmar, deps.store, deps.worlds, deps.seed_dir, user.id)

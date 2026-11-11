@@ -130,11 +130,17 @@
             "title": "Guard Enabled"
           },
           "monthly_budget_usd": {
-            "default": 1.0,
-            "maximum": 1000.0,
-            "minimum": 0.0,
-            "title": "Monthly Budget Usd",
-            "type": "number"
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Budget Usd"
           },
           "reset_system_prompt": {
             "default": false,

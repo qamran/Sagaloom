@@ -224,3 +224,18 @@ async def test_feature_map_has_accounts_card(make_env):
     assert (card["title"], card["status"], card["try_href"]) == ("User accounts", "live", "/canon")
     assert card["detail"] == "Sign-in by Clerk; every author sees only their own worlds."
     assert card["brief_ref"] == "Medium 4"
+
+
+async def test_memory_card_counts_my_threads(make_env):
+    env = make_env(admin=True)
+    env.deps.worlds.create("B's World", world_id="wb", owner_id=USER_B)
+    for world_id in (W, "wb", "wb"):
+        env.deps.threads.create(world_id)
+    env.deps.threads.create("gone")  # a thread whose world is gone: nobody's
+
+    def memory_detail(body):
+        return next(f for f in body["features"] if f["id"] == "memory")["detail"]
+
+    assert ", 1 threads." in memory_detail((await env.client.get("/api/studio")).json())
+    assert ", 2 threads." in memory_detail((await env.as_user(TOKEN_B).get("/api/studio")).json())
+    assert ", 4 threads." in memory_detail((await env.client.get("/api/studio?scope=all")).json())

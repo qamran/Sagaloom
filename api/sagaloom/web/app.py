@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.store.base import BaseStore
 from pydantic import ValidationError
 
+from sagaloom.accounts import thread_owner
 from sagaloom.auth import ClerkDirectory, ClerkVerifier, ProfileDirectory, TokenVerifier
 from sagaloom.config import Settings, load_env_files
 from sagaloom.llm import install_warning_filters
@@ -100,17 +101,6 @@ def make_model_for(settings: Settings, model_settings: ModelSettings, factory=No
     return model_for
 
 
-def _thread_owner(deps: AppDeps) -> Callable[[str], str | None]:
-    """thread id -> the owner of its world; None when the thread or world is gone, or ownerless."""
-
-    def owner(thread_id: str) -> str | None:
-        info = deps.threads.get(thread_id)
-        world = deps.worlds.get(info.world_id) if info is not None else None
-        return world.owner_id if world is not None else None
-
-    return owner
-
-
 @asynccontextmanager
 async def _open_runtime(app: FastAPI):
     """Builds Chroma (and re-keys legacy records before anything else touches it), the graph
@@ -133,7 +123,7 @@ async def _open_runtime(app: FastAPI):
         if moved:
             log.info("re-keyed %d canon record(s) to per-world ids", moved)
         # Prompt records from before M5 become the cost of their thread's world's owner.
-        filled = await asyncio.to_thread(deps.promptlog.backfill_user_ids, _thread_owner(deps))
+        filled = await asyncio.to_thread(deps.promptlog.backfill_user_ids, thread_owner(deps))
         if filled:
             log.info("gave %d prompt record(s) their owner", filled)
         if deps.wiki is None:
