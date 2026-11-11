@@ -73,7 +73,7 @@ Entry ids are global today (`next_entry_id` counts across the whole Chroma colle
 
 ### 5.4 Accounts and the demo world
 
-- Sign-up creates the user, then copies Velmar into a new world owned by them: name "Velmar", `is_demo=True`, a fresh world id (the registry's slug rule, e.g. `velmar-2`), the seed entries at their seed ids (§5.3).
+- Sign-up creates the user, then copies Velmar into a new world owned by them: name "Velmar", `is_demo=True`, a fresh world id (the registry's slug; on a collision a short random suffix such as `velmar-k3f9`, never a counter, so ids reveal nothing about other accounts' worlds or how many accounts exist), the seed entries at their seed ids (§5.3).
 - **Admin and existing data (Claude's call, after the builder check):** the admin is named by `ADMIN_EMAIL` in `api/.env`, never by sign-up order, so a stranger who signs up first on a reachable server cannot take the data. The account whose email equals `ADMIN_EMAIL` is `is_admin`, and on its first verified request every world with `owner_id` missing is assigned to it. If that account already has a demo world through the assignment (the existing `velmar`), no second copy is made. With `ADMIN_EMAIL` unset there is no admin and unowned worlds stay unowned (invisible to everyone) until it is set; the API logs a warning at start.
 - `ensure_first_run` no longer creates a global Velmar at API start; seeding happens per account at sign-up.
 - The Get Started checklist (`GetStarted.tsx`, `localStorage` flags) stays as it is, but its keys are prefixed with the user id so a second account on the same browser starts fresh.
