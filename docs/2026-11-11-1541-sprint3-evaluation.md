@@ -122,7 +122,7 @@ All five are met. Each block below says what was built, where it lives, and how 
 
 ### Req 5 — Documentation
 
-- **Built:** setup steps, 16 numbered walkthroughs (each a ready-to-paste prompt and the expected result), a reviewer's tour, technical decisions (graph diagram, why agentic RAG, why an approval gate, why this stack, model choice), test commands and eval results, and a known-limitations list.
+- **Built:** setup steps, 17 numbered walkthroughs (each a ready-to-paste prompt and the expected result), a reviewer's tour, technical decisions (graph diagram, why agentic RAG, why an approval gate, why this stack, model choice), test commands and eval results, and a known-limitations list.
 - **Where:** `README.md`; `docs/review-notes.md` (how the agent works, agent types, prompt vs RAG vs agents, error scenarios); `docs/requirements.md`.
 - **Test it:** follow walkthroughs 1–5 of the README on a fresh start.
 

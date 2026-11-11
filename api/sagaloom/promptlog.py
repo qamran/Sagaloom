@@ -143,6 +143,11 @@ class PromptLog:
                 for tid, owner in owners.items()
             )
 
+    def count_for_user(self, user_id: str) -> int:
+        """The number of records charged to `user_id`."""
+        with closing(self._connect()) as conn:
+            return conn.execute("SELECT COUNT(*) FROM prompt_log WHERE user_id = ?", (user_id,)).fetchone()[0]
+
     def reassign_user(self, old_user_id: str, new_user_id: str) -> int:
         """Moves every record of `old_user_id` to `new_user_id` (`scripts/reassign_owner.py`);
         returns the number of records moved."""

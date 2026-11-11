@@ -93,3 +93,26 @@ def test_main_prints_the_counts(data, capsys):
 def test_main_refuses_the_same_id(data, capsys):
     assert _script().main(["user_old", "user_old", "--data-dir", str(data)]) == 2
     assert "different" in capsys.readouterr().err
+
+
+def test_missing_worlds_file_is_refused_and_creates_nothing(tmp_path, capsys):
+    wrong = tmp_path / "not-the-data-dir"
+    wrong.mkdir()
+    assert _script().main(["user_old", "user_new", "--data-dir", str(wrong)]) == 2
+    assert "worlds.json" in capsys.readouterr().err
+    assert list(wrong.iterdir()) == []
+
+
+def test_old_id_with_nothing_to_move_warns_and_fails(data, capsys):
+    assert _script().main(["user_nobody", "user_new", "--data-dir", str(data)]) == 1
+    assert "owns no world" in capsys.readouterr().err
+
+
+def test_dry_run_reports_and_changes_nothing(data, capsys):
+    before = (data / "worlds.json").read_text(encoding="utf-8")
+    assert _script().main(["user_old", "user_new", "--data-dir", str(data), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "would move 2 world(s) and 2 prompt record(s)" in out
+    assert "velmar" in out and "harbour-notes" in out
+    assert (data / "worlds.json").read_text(encoding="utf-8") == before
+    assert _owners(PromptLog(data / "prompts.sqlite"))["a"] == "user_old"

@@ -79,7 +79,7 @@ If your `api/data/` was created before a seed entry was added (for example `ent_
 
 **Upgrading a data folder from before accounts.** Set `ADMIN_EMAIL` and start the API: at start it re-keys the stored entries to per-world ids, keeping their embeddings. Then sign in as the admin: the existing worlds, threads and costs become the admin's, and no extra Velmar is made because the admin already owns `velmar`. Until then those worlds are hidden from everyone.
 
-**A user whose Clerk account changed.** Ownership is keyed on the Clerk user id (it starts with `user_`), not the email. If an account is deleted at Clerk and made again, the new account can't see the old worlds. Stop the API, find both ids in the Clerk dashboard and run `cd api && uv run python scripts/reassign_owner.py <old_clerk_id> <new_clerk_id>`. It moves the old id's worlds and its prompt records (so its costs follow); the new account keeps the Velmar it got at sign-in.
+**A user whose Clerk account changed.** Ownership is keyed on the Clerk user id (it starts with `user_`), not the email. If an account is deleted at Clerk and made again, the new account can't see the old worlds. Stop the API, find both ids in the Clerk dashboard and run `cd api && uv run python scripts/reassign_owner.py <old_clerk_id> <new_clerk_id>`. It moves the old id's worlds and its prompt records (so its costs follow); the new account keeps the Velmar it got at sign-in. Add `--dry-run` first to see what would move. It refuses a folder without `worlds.json`, and exits with a warning when the old id owns nothing there.
 
 To run them separately: `cd api && uv run uvicorn sagaloom.web.app:app --reload --port 8000` and `cd web && pnpm dev`.
 

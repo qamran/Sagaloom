@@ -129,7 +129,7 @@ The full eval suite on the same day (after Wave 5 changed the judge prompt):
 
 ## 10. Hidden secrets (Wave 7)
 
-**The threat model.** A secret is true in the world but hidden from the players (glossary). The risk Wave 7 answers is a shared screen: an author showing their world on a call should not reveal the Mayor's place in the Ashen Choir by opening the wrong panel. It is not a defence against someone with access to the machine or the API (single user, R12.12), so the masking is client-side and the records stay as they were.
+**The threat model.** A secret is true in the world but hidden from the players (glossary). The risk Wave 7 answers is a shared screen: an author showing their world on a call should not reveal the Mayor's place in the Ashen Choir by opening the wrong panel. It is not a defence against someone with access to the machine, the API or a shared account (R12.12; since M5 a world belongs to one account, and the API still sends its secrets to that account's browser), so the masking is client-side and the records stay as they were.
 
 **What is masked where.** One world-level **Show secrets** toggle in the header (per world, per tab, in `sessionStorage`) drives every view, and each view reads the toggle of the world its content belongs to, not the world picker's (Ruling R4):
 - **Canon list:** secret entries are left out of the list and its search (Velmar shows 18 of 19). A `Show 1 secret entry` button at the foot of the list reveals them: it shows the count, never the titles.
