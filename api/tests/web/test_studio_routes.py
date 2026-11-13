@@ -239,3 +239,40 @@ async def test_memory_card_counts_my_threads(make_env):
     assert ", 1 threads." in memory_detail((await env.client.get("/api/studio")).json())
     assert ", 2 threads." in memory_detail((await env.as_user(TOKEN_B).get("/api/studio")).json())
     assert ", 4 threads." in memory_detail((await env.client.get("/api/studio?scope=all")).json())
+
+
+async def test_studio_world_filter_shows_only_that_world(make_env):
+    """`world_id` narrows usage, the cost line and the thread count to the selected world."""
+    env = make_env(admin=True)
+    env.deps.worlds.create("Second", world_id="w2", owner_id=USER_A)
+    env.deps.worlds.create("B's World", world_id="wb", owner_id=USER_B)
+    t1 = env.deps.threads.create(W)
+    t2 = env.deps.threads.create("w2")
+    env.deps.threads.create("w2")
+    log = env.deps.promptlog
+    log.add(_cost_rec("c1", t1, 0.125), user_id=USER_A)
+    log.add(_cost_rec("c2", t2, 0.5), user_id=USER_A)
+
+    def card(body, id):
+        return next(f for f in body["features"] if f["id"] == id)["detail"]
+
+    one = (await env.client.get(f"/api/studio?world_id={W}")).json()
+    assert (one["usage"]["prompt_tokens"], one["usage"]["cost_usd"]) == (7, 0.125)
+    assert [m["calls"] for m in one["usage"]["by_model"]] == [1]
+    assert "$0.1250" in card(one, "token_cost")
+    assert ", 1 threads." in card(one, "memory")
+
+    two = (await env.client.get("/api/studio?world_id=w2")).json()
+    assert two["usage"]["cost_usd"] == 0.5
+    assert ", 2 threads." in card(two, "memory")
+
+    # No world: every world of the account, as before.
+    assert (await env.client.get("/api/studio")).json()["usage"]["cost_usd"] == 0.625
+    # A world with no calls yet: zero, not everything.
+    env.deps.worlds.create("Empty", world_id="w3", owner_id=USER_A)
+    empty = (await env.client.get("/api/studio?world_id=w3")).json()
+    assert (empty["usage"]["cost_usd"], empty["usage"]["by_model"]) == (0.0, [])
+    # Someone else's world: 404, as everywhere else.
+    assert (await env.client.get("/api/studio?world_id=wb")).status_code == 404
+    # The admin's "All users" view stays app-wide and ignores the world.
+    assert (await env.client.get(f"/api/studio?scope=all&world_id={W}")).json()["usage"]["cost_usd"] == 0.625

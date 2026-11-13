@@ -1,6 +1,6 @@
 """Developer settings over HTTP (R12.4)."""
 
-from fakes import KEY, TOKEN_B, USER_A, USER_B
+from fakes import KEY, TOKEN_B, USER_A, USER_B, W
 
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.web.access import ADMIN_ONLY
@@ -213,3 +213,20 @@ async def test_patch_without_budget_keeps_it(make_env):
     r = await env.client.put("/api/settings", json={"monthly_budget_usd": None})
     assert r.status_code == 422
     assert env.deps.dev_settings.get().monthly_budget_usd == 4.0
+
+
+async def test_guard_log_world_filter(make_env):
+    env = make_env(admin=True)
+    env.deps.worlds.create("Second", world_id="w2", owner_id=USER_A)
+    env.deps.worlds.create("B's World", world_id="wb", owner_id=USER_B)
+    t1 = env.deps.threads.create(W)
+    t2 = env.deps.threads.create("w2")
+    log = env.deps.promptlog
+    log.add(_guard_rec("one", "2026-01-01T00:00:01", t1), user_id=USER_A)
+    log.add(_guard_rec("two", "2026-01-01T00:00:02", t2), user_id=USER_A)
+    assert [x["reason"] for x in (await env.client.get(f"/api/guard/log?world_id={W}")).json()] == ["one"]
+    assert [x["reason"] for x in (await env.client.get("/api/guard/log?world_id=w2")).json()] == ["two"]
+    assert [x["reason"] for x in (await env.client.get("/api/guard/log")).json()] == ["two", "one"]
+    assert (await env.client.get("/api/guard/log?world_id=wb")).status_code == 404
+    rows = (await env.client.get(f"/api/guard/log?scope=all&world_id={W}")).json()
+    assert [x["reason"] for x in rows] == ["two", "one"]

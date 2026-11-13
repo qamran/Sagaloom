@@ -4,21 +4,30 @@ import { useAuth, UserButton } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { getReviewThreads, getThread } from "@/lib/api";
 import { useCourseNotes } from "@/lib/courseNotes";
 import { spendLine, useMe } from "@/lib/me";
 import { SecretsToggle } from "@/components/SecretsToggle";
+import { TipsDialog } from "@/components/TipsDialog";
 import { REVIEW_KEY, reviewPollMs } from "@/lib/review";
 import { useWorld } from "@/lib/world";
 
 const NEW_WORLD = "__new__";
 
 const TABS = [
+  { href: "/home", label: "Home" },
   { href: "/canon", label: "Canon" },
   { href: "/chat", label: "Chat" },
   { href: "/review", label: "Review" },
   { href: "/import", label: "Import" },
+  { href: "/compare", label: "Compare" },
 ];
 
 function Logo() {
@@ -209,15 +218,47 @@ function SpendLine() {
   );
 }
 
-const HEADER = "flex flex-wrap items-center gap-x-[18px] gap-y-2.5 border-b border-border bg-panel px-5 py-2.5";
+// From tablet width up the header stays at the top while the page scrolls. On a phone it wraps to
+// several rows, so it scrolls away there instead of covering the screen.
+const HEADER =
+  "z-40 flex flex-wrap items-center gap-x-[18px] gap-y-2.5 border-b border-border bg-panel px-5 py-2.5 md:sticky md:top-0";
 const AUTH_LINK =
   "flex min-h-11 items-center rounded-lg px-3.5 text-[13px] no-underline hover:no-underline sm:min-h-9";
+
+/** The page header. It publishes its height as `--header-h` on <html>, so sticky columns sit below
+ * it and in-page links (`scroll-padding-top` in globals.css) land under it, not behind it; the
+ * height changes when the header wraps to a second row. */
+function HeaderBar({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () =>
+      root.style.setProperty("--header-h", `${el.offsetHeight}px`);
+    publish();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(publish);
+    observer?.observe(el);
+    return () => {
+      observer?.disconnect();
+      root.style.removeProperty("--header-h");
+    };
+  }, []);
+  return (
+    <header ref={ref} className={HEADER}>
+      {children}
+    </header>
+  );
+}
 
 export function Header() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded || !isSignedIn) {
     return (
-      <header className={HEADER}>
+      <HeaderBar>
         <Link href="/" className="no-underline hover:no-underline">
           <Logo />
         </Link>
@@ -232,7 +273,7 @@ export function Header() {
             </Link>
           </div>
         )}
-      </header>
+      </HeaderBar>
     );
   }
   return <SignedInHeader />;
@@ -241,12 +282,16 @@ export function Header() {
 function SignedInHeader() {
   const pathname = usePathname();
   return (
-    <header className={HEADER}>
-      <Link href="/canon" className="no-underline hover:no-underline">
+    <HeaderBar>
+      <Link href="/home" className="no-underline hover:no-underline">
         <Logo />
       </Link>
       <WorldPicker />
-      <nav aria-label="Main" className="flex gap-1 rounded-[10px] border border-border bg-raised p-1">
+      {/* Six tabs are wider than a phone: the tab row scrolls on its own instead of the page. */}
+      <nav
+        aria-label="Main"
+        className="flex max-w-full gap-1 overflow-x-auto rounded-[10px] border border-border bg-raised p-1"
+      >
         {TABS.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           return (
@@ -254,7 +299,7 @@ function SignedInHeader() {
               key={t.href}
               href={t.href}
               aria-current={active ? "page" : undefined}
-              className={`flex min-h-11 items-center rounded-[7px] px-3.5 text-[13px] no-underline hover:no-underline sm:min-h-8 ${
+              className={`flex min-h-11 shrink-0 items-center rounded-[7px] px-3.5 text-[13px] no-underline hover:no-underline sm:min-h-8 ${
                 active
                   ? "bg-accent font-semibold text-accent-foreground hover:text-accent-foreground"
                   : "text-foreground hover:text-foreground hover:bg-panel-3"
@@ -271,10 +316,9 @@ function SignedInHeader() {
       <SpendLine />
       <SecretsToggle />
       <CourseNotesToggle />
-      <div className="flex items-center gap-2 sm:border-l sm:border-border sm:pl-4">
-        <span className="text-[10px] uppercase tracking-[1.2px] text-muted-foreground">
-          Developer
-        </span>
+      {/* One "Developer studio" tab, set apart by the divider and its violet style (R20.4: developer
+          settings kept apart from the author's screens). */}
+      <div className="flex items-center sm:border-l sm:border-border sm:pl-4">
         <Link
           href="/studio"
           aria-current={pathname.startsWith("/studio") ? "page" : undefined}
@@ -284,10 +328,11 @@ function SignedInHeader() {
               : "text-myth hover:bg-myth-bg hover:text-myth"
           }`}
         >
-          Studio
+          Developer studio
         </Link>
       </div>
       <UserButton />
-    </header>
+      <TipsDialog />
+    </HeaderBar>
   );
 }

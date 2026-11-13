@@ -46,7 +46,9 @@ test("M1 exit demo", async ({ page }) => {
   const { email, password } = TEST_USER!;
 
   // 0. M5: signed out, `/` is the public home page. Then sign in as the test user; Clerk lands on `/`,
-  // which sends a signed-in author to Canon. The preview is not checked: Next may serve a cached copy.
+  // which sends a signed-in author to their Home dashboard. The preview is not checked: Next may serve a
+  // cached copy. The startup tips box is marked as already shown, so it never covers a click.
+  await page.context().addInitScript(() => sessionStorage.setItem("sagaloom.tips.shown", "1"));
   await setupClerkTestingToken({ page });
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("you decide, it checks");
@@ -54,7 +56,8 @@ test("M1 exit demo", async ({ page }) => {
   await clerk.signIn({ page, signInParams: { strategy: "password", identifier: email, password } });
   await page.goto("/");
   // The only proof the sign-in worked (the helper does not check), so it fails fast rather than in 180 s.
-  await expect(page).toHaveURL(/\/canon/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/home/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Needs your decision" })).toBeVisible();
 
   // 1. Canon: Sky of Velmar shows its Moons fact.
   await page.goto("/canon");

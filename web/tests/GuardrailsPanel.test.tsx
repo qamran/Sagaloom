@@ -99,7 +99,26 @@ describe("GuardrailsPanel read-only", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByRole("switch", { name: "Input guard" })).toBeDisabled();
-    expect(screen.getByText("Only the admin can change developer settings.")).toBeInTheDocument();
-    await waitFor(() => expect(getGuardLog).toHaveBeenCalledWith(20, "mine"));
+    expect(
+      screen.getByText("Only the admin can change developer settings."),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getGuardLog).toHaveBeenCalledWith(20, "mine", undefined),
+    );
+  });
+
+  it("lists only the given world's verdicts", async () => {
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <GuardrailsPanel payload={payload} worldId="w2" />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(getGuardLog).toHaveBeenCalledWith(20, "mine", "w2"),
+    );
   });
 });

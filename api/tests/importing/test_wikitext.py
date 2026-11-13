@@ -217,3 +217,131 @@ def test_non_http_external_links_keep_their_text():
 def test_space_before_punctuation_and_empty_parentheses_are_tidied():
     raw = "Rivendell {{IPA|x}} ({{IPA|y}}) is a valley{{efn|n}} . It has a ref<ref>r</ref> , and more ; yes : no"
     assert strip_wikitext(raw).text == "Rivendell is a valley. It has a ref, and more; yes: no"
+
+
+# ---------- article templates (Fandom wikis such as the Marvel Database) ----------
+
+MARVEL_STYLE = """{{Marvel Database:Organization Template
+| Image                   = Team.jpg
+| Name                    = 50-State Initiative
+| Identity                = Public
+| FormerMembers           = {{Navigation | body = [[A]], [[B]]}}
+| Quotation               = We train heroes.
+| History                 =
+===[[Anthony Stark (Earth-616)|Tony Stark]]'s Initiative===
+====Formation====
+In the aftermath of the [[Civil War]], the Initiative was launched.{{r|Avengers: The Initiative Vol 1 1}}
+
+It trained young heroes at Camp Hammond.
+===Later years===
+Norman Osborn took it over.
+| Notes                   = A note.
+}}
+[[Category:Teams]]"""
+
+
+def test_article_template_is_read_as_the_article():
+    s = strip_wikitext(MARVEL_STYLE)
+    assert s.infobox_name == "Marvel Database:Organization Template"
+    assert type_from_infobox(s.infobox_name) == "faction"
+    # Short fields are the fact lines; pictures, quotes, member lists and notes are not.
+    assert s.infobox == {"Name": "50-State Initiative", "Identity": "Public"}
+    lead = s.text[: s.lead_end]
+    assert lead.startswith("Name: 50-State Initiative\nIdentity: Public\n\n")
+    # History's opening headings are dropped, and the lead is its first section.
+    assert "In the aftermath of the Civil War, the Initiative was launched." in lead
+    assert "It trained young heroes at Camp Hammond." in lead
+    assert "Norman Osborn" not in lead and "Norman Osborn took it over." in s.text
+    for leftover in ("{{", "[[", "Team.jpg", "We train heroes", "A note"):
+        assert leftover not in s.text
+
+
+def test_article_template_prefers_overview_and_names_camel_case_fields():
+    s = strip_wikitext(
+        "{{Marvel Database:Item Template\n| CauseOfDeath = None\n| Overview = A hammer of uru.\n"
+        "| History = ===Forging===\nForged in a star.\n}}"
+    )
+    assert s.infobox == {"Cause Of Death": "None"}
+    assert s.text[: s.lead_end].rstrip() == "Cause Of Death: None\n\nA hammer of uru."
+    assert "Forged in a star." in s.text
+
+
+def test_long_article_template_lead_is_cut_at_a_paragraph():
+    para = "word " * 300  # 1,500 characters
+    s = strip_wikitext("{{Marvel Database:Character Template\n| History = " + "\n\n".join([para] * 6) + "\n}}")
+    lead = s.text[: s.lead_end]
+    assert len(lead) <= 6_000 and lead.endswith("word")
+
+
+def test_a_page_with_an_infobox_ignores_article_templates():
+    s = strip_wikitext("{{Infobox character | name = Gandalf}}\n{{Some Wiki:Character Template | History = Hidden.}}\nGandalf is a wizard.")
+    assert s.infobox_name == "Infobox character"
+    assert "Hidden." not in s.text
+    assert "Gandalf is a wizard." in s.text
+
+
+def test_a_plain_template_is_not_an_article_template():
+    assert strip_wikitext("{{Disambiguation | group1 = Asgard (Earth-616)}}").text == ""
+
+
+# The Game of Thrones Wiki's shape: a bare-named fact box ({{Character}}, {{House}}, …) after
+# other templates, with deceased people in single braces and {{Ref}}s inside the values.
+GOT_STYLE = """{{Canonicity|Canon}}
+{{Heraldry
+| Image = House Targaryen.svg
+| Link  = House Targaryen
+}}
+{{Character
+| Title       = {{PAGENAME}}
+| Image       =
+<gallery>
+Rhaenyra 308.png|Adult
+</gallery>
+| Birth       = [[97 AC]]{{Dateref|Rhaenyra Targaryen}} (age 35)
+| House       = [[House Targaryen/House of the Dragon|Targaryen]]{{Ref|HOTD101}}
+| Father      = {[[Viserys I Targaryen]]}{{Ref|HOTD101}}
+| Spouse      = [[Laenor Velaryon]]{{Ref|HOTD105}} {{C|separated}}<br>[[Daemon Targaryen]]
+}}
+{{Quote|Speaker|A line.}}
+'''Princess Rhaenyra Targaryen''' is the eldest child of [[Viserys I Targaryen|King Viserys I]].
+
+==Biography==
+Later text.
+"""
+
+
+def test_bare_named_fact_box_is_read_as_an_infobox():
+    s = strip_wikitext(GOT_STYLE)
+    assert s.infobox_name == "Character"
+    assert s.text[: s.lead_end].rstrip() == (
+        "Birth: 97 AC (age 35)\n"
+        "House: Targaryen\n"
+        "Father: Viserys I Targaryen\n"
+        "Spouse: Laenor Velaryon, Daemon Targaryen\n\n"
+        "Princess Rhaenyra Targaryen is the eldest child of King Viserys I."
+    )
+    assert type_from_infobox(s.infobox_name) == "character"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("House", "faction"), ("Settlement", "place"), ("Organization", "faction"),
+     ("Government", "faction"), ("Location", "place"), ("Character", "character")],
+)
+def test_bare_fact_box_types(name, expected):
+    s = strip_wikitext(f"{{{{{name}\n| Name = X\n| Image = {{{{Arms}}}}.svg\n}}}}\nX is here.\n")
+    assert s.infobox_name == name
+    assert s.infobox == {"Name": "X"}  # a picture is not a fact
+    assert type_from_infobox(s.infobox_name) == expected
+
+
+def test_heraldry_and_other_templates_are_not_fact_boxes():
+    s = strip_wikitext("{{Heraldry\n| Image = A.svg\n}}\n{{Quote|S|Q}}\nPlain prose.\n")
+    assert s.infobox_name is None
+    assert s.text == "Plain prose."
+
+
+def test_an_infobox_template_still_wins_over_a_later_bare_fact_box():
+    s = strip_wikitext("{{Infobox character\n| name = A\n}}\n{{Character\n| Birth = 1\n}}\nProse.\n")
+    assert s.infobox_name == "Infobox character"
+    assert s.infobox == {"name": "A"}

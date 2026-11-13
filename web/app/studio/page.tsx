@@ -13,6 +13,7 @@ import { ToolsPanel } from "@/components/ToolsPanel";
 import { UsagePanel } from "@/components/UsagePanel";
 import { getModels, getSettings, getStudio, type Scope } from "@/lib/api";
 import { useMe } from "@/lib/me";
+import { useWorld } from "@/lib/world";
 
 const SECTIONS = [
   ["feature-map", "Feature map"],
@@ -33,24 +34,44 @@ function Studio() {
   const [scope, setScope] = useState<Scope>("mine");
   const readOnly = !me?.is_admin;
   const shownScope = me?.is_admin ? scope : "mine";
-  const studio = useQuery({ queryKey: ["studio", shownScope], queryFn: () => getStudio(shownScope) });
-  const models = useQuery({ queryKey: ["settings", "models"], queryFn: getModels });
+  // Usage, verdicts and counts cover only the world selected in the header; the admin's
+  // "All users" view stays app-wide (every user, every world).
+  const { world } = useWorld();
+  const worldId = shownScope === "all" ? undefined : world?.id;
+  const studio = useQuery({
+    queryKey: ["studio", shownScope, worldId],
+    queryFn: () => getStudio(shownScope, worldId),
+    enabled: shownScope === "all" || !!worldId,
+  });
+  const models = useQuery({
+    queryKey: ["settings", "models"],
+    queryFn: getModels,
+  });
   const dev = useQuery({ queryKey: ["settings"], queryFn: getSettings });
 
   return (
     <div className="flex flex-1 flex-wrap">
       <nav
         aria-label="Studio sections"
-        className="flex flex-[1_1_200px] flex-col gap-0.5 border-border bg-panel p-3 text-[13px] md:max-w-[220px] md:border-r md:px-3 md:py-5"
+        className="flex-[1_1_200px] border-border bg-panel p-3 text-[13px] md:max-w-[220px] md:border-r md:px-3 md:py-5"
       >
-        <div className="px-2 pb-3 font-heading text-[22px] font-semibold">Studio</div>
-        {SECTIONS.map(([id, label]) => (
-          <a key={id} href={`#${id}`} className="rounded-md px-2 py-[7px] text-foreground no-underline hover:bg-panel-3 hover:text-foreground">
-            {label}
-          </a>
-        ))}
-        <div className="mt-4 border-t border-border px-2 pt-2.5 text-xs text-muted-foreground">
-          Settings here are kept apart from the author&apos;s screens.
+        {/* Sticks to the top of the window on wider screens, so every section stays one click away while scrolling. */}
+        <div className="flex flex-col gap-0.5 md:sticky md:top-[calc(var(--header-h,0px)+1.25rem)] md:max-h-[calc(100vh-var(--header-h,0px)-2.5rem)] md:overflow-y-auto">
+          <div className="px-2 pb-3 font-heading text-[22px] font-semibold">
+            Studio
+          </div>
+          {SECTIONS.map(([id, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className="rounded-md px-2 py-[7px] text-foreground no-underline hover:bg-panel-3 hover:text-foreground"
+            >
+              {label}
+            </a>
+          ))}
+          <div className="mt-4 border-t border-border px-2 pt-2.5 text-xs text-muted-foreground">
+            Settings here are kept apart from the author&apos;s screens.
+          </div>
         </div>
       </nav>
       <main className="flex min-w-0 flex-[999_1_640px] flex-col gap-7 px-4 py-6 md:px-9 md:py-7">
@@ -88,7 +109,12 @@ function Studio() {
             <MemoryPanel />
             {dev.data ? (
               <>
-                <GuardrailsPanel payload={dev.data} readOnly={readOnly} scope={shownScope} />
+                <GuardrailsPanel
+                  payload={dev.data}
+                  readOnly={readOnly}
+                  scope={shownScope}
+                  worldId={worldId}
+                />
                 <SettingsPanel payload={dev.data} readOnly={readOnly} />
               </>
             ) : (
@@ -102,6 +128,7 @@ function Studio() {
               me={me}
               scope={shownScope}
               onScope={me?.is_admin ? setScope : undefined}
+              worldName={world?.name}
             />
           </>
         )}

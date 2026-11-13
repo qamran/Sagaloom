@@ -22,6 +22,7 @@ export function UsagePanel({
   me,
   scope = "mine",
   onScope,
+  worldName,
 }: {
   usage: StudioData["usage"];
   /** The account, for the "This month" line. */
@@ -29,6 +30,8 @@ export function UsagePanel({
   scope?: Scope;
   /** Given only to the admin: adds the "All users" switch. */
   onScope?: (scope: Scope) => void;
+  /** The world the figures cover (the one selected in the header), named above them. */
+  worldName?: string;
 }) {
   const max = Math.max(0, ...usage.by_model.map((m) => m.cost_usd));
   return (
@@ -38,7 +41,16 @@ export function UsagePanel({
       className="flex scroll-mt-4 flex-col gap-3 rounded-xl border border-border bg-panel-2 px-5 py-[18px]"
     >
       <h2 className="m-0 font-heading text-[22px] font-medium">Usage</h2>
-      {me && <p className="m-0 text-[13px] text-muted-foreground">{spendLine(me)}</p>}
+      {me && (
+        <p className="m-0 text-[13px] text-muted-foreground">{spendLine(me)}</p>
+      )}
+      <p className="m-0 text-[13px] text-muted-foreground">
+        {scope === "all"
+          ? "Every user, every world."
+          : worldName
+            ? `Showing ${worldName} only.`
+            : null}
+      </p>
       {onScope && (
         <label className="flex items-center gap-2 text-[13px]">
           <input

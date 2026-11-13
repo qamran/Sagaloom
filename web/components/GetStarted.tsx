@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { markTour, readFlag, TOUR_EVENT, TOUR_KEYS, type TourStep } from "@/lib/tour";
+import { markTour, useTour, type TourStep } from "@/lib/tour";
 import type { World } from "@/lib/types";
 
 export { TOUR_KEYS } from "@/lib/tour";
@@ -13,43 +12,9 @@ const STEPS: { step: TourStep; label: string }[] = [
   { step: "myth", label: "Resolve it by saving it as a myth" },
 ];
 
-interface TourState {
-  ready: boolean;
-  dismissed: boolean;
-  done: Record<TourStep, boolean>;
-}
-
-function readTour(): TourState {
-  return {
-    ready: true,
-    dismissed: readFlag(TOUR_KEYS.dismissed),
-    done: {
-      visited: readFlag(TOUR_KEYS.visited),
-      chatted: readFlag(TOUR_KEYS.chatted),
-      conflict: readFlag(TOUR_KEYS.conflict),
-      myth: readFlag(TOUR_KEYS.myth),
-    },
-  };
-}
-
 /** The first-run checklist (design 4.3). Only for the demo world, until dismissed. */
 export function GetStarted({ world, onStartOwn }: { world: World; onStartOwn: () => void }) {
-  const [tour, setTour] = useState<TourState>({
-    ready: false,
-    dismissed: false,
-    done: { visited: false, chatted: false, conflict: false, myth: false },
-  });
-
-  useEffect(() => {
-    const sync = () => setTour(readTour());
-    sync();
-    window.addEventListener(TOUR_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(TOUR_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
+  const tour = useTour();
 
   if (!world.is_demo || !tour.ready || tour.dismissed) return null;
 

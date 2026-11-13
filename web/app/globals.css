@@ -127,6 +127,12 @@
     @apply font-sans;
     color-scheme: dark;
   }
+  /* In-page links (#usage and the like) land below the sticky header, not behind it. */
+  @media (width >= 48rem) {
+    html {
+      scroll-padding-top: var(--header-h, 0px);
+    }
+  }
   body {
     @apply bg-background text-foreground;
     font-size: 14px;

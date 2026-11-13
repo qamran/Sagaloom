@@ -8,7 +8,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -173,21 +173,30 @@ class PromptLog:
         return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
     def list_by_role(
-        self, role: str, limit: int = 20, user_id: str | None = None
+        self,
+        role: str,
+        limit: int = 20,
+        user_id: str | None = None,
+        thread_ids: "Collection[str] | None" = None,
     ) -> "builtins.list[PromptRecord]":
         """The newest records of one model role (e.g. `guard`), newest first; only `user_id`'s
-        when given, else everyone's (ownerless records too)."""
-        mine, args = (" AND user_id = ?", [user_id]) if user_id is not None else ("", [])
+        when given, else everyone's (ownerless records too); only those threads' when
+        `thread_ids` is given (one world's, for Studio)."""
+        where, args = _filters(user_id, thread_ids)
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                f"SELECT record FROM prompt_log WHERE {_ROLE_EXPR} = ?{mine} "
-                "ORDER BY started_at DESC, rowid DESC LIMIT ?",
+                f"SELECT record FROM prompt_log WHERE {_ROLE_EXPR} = ?"
+                + "".join(f" AND {w}" for w in where)
+                + " ORDER BY started_at DESC, rowid DESC LIMIT ?",
                 (role, *args, limit),
             ).fetchall()
         return [PromptRecord.model_validate_json(r[0]) for r in rows]
 
-    def total_usage(self, user_id: str | None = None) -> Usage:
-        return self.usage(user_id=user_id)
+    def total_usage(self, user_id: str | None = None, thread_ids: "Collection[str] | None" = None) -> Usage:
+        if thread_ids is None:
+            return self.usage(user_id=user_id)
+        where, args = _filters(user_id, thread_ids)
+        return self._sum("SELECT record FROM prompt_log WHERE " + " AND ".join(where), args)
 
     def usage(
         self, thread_id: str | None = None, run_id: str | None = None, user_id: str | None = None
@@ -266,12 +275,15 @@ class PromptLog:
             for run_id, roles in turns.items()
         ]
 
-    def usage_by_model(self, user_id: str | None = None) -> "builtins.list[dict]":
+    def usage_by_model(
+        self, user_id: str | None = None, thread_ids: "Collection[str] | None" = None
+    ) -> "builtins.list[dict]":
         """Calls, tokens and cost per (role, model) over `user_id`'s recorded calls, or every
-        call when None (Studio usage panel)."""
-        mine, args = (" WHERE user_id = ?", (user_id,)) if user_id is not None else ("", ())
+        call when None; only those threads' when `thread_ids` is given (Studio usage panel)."""
+        where, args = _filters(user_id, thread_ids)
+        sql = "SELECT record FROM prompt_log" + (" WHERE " + " AND ".join(where) if where else "")
         with closing(self._connect()) as conn:
-            rows = conn.execute(f"SELECT record FROM prompt_log{mine}", args).fetchall()
+            rows = conn.execute(sql, args).fetchall()
         agg: dict[tuple, dict] = {}
         for (raw,) in rows:
             rec = PromptRecord.model_validate_json(raw)
@@ -285,6 +297,21 @@ class PromptLog:
             a["completion_tokens"] += int(r.get("completion_tokens") or 0)
             a["cost_usd"] += float(r.get("cost_usd") or 0.0)
         return sorted(agg.values(), key=lambda a: -a["cost_usd"])
+
+
+def _filters(user_id: str | None, thread_ids: "Collection[str] | None") -> tuple[list[str], list]:
+    """SQL conditions and their arguments: one user's records, and only these threads' records.
+    An empty `thread_ids` matches nothing (a world with no threads has no calls)."""
+    where: list[str] = []
+    args: list = []
+    if user_id is not None:
+        where.append("user_id = ?")
+        args.append(user_id)
+    if thread_ids is not None:
+        ids = list(thread_ids)
+        where.append(f"thread_id IN ({', '.join('?' * len(ids))})" if ids else "0")
+        args += ids
+    return where, args
 
 
 _ROLES = {"human": "user", "ai": "assistant", "system": "system", "tool": "tool"}

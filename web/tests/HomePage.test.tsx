@@ -175,10 +175,10 @@ describe("the / route", () => {
     getPreviewMock.mockReset();
   });
 
-  it("sends a signed-in author to Canon without loading the preview", async () => {
+  it("sends a signed-in author to Home without loading the preview", async () => {
     authMock.mockResolvedValue({ userId: "user_1" });
-    await expect(Home()).rejects.toThrow("NEXT_REDIRECT /canon");
-    expect(redirectMock).toHaveBeenCalledWith("/canon");
+    await expect(Home()).rejects.toThrow("NEXT_REDIRECT /home");
+    expect(redirectMock).toHaveBeenCalledWith("/home");
     expect(getPreviewMock).not.toHaveBeenCalled();
   });
 

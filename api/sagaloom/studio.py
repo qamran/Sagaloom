@@ -58,13 +58,20 @@ def prompt_href(text: str) -> str:
     return "/chat?prompt=" + quote(text)
 
 
-def build_feature_map(settings: Settings, deps: Any, user_id: str | None = None) -> list[FeatureCard]:
+def build_feature_map(
+    settings: Settings, deps: Any, user_id: str | None = None, world_id: str | None = None
+) -> list[FeatureCard]:
     """The cards; the cost line and the thread count are `user_id`'s (the threads in their
-    worlds), or app-wide when None (M5 spec §5.2)."""
+    worlds), or app-wide when None (M5 spec §5.2); only `world_id`'s when it is given (the world
+    selected in the header, already checked to be the user's)."""
     threads = None
+    thread_ids = None
     if getattr(deps, "threads", None) is not None:
         try:
-            if user_id is None:
+            if world_id is not None:
+                thread_ids = [t.thread_id for t in deps.threads.list(world_id)]
+                threads = len(thread_ids)
+            elif user_id is None:
                 threads = len(deps.threads.list())
             else:
                 threads = sum(len(deps.threads.list(w.id)) for w in deps.worlds.owned_by(user_id))
@@ -73,7 +80,7 @@ def build_feature_map(settings: Settings, deps: Any, user_id: str | None = None)
     cost = None
     if getattr(deps, "promptlog", None) is not None:
         try:
-            cost = deps.promptlog.total_usage(user_id).cost_usd
+            cost = deps.promptlog.total_usage(user_id, thread_ids).cost_usd
         except Exception:
             pass
     guard_on = True

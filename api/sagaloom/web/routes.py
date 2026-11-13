@@ -623,13 +623,26 @@ def _scope_user(request: Request, scope: Scope) -> str | None:
     return user_of(request).id
 
 
+def _world_threads(request: Request, scope: Scope, world_id: str | None) -> list[str] | None:
+    """The thread ids of the world selected in the header (404 when it is not the caller's), so
+    a Studio panel shows only that world; None for every world: no `world_id`, or the admin's
+    app-wide `scope=all`."""
+    if world_id is None or scope == "all":
+        return None
+    world_for(request, world_id)
+    return [t.thread_id for t in _deps(request).threads.list(world_id)]
+
+
 @router.get("/guard/log")
-def guard_log(request: Request, limit: int = 20, scope: Scope = "mine") -> list[dict]:
+def guard_log(
+    request: Request, limit: int = 20, scope: Scope = "mine", world_id: str | None = None
+) -> list[dict]:
     """Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,
-    or everyone's for the admin with `scope=all`."""
+    or everyone's for the admin with `scope=all`; only one world's with `world_id`."""
     rows = []
     user_id = _scope_user(request, scope)
-    for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100)), user_id):
+    thread_ids = _world_threads(request, scope, world_id)
+    for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100)), user_id, thread_ids):
         if rec.response is None:  # the call raised (and the guard blocked the message)
             verdict, reason = "error", ""
         else:  # a response that does not parse is "unknown"
@@ -655,16 +668,22 @@ def _mermaid(graph: Any) -> str:
 
 
 @router.get("/studio")
-def studio(request: Request, scope: Scope = "mine") -> dict:
-    """Usage and the Feature map's cost line are the caller's own; the admin may ask for
-    `scope=all` (every user's calls, ownerless ones too)."""
+def studio(request: Request, scope: Scope = "mine", world_id: str | None = None) -> dict:
+    """Usage and the Feature map's cost line are the caller's own, and only `world_id`'s when it
+    is given; the admin may ask for `scope=all` (every user's calls, ownerless ones too, in every
+    world)."""
     d = _deps(request)
     log = d.promptlog
     user_id = _scope_user(request, scope)
+    thread_ids = _world_threads(request, scope, world_id)
+    world = world_id if thread_ids is not None else None
     return {
-        "features": [c.model_dump() for c in build_feature_map(d.settings, d, user_id)],
+        "features": [c.model_dump() for c in build_feature_map(d.settings, d, user_id, world)],
         "providers": [p.model_dump() for p in providers_status(d.settings, d.model_settings.get_model_settings())],
-        "usage": {**log.total_usage(user_id).model_dump(), "by_model": log.usage_by_model(user_id)},
+        "usage": {
+            **log.total_usage(user_id, thread_ids).model_dump(),
+            "by_model": log.usage_by_model(user_id, thread_ids),
+        },
         "mermaid": _mermaid(d.graph),
     }
 

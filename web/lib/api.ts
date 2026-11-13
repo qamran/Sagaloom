@@ -166,7 +166,9 @@ export const getThread = (id: string) => request<ThreadState>(`/threads/${encode
 export const getReviewThreads = (worldId: string) =>
   request<ThreadSummary[]>(`/threads?pending=true&world_id=${encodeURIComponent(worldId)}`);
 export type Scope = "all" | "mine";
-export const getStudio = (scope: Scope = "mine") => request<StudioData>(`/studio?scope=${scope}`);
+/** Studio's data; with `worldId`, only that world's usage and counts (the admin's `all` is app-wide). */
+export const getStudio = (scope: Scope = "mine", worldId?: string) =>
+  request<StudioData>(`/studio?scope=${scope}${worldParam(worldId)}`);
 export const getMe = () => request<Me>("/me");
 export const putMe = (lastWorldId: string | null) =>
   request<Me>("/me", { method: "PUT", body: JSON.stringify({ last_world_id: lastWorldId }) });
@@ -179,8 +181,16 @@ export const getSettings = () => request<SettingsPayload>("/settings");
 export const putSettings = (patch: SettingsPatch) =>
   request<SettingsPayload>("/settings", { method: "PUT", body: JSON.stringify(patch) });
 export const getTools = () => request<ToolInfo[]>("/tools");
-export const getGuardLog = (limit = 20, scope: Scope = "mine") =>
-  request<GuardLogRow[]>(`/guard/log?limit=${limit}&scope=${scope}`);
+export const getGuardLog = (
+  limit = 20,
+  scope: Scope = "mine",
+  worldId?: string,
+) =>
+  request<GuardLogRow[]>(
+    `/guard/log?limit=${limit}&scope=${scope}${worldParam(worldId)}`,
+  );
+const worldParam = (worldId?: string) =>
+  worldId ? `&world_id=${encodeURIComponent(worldId)}` : "";
 
 /** The Markdown zip download for a world (R11.5.4), through the proxy. */
 export function exportUrl(worldId: string, excludeSecrets: boolean): string {

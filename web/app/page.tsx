@@ -10,10 +10,10 @@ export const metadata: Metadata = {
     "A continuity editor for your fictional world: you decide, it checks. For authors, fan-fiction writers and solo game masters.",
 };
 
-/** `/`: a signed-in author goes to Canon; a signed-out visitor gets the public home page (M5 §5.7). */
+/** `/`: a signed-in author goes to their Home dashboard; a signed-out visitor gets the public home page (M5 §5.7). */
 export default async function Home() {
   const { userId } = await auth();
-  if (userId) redirect("/canon");
+  if (userId) redirect("/home");
   // Fetched here on the web server (the shared secret stays on it); only the data goes to the page.
   return <HomePage preview={await getPreview()} />;
 }

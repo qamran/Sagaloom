@@ -96,9 +96,30 @@ describe("Header Import tab", () => {
   it("links to /import after Review", async () => {
     vi.mocked(getReviewThreads).mockResolvedValue([]);
     renderHeader();
-    const tabs = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Canon", "Chat", "Review", "Import"]);
-    expect(screen.getByRole("link", { name: "Import" })).toHaveAttribute("href", "/import");
+    const tabs = within(
+      screen.getByRole("navigation", { name: "Main" }),
+    ).getAllByRole("link");
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      "Home",
+      "Canon",
+      "Chat",
+      "Review",
+      "Import",
+      "Compare",
+    ]);
+    expect(screen.getByRole("link", { name: "Import" })).toHaveAttribute(
+      "href",
+      "/import",
+    );
+  });
+
+  it("links to /compare last", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([]);
+    renderHeader();
+    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
+      "href",
+      "/compare",
+    );
   });
 });
 
@@ -114,6 +135,17 @@ describe("Header Show secrets toggle", () => {
     btn.click();
     await waitFor(() => expect(sessionStorage.getItem(SHOW_SECRETS_KEY("w1"))).toBe("true"));
     sessionStorage.clear();
+  });
+});
+
+describe("Header Developer studio", () => {
+  it("is one link to /studio, named Developer studio", async () => {
+    vi.mocked(getReviewThreads).mockResolvedValue([]);
+    renderHeader();
+    expect(
+      screen.getByRole("link", { name: "Developer studio" }),
+    ).toHaveAttribute("href", "/studio");
+    expect(screen.queryByText(/^Developer$/)).toBeNull();
   });
 });
 
@@ -139,4 +171,27 @@ describe("Header account", () => {
     expect(screen.queryByTestId("user-button")).toBeNull();
     expect(getMe).not.toHaveBeenCalled();
   });
+});
+
+describe("Header stays on screen", () => {
+  afterEach(() => document.documentElement.style.removeProperty("--header-h"));
+
+  it.each([true, false])(
+    "is sticky from tablet width up and publishes its height (signed in: %s)",
+    async (signedIn) => {
+      auth.value = { isLoaded: true, isSignedIn: signedIn };
+      const offset = vi
+        .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+        .mockReturnValue(57);
+      renderHeader();
+      const header = screen.getByRole("banner");
+      expect(header).toHaveClass("md:sticky", "md:top-0");
+      await waitFor(() =>
+        expect(
+          document.documentElement.style.getPropertyValue("--header-h"),
+        ).toBe("57px"),
+      );
+      offset.mockRestore();
+    },
+  );
 });

@@ -19,17 +19,23 @@ export function GuardrailsPanel({
   payload,
   readOnly = false,
   scope = "mine",
+  worldId,
 }: {
   payload: SettingsPayload;
   readOnly?: boolean;
   /** `all` (the admin's "All users" switch) lists every account's verdicts. */
   scope?: Scope;
+  /** Only this world's verdicts (the world selected in the header). */
+  worldId?: string;
 }) {
   const qc = useQueryClient();
   const [on, setOn] = useState(payload.settings.guard_enabled);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const log = useQuery({ queryKey: ["guard-log", scope], queryFn: () => getGuardLog(20, scope) });
+  const log = useQuery({
+    queryKey: ["guard-log", scope, worldId],
+    queryFn: () => getGuardLog(20, scope, worldId),
+  });
 
   async function toggle() {
     setError(null);

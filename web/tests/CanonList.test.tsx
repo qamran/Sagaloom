@@ -6,7 +6,11 @@ import { CanonList } from "@/components/CanonList";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
 import type { Entry } from "@/lib/types";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/canon" }));
+const params = vi.hoisted(() => ({ value: new URLSearchParams() }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/canon",
+  useSearchParams: () => params.value,
+}));
 vi.mock("@/lib/world", () => ({
   useWorld: () => ({ world: { id: "w1", name: "Velmar", is_demo: true, divergent: false } }),
 }));
@@ -24,6 +28,7 @@ let list: Entry[] = entries;
 vi.mock("@/lib/api", () => ({ getEntries: vi.fn(async () => list) }));
 afterEach(() => {
   list = entries;
+  params.value = new URLSearchParams();
   sessionStorage.clear();
 });
 
@@ -114,5 +119,155 @@ describe("CanonList type dots", () => {
     renderList();
     const link = await screen.findByRole("link", { name: /Sky of Velmar/ });
     expect(link.querySelector("[data-type-dot]")).toHaveClass("bg-place");
+  });
+});
+
+describe("CanonList status filter", () => {
+  const fact = (key: string, status: string) => ({
+    key,
+    value: "v",
+    status,
+    refs: [],
+    told_by: null,
+  });
+  const world = [
+    {
+      ...base,
+      id: "ent_0001",
+      title: "Sky of Velmar",
+      type: "place",
+      status: "canon",
+      facts: [fact("Moons", "canon")],
+    },
+    {
+      ...base,
+      id: "ent_0002",
+      title: "The Song of Three Moons",
+      type: "event",
+      status: "myth",
+    },
+    {
+      ...base,
+      id: "ent_0003",
+      title: "The Ashen Choir",
+      type: "faction",
+      status: "canon",
+      facts: [fact("Founding", "myth"), fact("Allegiance", "secret")],
+    },
+    {
+      ...base,
+      id: "ent_0004",
+      title: "The Choir Ledger",
+      type: "item",
+      status: "secret",
+      facts: [fact("Origin", "myth")],
+    },
+  ] as unknown as Entry[];
+
+  it("lists only myth entries and entries with myth facts, naming the facts, and keeps the filter on links", async () => {
+    list = world;
+    params.value = new URLSearchParams("status=myth");
+    renderList();
+    const song = await screen.findByRole("link", {
+      name: /The Song of Three Moons/,
+    });
+    expect(song).toHaveAttribute("href", "/canon/ent_0002?status=myth");
+    expect(
+      screen.getByRole("link", { name: /The Ashen Choir/ }),
+    ).toHaveTextContent("Founding · myth");
+    expect(screen.queryByText("Sky of Velmar")).toBeNull();
+    // A myth fact inside a secret entry stays hidden with the entry.
+    expect(screen.queryByText(/Choir Ledger/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Show 1 secret entry" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Showing myths")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Clear filter" })).toHaveAttribute(
+      "href",
+      "/canon",
+    );
+  });
+
+  it("hides every secret match, fact keys included, until secrets are shown", async () => {
+    list = world;
+    params.value = new URLSearchParams("status=secret");
+    renderList();
+    const show = await screen.findByRole("button", { name: "Show 2 secrets" });
+    expect(
+      screen.getByText("Secrets are hidden until you show them."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Allegiance/)).toBeNull();
+    await userEvent.click(show);
+    expect(
+      screen.getByRole("link", { name: /The Ashen Choir/ }),
+    ).toHaveTextContent("Allegiance · secret");
+    expect(
+      screen.getByRole("link", { name: /The Choir Ledger/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("says when the world has none, and ignores an unknown status", async () => {
+    list = world;
+    params.value = new URLSearchParams("status=rumour");
+    renderList();
+    expect(
+      await screen.findByText("No rumours in this world."),
+    ).toBeInTheDocument();
+    cleanup();
+    params.value = new URLSearchParams("status=canon");
+    renderList();
+    expect(await screen.findByText("Sky of Velmar")).toBeInTheDocument();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
+  });
+});
+
+describe("CanonList collapsible groups", () => {
+  const mixed = [
+    {
+      ...base,
+      id: "ent_0001",
+      title: "Sky of Velmar",
+      type: "place",
+      status: "canon",
+    },
+    {
+      ...base,
+      id: "ent_0003",
+      title: "Harbour Ward",
+      type: "place",
+      status: "canon",
+    },
+    {
+      ...base,
+      id: "ent_0004",
+      title: "Ister",
+      type: "character",
+      status: "canon",
+    },
+  ] as unknown as Entry[];
+
+  it("folds a type group from its heading, with the count shown, and opens it again", async () => {
+    list = mixed;
+    renderList();
+    const places = await screen.findByRole("button", { name: "Places 2" });
+    expect(places).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(places);
+    expect(places).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Sky of Velmar")).toBeNull();
+    expect(screen.getByText("Ister")).toBeInTheDocument(); // other groups stay open
+
+    await userEvent.click(places);
+    expect(screen.getByText("Sky of Velmar")).toBeInTheDocument();
+  });
+
+  it("shows search matches inside a folded group", async () => {
+    list = mixed;
+    renderList();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Places 2" }),
+    );
+    await userEvent.type(screen.getByLabelText("Search entries"), "harbour");
+    expect(screen.getByText("Harbour Ward")).toBeInTheDocument();
   });
 });
