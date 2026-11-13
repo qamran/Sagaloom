@@ -173,7 +173,9 @@ async def _extract_then_run(
         # no parts (wiki pages with no article text) still runs, so Review shows its note.
         registry.delete(thread_id)
         yield _usage(usage_fn)
-        yield event("error", {"message": EXTRACTION_FAILED, "retryable": True})
+        failure = plan.failure if plan is not None else None
+        retryable = plan.failure_retryable if failure else True
+        yield event("error", {"message": failure or EXTRACTION_FAILED, "retryable": retryable})
         return
 
     async for ev in _run_graph(graph, world_id, thread_id, plan, note(plan), cfg, queue, usage_fn):

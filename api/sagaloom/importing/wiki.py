@@ -32,6 +32,7 @@ from sagaloom.importing.extract import (
     _extract,
     _resolve,
     _valid_facts,
+    extraction_failure,
     fit,
     locate,
     merge_facts,
@@ -263,6 +264,7 @@ async def build_wiki_import(
     proposals: list[Proposal] = []
     first_lines: dict[str, str] = {}
     parts = failed = 0
+    errors: list[BaseException] = []
     # One read of canon for the whole import, off the event loop (Chroma is synchronous).
     index = await asyncio.to_thread(store.name_index, world_id)
     for p in fetched.pages:
@@ -276,7 +278,7 @@ async def build_wiki_import(
         # The label is inside the wrapper only: it is never part of the text `locate` searches.
         result = await _extract(
             llm, f"Page title: {p.title}\n\n" + text, f"wiki:{fetched.host}/{p.title}", config,
-            system=WIKI_EXTRACT_SYSTEM,
+            system=WIKI_EXTRACT_SYSTEM, errors=errors,
         )
         if result is None:
             failed += 1
@@ -308,6 +310,7 @@ async def build_wiki_import(
         failed_parts=failed,
         parts=parts,
         licence=licence_dict(lic),
+        **(extraction_failure(errors, llm) if parts and failed == parts else {}),
     )
 
 

@@ -130,6 +130,7 @@ export function viewFromEvents(t: TurnEvents): TurnView {
             completion_tokens: num(d.completion_tokens),
             cost_usd: num(d.cost_usd),
             latency_ms: num(d.latency_ms),
+            ...(typeof d.error === "string" && d.error ? { error: d.error } : {}),
           };
         break;
       }

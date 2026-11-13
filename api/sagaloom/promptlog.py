@@ -21,6 +21,7 @@ from langchain_core.outputs import LLMResult
 from pydantic import BaseModel, Field
 
 from sagaloom.config import Settings
+from sagaloom.model_errors import failure_line
 from sagaloom.models import RoleUsage, TurnUsage, Usage
 from sagaloom.usage import extract_usage
 
@@ -462,4 +463,18 @@ class PromptLogHandler(AsyncCallbackHandler):
         self.emit("llm_response", {"id": rid, **out})
 
     async def on_llm_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
-        self._started.pop(str(run_id), None)
+        """A failed call keeps its cause as the response (`error`: kind, status and OpenRouter's
+        words), so Under the hood and Studio → Guardrails show what went wrong. It cost nothing."""
+        rid = str(run_id)
+        started = self._started.pop(rid, None)
+        out = {
+            "content": "",
+            "tool_calls": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cost_usd": 0.0,
+            "latency_ms": int((time.monotonic() - started) * 1000) if started else 0,
+            "error": failure_line(error),
+        }
+        self.log.complete(rid, out)
+        self.emit("llm_response", {"id": rid, **out})

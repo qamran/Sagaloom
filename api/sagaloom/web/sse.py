@@ -21,6 +21,7 @@ from langgraph.errors import GraphRecursionError
 from sse_starlette import EventSourceResponse
 
 from sagaloom.check.badge import with_badges
+from sagaloom.model_errors import ModelCallError, describe
 from sagaloom.models import Usage
 from sagaloom.text import message_text
 
@@ -70,8 +71,11 @@ def gemini_error_event(exc: Exception) -> dict | None:
 def _error_event(exc: Exception) -> Event:
     if isinstance(exc, GraphRecursionError):
         return event("error", {"message": TOO_MANY_STEPS, "retryable": False})
-    if (gemini := gemini_error_event(exc)) is not None:
+    if (gemini := gemini_error_event(exc.original if isinstance(exc, ModelCallError) else exc)) is not None:
         return event("error", gemini)
+    if isinstance(exc, ModelCallError):
+        message, retryable = describe(exc, exc.role, "so I couldn't reply")
+        return event("error", {"message": message, "retryable": retryable})
     if isinstance(exc, openai.APIError):  # connection, timeout, status and rate-limit errors
         return event("error", {"message": MODEL_UNAVAILABLE, "retryable": True})
     return event("error", {"message": UNEXPECTED, "retryable": True})

@@ -46,6 +46,18 @@ describe("turn views", () => {
     });
   });
 
+  it("keeps a failed call's cause from a live llm_response", () => {
+    const v = viewFromEvents({
+      turn: 1,
+      kind: "message",
+      events: [
+        { event: "llm_request", data: { id: "a", model: "m", messages: [], tools: [] } },
+        { event: "llm_response", data: { id: "a", content: "", tool_calls: [], error: "no_credit 402: Insufficient credits" } },
+      ],
+    });
+    expect(v.calls[0].response?.error).toBe("no_credit 402: Insufficient credits");
+  });
+
   it("keeps the role from a live llm_request event", () => {
     const v = viewFromEvents({
       turn: 1,

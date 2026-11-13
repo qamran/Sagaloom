@@ -72,7 +72,7 @@ def make_import_wiki_tool(store, client: WikiClient, extractor_llm: "ChatModelLi
             log.warning("import_wiki failed", exc_info=True)
             return _err(tool_call_id, f"Could not import those pages: {type(e).__name__}")
         if plan.extraction_failed:
-            return _err(tool_call_id, EXTRACTION_FAILED)
+            return _err(tool_call_id, plan.failure or EXTRACTION_FAILED)
         result = {
             "label": NAME,
             "proposals": len(plan.proposals),

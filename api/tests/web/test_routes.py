@@ -438,9 +438,12 @@ async def test_llm_failure_emits_friendly_error_event(make_env):
     r, events = await env.send(tid)
     assert r.status_code == 200
     err = [d for e, d in events if e == "error"]
-    assert err == [
-        {"message": "The model service is unavailable right now. Please try again.", "retryable": True}
-    ]
+    # The failure is named, with what to do (model_errors.describe).
+    assert err == [{
+        "message": "Sagaloom could not reach OpenRouter, so I couldn't reply. "
+        "Check the internet connection, then try again.",
+        "retryable": True,
+    }]
     assert "Traceback" not in r.text and "openrouter.ai" not in r.text
     assert "done" not in names(events)
     # A turn that spent money and then failed with no reply still gets its cost line (design 3.3).

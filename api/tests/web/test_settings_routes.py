@@ -230,3 +230,21 @@ async def test_guard_log_world_filter(make_env):
     assert (await env.client.get("/api/guard/log?world_id=wb")).status_code == 404
     rows = (await env.client.get(f"/api/guard/log?scope=all&world_id={W}")).json()
     assert [x["reason"] for x in rows] == ["two", "one"]
+
+
+async def test_models_carry_their_benchmark_rating(make_env):
+    env = make_env()
+    body = (await env.client.get("/api/settings/models")).json()
+    by_id = {m["id"]: m for m in body["allowed"]}
+    assert by_id["openai/gpt-6.1-sol"]["rating"] == {
+        "score": 46.3, "variant": "medium", "leaderboard_name": "GPT-6.1 Sol (Medium)",
+    }
+    assert by_id["openai/gpt-4o"]["rating"] is None  # not on the current index
+    assert by_id["openai/gpt-6.1-sol"]["price_in"] == 2.0  # prices unchanged
+    src = body["ratings_source"]
+    assert src["source"] == "Artificial Analysis Intelligence Index"
+    assert src["url"].startswith("https://artificialanalysis.ai/")
+    assert src["retrieved"] == "2026-11-13"
+    # Every rated id is on the allowlist: a typo would rate nothing.
+    from sagaloom.config import load_model_ratings
+    assert set(load_model_ratings()["ratings"]) <= set(by_id)

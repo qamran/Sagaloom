@@ -13,6 +13,7 @@ from sagaloom.check.retcon import detect_retcons
 from sagaloom.models import CheckResult, Entry, EntryDraft, Fact, Flag, Proposal
 from sagaloom.security import wrap_untrusted
 from sagaloom.store.canon import norm
+from sagaloom.model_errors import classify as model_failure, describe, model_name
 from sagaloom.structured import ChatModelLike, InvalidReply, ask_structured
 
 log = logging.getLogger(__name__)
@@ -194,13 +195,15 @@ def _to_flag(jf: JudgeFlag, entry: Entry, draft: EntryDraft) -> Flag:
     )
 
 
-def _failed(proposal: Proposal, draft: EntryDraft, retcons: list[Flag], dups: list[Flag]) -> CheckResult:
+def _failed(
+    proposal: Proposal, draft: EntryDraft, retcons: list[Flag], dups: list[Flag], explanation: str = CHECK_FAILED_EXPLANATION
+) -> CheckResult:
     notice = Flag(
         kind="note",
         entry_id=proposal.entry_id or "",
         title=draft.title,
         severity="note",
-        explanation=CHECK_FAILED_EXPLANATION,
+        explanation=explanation,
     )
     return CheckResult(
         proposal_id=proposal.proposal_id, verdict="failed", flags=[*retcons, notice, *dups]
@@ -254,10 +257,16 @@ async def check_proposal(
     except InvalidReply:
         log.error("Judge gave invalid output twice for %s; failing closed", proposal.proposal_id)
         return _failed(proposal, draft, retcons, dups)
-    except Exception:
+    except Exception as exc:
         # Network/API errors after the client's own retries: never report "none" (R11.3.7).
         log.exception("Judge call failed for %s; failing closed", proposal.proposal_id)
-        return _failed(proposal, draft, retcons, dups)
+        if model_failure(exc) is None:
+            return _failed(proposal, draft, retcons, dups)
+        explanation, _ = describe(
+            exc, "judge", "so the contradiction check could not run and clashes with other entries are unknown",
+            model_name(judge),
+        )
+        return _failed(proposal, draft, retcons, dups, explanation)
 
     by_id = {e.id: e for e in related}
     flags: list[Flag] = []

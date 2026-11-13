@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from sagaloom import budget
 from sagaloom.budget import OverBudget, budget_reset_date, over_budget
+from sagaloom.config import load_model_ratings
 from sagaloom.export import export_markdown, slugify
 from sagaloom.graph.build import CHECKPOINT_FILE, run_config
 from sagaloom.graph.nodes import RoleModel
@@ -571,10 +572,15 @@ class ModelChoice(BaseModel):
 
 
 def _models_payload(request: Request) -> dict:
+    """The role mapping and the allowlist; each model carries its public benchmark rating (None
+    when the leaderboard has no score for it), and `ratings_source` says where they come from."""
     d = _deps(request)
+    ratings = load_model_ratings()
+    scores = ratings.get("ratings", {})
     return {
         "mapping": d.model_settings.get_model_settings(),
-        "allowed": [m.model_dump() for m in d.settings.allowed_models],
+        "allowed": [{**m.model_dump(), "rating": scores.get(m.id)} for m in d.settings.allowed_models],
+        "ratings_source": {k: ratings.get(k) for k in ("source", "url", "retrieved", "note")},
     }
 
 
@@ -643,8 +649,8 @@ def guard_log(
     user_id = _scope_user(request, scope)
     thread_ids = _world_threads(request, scope, world_id)
     for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100)), user_id, thread_ids):
-        if rec.response is None:  # the call raised (and the guard blocked the message)
-            verdict, reason = "error", ""
+        if rec.response is None or rec.response.get("error"):  # the call raised: the message was blocked
+            verdict, reason = "error", (rec.response or {}).get("error", "")
         else:  # a response that does not parse is "unknown"
             v = parse_verdict(rec.response)
             verdict, reason = (v.verdict, v.reason) if v else ("unknown", "")

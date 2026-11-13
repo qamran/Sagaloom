@@ -18,6 +18,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
+from sagaloom.model_errors import classify as model_failure
+from sagaloom.model_errors import describe, model_name
 from sagaloom.models import Entry, EntryDraft, EntryType, Fact, Proposal
 from sagaloom.provenance import IMPORTED_HEADING, merge_provenance
 from sagaloom.security import wrap_untrusted
@@ -94,6 +96,10 @@ class ImportPlan(BaseModel):
     failed_parts: int
     parts: int
     licence: dict | None = None  # a wiki import's {"text", "url", "nc"}, as the wiki reported it
+    # When every part failed on a model error: what failed, in words to act on (model_errors), and
+    # whether a retry can help. None for any other failure, which keeps EXTRACTION_FAILED.
+    failure: str | None = None
+    failure_retryable: bool = True
 
     @property
     def extraction_failed(self) -> bool:
@@ -241,6 +247,7 @@ async def _extract(
     label: str,
     config: RunnableConfig | None,
     system: str = EXTRACT_SYSTEM,
+    errors: list[BaseException] | None = None,
 ) -> tuple[list[Candidate], list[Skipped]] | None:
     """(candidates, invalid ones skipped), or None after MAX_ATTEMPTS failed attempts. A valid
     parse gives every candidate; a failed parse whose raw reply still holds a `candidates` list is
@@ -261,9 +268,21 @@ async def _extract(
             if items is not None:
                 return _one_by_one(items)
             log.warning("extraction attempt %d returned no readable candidates", attempt)
-        except Exception:
+        except Exception as exc:
             log.warning("extraction attempt %d failed", attempt, exc_info=True)
+            if errors is not None:
+                errors.append(exc)
     return None
+
+
+def extraction_failure(errors: list[BaseException], llm: Any) -> dict:
+    """`ImportPlan` fields naming the last model error of a failed extraction (`failure`,
+    `failure_retryable`); none when no attempt failed on a model API error."""
+    last = next((e for e in reversed(errors) if model_failure(e) is not None), None)
+    if last is None:
+        return {}
+    message, retryable = describe(last, "extractor", "so nothing was imported", model_name(llm))
+    return {"failure": message, "failure_retryable": retryable}
 
 
 class _Group:
@@ -374,11 +393,12 @@ async def build_import(
     chunks = chunk_text(text)
     skipped: list[Skipped] = []
     failed = 0
+    errors: list[BaseException] = []
     groups: dict[str, _Group] = {}  # insertion order is source order
     # One read of canon for the whole import, off the event loop (Chroma is synchronous).
     index = await asyncio.to_thread(store.name_index, world_id)
     for i, chunk in enumerate(chunks, start=1):
-        result = await _extract(llm, chunk, label, config)
+        result = await _extract(llm, chunk, label, config, errors=errors)
         if result is None:
             failed += 1
             skipped.append(Skipped(title=f"Part {i} of the text", reason=PART_FAILED))
@@ -411,5 +431,6 @@ async def build_import(
         proposals.append(proposal)
         first_lines[proposal.proposal_id] = first_line(body)[:TITLE_CHARS]
     return ImportPlan(
-        proposals=proposals, skipped=skipped, first_lines=first_lines, failed_parts=failed, parts=len(chunks)
+        proposals=proposals, skipped=skipped, first_lines=first_lines, failed_parts=failed, parts=len(chunks),
+        **(extraction_failure(errors, llm) if failed and failed == len(chunks) else {}),
     )

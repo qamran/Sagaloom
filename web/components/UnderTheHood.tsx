@@ -113,7 +113,9 @@ export function Response({ call, hidden }: { call: LlmCall; hidden: boolean }) {
   if (!r) return <p className="m-0 bg-well px-3 py-2.5 text-xs text-muted-foreground">No response recorded yet.</p>;
   return (
     <section aria-label="Response" className="flex flex-col gap-2 bg-well px-3 py-2.5 font-mono text-[11.5px] leading-[1.55]">
-      {r.content ? (
+      {r.error ? (
+        <div className="text-conflict">Call failed: {r.error}</div>
+      ) : r.content ? (
         <div className="whitespace-pre-wrap text-prose-muted">{r.content}</div>
       ) : (
         <div className="text-muted-foreground">(no text)</div>

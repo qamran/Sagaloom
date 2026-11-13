@@ -32,6 +32,16 @@ class AllowedModel(BaseModel):
     provider: str = "openai"  # OpenRouter provider slug the model is pinned to (R11.G7)
 
 
+MODEL_RATINGS_FILE = Path(__file__).resolve().parent / "model_ratings.json"
+
+
+def load_model_ratings(path: Path = MODEL_RATINGS_FILE) -> dict:
+    """A public benchmark score per allowlisted model, with its source and date, for Studio's
+    model dropdown: `{source, url, retrieved, note, ratings: {model id: {score, variant,
+    leaderboard_name}}}`. A model missing from `ratings` has no score on that leaderboard."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def load_allowed_models(path: Path = ALLOWED_MODELS_FILE) -> list[AllowedModel]:
     """The account's guardrail-allowed OpenRouter models that support tools and structured output
     (R11.G10)."""

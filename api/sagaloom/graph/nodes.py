@@ -6,6 +6,7 @@ import threading
 from collections.abc import Callable
 from typing import Any, Literal
 
+import openai
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -37,6 +38,8 @@ from sagaloom.memory import (
     render_preferences,
     unavailable,
 )
+from sagaloom.model_errors import ModelCallError, describe, failure_line, model_name
+from sagaloom.model_errors import classify as model_failure
 from sagaloom.models import (
     PROVENANCE_FIELDS,
     CheckResult,
@@ -181,18 +184,23 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
         if not dev().guard_enabled:
             return {"guard_verdict": "off"}
         text = "\n\n".join(message_text(m.content) for m in run)  # one call for the whole run
+        guard_model = model_for("guard")
+        notice = None
         try:
-            verdict = (await classify(model_for("guard"), text)).verdict
+            verdict = (await classify(guard_model, text)).verdict
         except Exception as exc:
-            log.warning("guard failed, blocking the message: %s", type(exc).__name__)
+            log.warning("guard failed, blocking the message: %s", failure_line(exc))
             verdict = "error"
+            if model_failure(exc) is not None:
+                notice, _ = describe(exc, "guard", "so I couldn't check your message and didn't act on it",
+                                     model_name(guard_model))
         if verdict == "safe":
             return {"guard_verdict": "safe"}
         return {
             "guard_verdict": verdict,
             "messages": [
                 *(RemoveMessage(id=m.id) for m in run),
-                *with_turn([AIMessage(name="guard", content=BLOCK_COPY[verdict])], config),
+                *with_turn([AIMessage(name="guard", content=notice or BLOCK_COPY[verdict])], config),
             ],
         }
 
@@ -215,7 +223,8 @@ def make_router_node(model_for: ModelFor):
         try:
             mode = (await router_mod.route(model_for("router"), text)).mode
         except Exception as exc:
-            log.warning("router failed, running the turn without a mode: %s", type(exc).__name__)
+            # The prompt record keeps the cause for Under the hood (promptlog.on_llm_error).
+            log.warning("router failed, running the turn without a mode: %s", failure_line(exc))
             return {"mode": None}
         last = run[-1]
         stamped = last.model_copy(update={"additional_kwargs": {**last.additional_kwargs, "mode": mode}})
@@ -240,7 +249,8 @@ def make_agent_node(
             params["max_tokens"] = d.agent_max_tokens
         enabled = enabled_tool_names(d)
         bound = [t for t in tools if t.name in enabled]
-        llm = model_for("agent").bind_tools(bound).bind(**params)
+        base_model = model_for("agent")
+        llm = base_model.bind_tools(bound).bind(**params)
         base = d.agent_system_prompt or SYSTEM
         # Read on every call, so a preference stored in any thread of this world applies from
         # the next call. Author-stated (gated by `remember`), so it may sit in the system prompt.
@@ -252,7 +262,11 @@ def make_agent_node(
         mode = state.get("mode")
         section = "" if not mode or router_mod.ROUTER_ADVISORY else "\n\n" + router_mod.MODE_SECTIONS[mode]
         system = SystemMessage(content=base + section + ("\n\n" + block if block else ""))
-        reply = await llm.ainvoke([system, *state.get("messages", [])], config)
+        try:
+            reply = await llm.ainvoke([system, *state.get("messages", [])], config)
+        except openai.APIError as exc:
+            # The stream names the step, the model and the cause (model_errors.describe).
+            raise ModelCallError("agent", model_name(base_model), exc) from exc
         return {"messages": with_turn([reply], config)}
 
     return agent

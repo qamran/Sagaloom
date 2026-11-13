@@ -303,15 +303,41 @@ For seeing how the app works inside. Controls only the admin can change say so. 
 | Section | What it shows |
 |---|---|
 | **Feature map** | One card per course feature, with its status and a **Try it →** link (**Planned** when not built yet). The violet course pills link here |
-| **Agent graph** | The assistant's graph as a diagram. The nodes the chosen chat's last run went through are highlighted, e.g. "Last run: guard → router → agent" |
+| **Agent graph** | The assistant's graph as a diagram: each box is a step (guard, router, agent, tools, remember, check, approval gate, commit), each arrow a possible move. The **Thread** picker lists the selected world's chats and imports by title, kind and age (e.g. "How many moons does Velmar have? · chat · 21 min ago"), newest first; empty chats are left out. The steps that thread's last turn went through are highlighted and spelled out, e.g. "Last run: guard → router → agent". The diagram shows which steps ran, not whether they succeeded: a failed model call also ends at that step (Under the hood says "Call failed") |
 | **Tools** | The tools the assistant can call, and which are on (admin changes them) |
 | **Guardrails** | The input guard's recent verdicts for the world selected in the header. The admin can switch to **All users** (every user, every world) |
 | **Memory** | Preferences the assistant has remembered, which you can delete |
 | **Usage** | Your token and cost totals for the world selected in the header ("Showing House of Dragon only."), split by step. The Feature map's thread count and cost line follow the same world. Pick another world in the header to see its figures. The admin can switch to **All users** (every user, every world) |
-| **Models and providers** | The model used for each role, pinned to its provider. Only the admin can switch models |
+| **Models and providers** | The model used for each role, pinned to its provider. Only the admin can switch models. Each option in a model dropdown shows its price per 1M tokens in and out and its **rating**: stars and a score from the [Artificial Analysis Intelligence Index](https://artificialanalysis.ai/leaderboards/models) (higher is better; the top model scored about 65; 50+ is ★★★★★, then one star less per 10 points). The **Rating** column repeats it for the chosen model, with the reasoning effort it was measured at. "no rating" means the model is not on the current index (most older models). It is a general score, not a test of continuity checking. Scores were read on 13 Nov 2026 and live in `api/sagaloom/model_ratings.json` |
 | **Settings** | Developer settings such as the input guard and the monthly budget, 0 to 1000 US$ per account per month. Only the admin can change them |
 
 ---
+
+## When a model call fails
+
+The full reference, with every cause, the exact messages, the allowlist checks and how to recover, is in [When a model is missing or unsupported](2026-11-13-1524-model-failures.md).
+
+Every AI step goes through OpenRouter, each model pinned to one provider. Sagaloom does not switch to another model on its own. When a call fails, the message names the step, the model, the cause and what to do:
+
+| Cause | Example message | Retry helps? | What to do |
+| --- | --- | --- | --- |
+| The model was removed, or its provider stopped serving it | "The chat model (openai/gpt-x) is no longer available on OpenRouter from its provider, so I couldn't reply." | No | The admin picks another model in Studio → Models and providers |
+| The API key may not use that model (an allowlist on the key) | "OpenRouter refused the contradiction judge's model (…): this API key is not allowed to use it…" | No | The admin picks an allowed model |
+| The OpenRouter account is out of credit | "The OpenRouter account is out of credit, so nothing was imported. Add credit at openrouter.ai, then try again." | After adding credit | Add credit at openrouter.ai |
+| The key is wrong or missing | "OpenRouter did not accept the API key…" | No | The admin checks `OPENROUTER_API_KEY` in `api/.env` |
+| Too many requests | "OpenRouter is limiting requests to the chat model right now…" | Yes, after a moment | Wait, then send again |
+| The provider had an error, took too long, or the internet is down | "…'s provider had an error…", "…took too long to answer…", "Sagaloom could not reach OpenRouter…" | Yes | Try again in a moment |
+
+Where you see it:
+
+- **Chat:** in red under the conversation, in place of a reply.
+- **Input guard:** as the guard's notice. The message was not acted on. The guard and the router share one model, set by `GUARD_MODEL` in `api/.env` (not in the Studio dropdown); the admin can also switch the guard off in Studio → Guardrails.
+- **Approval card:** in the check line. The check could not run, but you can still decide.
+- **Import:** as the import's error. Nothing was imported.
+- **Router:** the turn carries on without a mode.
+- **Under the hood** and **Studio → Guardrails:** the failed call shows "Call failed:" with the cause and OpenRouter's own words (for example `gone 404: No endpoints found for …`). A failed call costs nothing.
+
+An error that is not about a model keeps the plain wording ("Something went wrong…").
 
 ## Course notes: the violet pills
 

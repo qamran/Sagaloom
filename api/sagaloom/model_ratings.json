@@ -1,0 +1,63 @@
+{
+ "source": "Artificial Analysis Intelligence Index",
+ "url": "https://artificialanalysis.ai/leaderboards/models",
+ "retrieved": "2026-11-13",
+ "note": "Higher is better; the top model on the index scored about 65. Each model's medium reasoning-effort score is used, else high, else its only listed score (Sagaloom sets no reasoning effort). Models not on the current index have no rating.",
+ "ratings": {
+  "anthropic/claude-haiku-5.5": {
+   "score": 24.6,
+   "variant": "medium",
+   "leaderboard_name": "Claude Haiku 5.5 (Medium)"
+  },
+  "anthropic/claude-sonnet-5.5": {
+   "score": 30.8,
+   "variant": "medium",
+   "leaderboard_name": "Claude Sonnet 5.5 (Medium, Default Fallback)"
+  },
+  "deepseek/deepseek-v4.1-flash": {
+   "score": 28.6,
+   "variant": "high",
+   "leaderboard_name": "DeepSeek V4.1 Flash 1017 (High)"
+  },
+  "deepseek/deepseek-v4-pro": {
+   "score": 23.1,
+   "variant": "max",
+   "leaderboard_name": "DeepSeek V4 Pro 0813 (Max)"
+  },
+  "google/gemini-3.8-flash": {
+   "score": 30.1,
+   "variant": "medium",
+   "leaderboard_name": "Gemini 3.8 Flash (Medium)"
+  },
+  "google/gemini-3.5-flash-lite": {
+   "score": 11.7,
+   "variant": null,
+   "leaderboard_name": "Gemini 3.5 Flash-Lite"
+  },
+  "google/gemma-4-31b-it": {
+   "score": 4.4,
+   "variant": "reasoning",
+   "leaderboard_name": "Gemma 4 31B (Reasoning)"
+  },
+  "mistralai/mistral-large-4-0": {
+   "score": 23.1,
+   "variant": "medium",
+   "leaderboard_name": "Mistral Large 4 (Medium)"
+  },
+  "openai/gpt-6-luna": {
+   "score": 18.5,
+   "variant": "medium",
+   "leaderboard_name": "GPT-6 Luna (Medium)"
+  },
+  "openai/gpt-6.1-sol": {
+   "score": 46.3,
+   "variant": "medium",
+   "leaderboard_name": "GPT-6.1 Sol (Medium)"
+  },
+  "openai/gpt-6.1-terra": {
+   "score": 38.2,
+   "variant": "medium",
+   "leaderboard_name": "GPT-6.1 Terra (Medium)"
+  }
+ }
+}

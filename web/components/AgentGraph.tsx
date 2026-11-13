@@ -4,12 +4,26 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getLastRun, getThreads } from "@/lib/api";
+import { hasMessages } from "@/lib/dashboard";
 import { highlightMermaid } from "@/lib/mermaid";
+import { ago } from "@/lib/time";
+import type { ThreadSummary } from "@/lib/types";
+import { useWorld } from "@/lib/world";
+
+/** "How many moons does Velmar have? · chat · 21 min ago": what a person recognises, not the id. */
+function threadLabel(t: ThreadSummary): string {
+  return [t.title ?? "Untitled chat", t.kind, ago(t.created_at)].filter(Boolean).join(" · ");
+}
 
 /** The compiled graph as a diagram, with the nodes of a thread's last run highlighted (R20.4). */
 export function AgentGraph({ mermaid }: { mermaid: string }) {
   const wanted = useSearchParams().get("thread");
-  const threads = useQuery({ queryKey: ["threads"], queryFn: getThreads });
+  const { world } = useWorld();
+  const all = useQuery({ queryKey: ["threads"], queryFn: getThreads });
+  // Only the world selected in the header, as on the rest of Studio, and only threads that ran:
+  // an empty chat has no run to draw.
+  const list = all.data?.filter((t) => t.world_id === world?.id && (t.kind !== "chat" || hasMessages(t)));
+  const threads = { data: world ? list : undefined };
   const [picked, setPicked] = useState<string | null>(null);
   const ids = threads.data?.map((t) => t.thread_id) ?? [];
   const first = ids[0] ?? null;
@@ -57,10 +71,10 @@ export function AgentGraph({ mermaid }: { mermaid: string }) {
           disabled={!threads.data?.length}
           className="rounded-md border border-border bg-panel px-2 py-1 font-mono text-xs text-foreground"
         >
-          {!threads.data?.length && <option value="">No threads yet</option>}
+          {!threads.data?.length && <option value="">No threads in this world yet</option>}
           {threads.data?.map((t) => (
-            <option key={t.thread_id} value={t.thread_id}>
-              {t.thread_id}
+            <option key={t.thread_id} value={t.thread_id} title={t.thread_id}>
+              {threadLabel(t)}
             </option>
           ))}
         </select>

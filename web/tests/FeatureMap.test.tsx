@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FeatureMap } from "@/components/FeatureMap";
 import { UsagePanel, usageLabel } from "@/components/UsagePanel";
-import { ProvidersPanel } from "@/components/ProvidersPanel";
+import { ProvidersPanel, ratingStars } from "@/components/ProvidersPanel";
 import { putModel } from "@/lib/api";
 import type { FeatureCardData, ModelsPayload, ProviderStatus } from "@/lib/types";
 
@@ -59,8 +59,13 @@ const models: ModelsPayload = {
   },
   allowed: [
     { id: "openai/gpt-6-luna", price_in: 0.1, price_out: 0.5 },
-    { id: "openai/gpt-6.1-terra", price_in: 1.5, price_out: 9 },
+    { id: "openai/gpt-6.1-terra", price_in: 1.5, price_out: 9,
+      rating: { score: 38.2, variant: "medium", leaderboard_name: "GPT-6.1 Terra (Medium)" } },
   ],
+  ratings_source: {
+    source: "Artificial Analysis Intelligence Index", url: "https://artificialanalysis.ai/leaderboards/models",
+    retrieved: "2026-11-13", note: "Higher is better.",
+  },
 };
 const providers: ProviderStatus[] = [
   { name: "OpenRouter", key_set: true, role: "all real calls, provider pinned", notice: null,
@@ -128,3 +133,34 @@ describe("UsagePanel", () => {
     expect(screen.getByText("openai/gpt-6-luna")).toBeInTheDocument(); // unknown role: bare model id
   });
 });
+
+describe("ProvidersPanel ratings", () => {
+  it("shows each option's price and rating, and the selected model's rating with its source", () => {
+    render(<ProvidersPanel providers={providers} models={models} />);
+    const select = screen.getByLabelText("Model for the chat agent") as HTMLSelectElement;
+    expect([...select.options].map((o) => o.text).slice(0, 2)).toEqual([
+      "openai/gpt-6-luna · $0.10 / $0.50 · no rating",
+      "openai/gpt-6.1-terra · $1.50 / $9.00 · ★★★☆☆ 38.2",
+    ]);
+    // The rating column: gpt-6-luna has none in this fixture.
+    expect(screen.getAllByText("no rating").length).toBeGreaterThan(0);
+    const src = screen.getByRole("link", { name: "Artificial Analysis Intelligence Index" });
+    expect(src).toHaveAttribute("href", "https://artificialanalysis.ai/leaderboards/models");
+    expect(screen.getByText(/retrieved 13 Nov 2026/)).toBeInTheDocument();
+  });
+
+  it("names the rated model's score and variant in the rating column", async () => {
+    vi.mocked(putModel).mockResolvedValue({ ...models, mapping: { ...models.mapping, agent: "openai/gpt-6.1-terra" } });
+    render(<ProvidersPanel providers={providers} models={models} />);
+    await userEvent.selectOptions(screen.getByLabelText("Model for the chat agent"), "openai/gpt-6.1-terra");
+    expect(await screen.findByText("★★★☆☆ 38.2")).toBeInTheDocument();
+    expect(screen.getByText("medium effort")).toBeInTheDocument();
+  });
+
+  it.each([
+    [65, "★★★★★"], [50, "★★★★★"], [46.3, "★★★★☆"], [30, "★★★☆☆"], [23.1, "★★☆☆☆"], [4.4, "★☆☆☆☆"],
+  ])("gives %s points %s", (score, expected) => {
+    expect(ratingStars(score)).toBe(expected);
+  });
+});
+

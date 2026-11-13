@@ -417,3 +417,19 @@ describe("UnderTheHood", () => {
     expect(screen.getByRole("region", { name: "Response" })).toHaveTextContent("The crypt");
   });
 });
+
+describe("a failed call", () => {
+  it("shows the cause in the Response tab instead of an empty reply", () => {
+    const call = {
+      ...turn.calls[0],
+      response: {
+        content: "", tool_calls: [], prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, latency_ms: 120,
+        error: "gone 404: No endpoints found for openai/gpt-x.",
+      },
+    };
+    render(<ResponseTab call={call} hidden={false} />);
+    const res = screen.getByRole("region", { name: "Response" });
+    expect(within(res).getByText("Call failed: gone 404: No endpoints found for openai/gpt-x.")).toBeInTheDocument();
+    expect(within(res).queryByText("(no text)")).toBeNull();
+  });
+});

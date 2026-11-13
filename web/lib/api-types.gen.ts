@@ -14,7 +14,7 @@ export interface paths {
         /**
          * Guard Log
          * @description Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,
-         *     or everyone's for the admin with `scope=all`.
+         *     or everyone's for the admin with `scope=all`; only one world's with `world_id`.
          */
         get: operations["guard_log_api_guard_log_get"];
         put?: never;
@@ -129,8 +129,9 @@ export interface paths {
         };
         /**
          * Studio
-         * @description Usage and the Feature map's cost line are the caller's own; the admin may ask for
-         *     `scope=all` (every user's calls, ownerless ones too).
+         * @description Usage and the Feature map's cost line are the caller's own, and only `world_id`'s when it
+         *     is given; the admin may ask for `scope=all` (every user's calls, ownerless ones too, in every
+         *     world).
          */
         get: operations["studio_api_studio_get"];
         put?: never;
@@ -793,6 +794,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 scope?: "mine" | "all";
+                world_id?: string | null;
             };
             header?: {
                 "x-sagaloom-secret"?: string | null;
@@ -1089,6 +1091,7 @@ export interface operations {
         parameters: {
             query?: {
                 scope?: "mine" | "all";
+                world_id?: string | null;
             };
             header?: {
                 "x-sagaloom-secret"?: string | null;

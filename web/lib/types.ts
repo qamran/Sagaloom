@@ -251,15 +251,32 @@ export interface StudioData {
 
 export type ModelRole = "agent" | "judge" | "extractor" | "guard";
 
+/** A public benchmark score (api/sagaloom/model_ratings.json); `variant` is the reasoning effort it was measured at. */
+export interface ModelRating {
+  score: number;
+  variant: string | null;
+  leaderboard_name: string;
+}
+
 export interface AllowedModel {
   id: string;
   price_in: number;
   price_out: number;
+  /** None when the leaderboard has no score for the model. */
+  rating?: ModelRating | null;
+}
+
+export interface RatingsSource {
+  source: string | null;
+  url: string | null;
+  retrieved: string | null;
+  note: string | null;
 }
 
 export interface ModelsPayload {
   mapping: Record<ModelRole, string>;
   allowed: AllowedModel[];
+  ratings_source?: RatingsSource;
 }
 
 export interface PromptMessage {
@@ -276,6 +293,8 @@ export interface LlmResponse {
   completion_tokens: number;
   cost_usd: number;
   latency_ms: number;
+  /** A failed call's cause (kind, status and OpenRouter's words); the call cost nothing. */
+  error?: string;
 }
 
 /** One prompt-log record (api/sagaloom/promptlog.py). The API types `request` and `response` as plain dicts, so their shape is narrowed here. */

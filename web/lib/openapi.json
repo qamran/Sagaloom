@@ -1062,7 +1062,7 @@
   "paths": {
     "/api/guard/log": {
       "get": {
-        "description": "Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,\nor everyone's for the admin with `scope=all`.",
+        "description": "Recent input-guard verdicts, read from the prompt log (role `guard`): the caller's own,\nor everyone's for the admin with `scope=all`; only one world's with `world_id`.",
         "operationId": "guard_log_api_guard_log_get",
         "parameters": [
           {
@@ -1087,6 +1087,22 @@
               ],
               "title": "Scope",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "world_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "World Id"
             }
           },
           {
@@ -1518,7 +1534,7 @@
     },
     "/api/studio": {
       "get": {
-        "description": "Usage and the Feature map's cost line are the caller's own; the admin may ask for\n`scope=all` (every user's calls, ownerless ones too).",
+        "description": "Usage and the Feature map's cost line are the caller's own, and only `world_id`'s when it\nis given; the admin may ask for `scope=all` (every user's calls, ownerless ones too, in every\nworld).",
         "operationId": "studio_api_studio_get",
         "parameters": [
           {
@@ -1533,6 +1549,22 @@
               ],
               "title": "Scope",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "world_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "World Id"
             }
           },
           {
