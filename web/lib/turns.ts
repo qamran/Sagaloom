@@ -7,6 +7,9 @@ export interface LlmCall {
   provider: string;
   model: string;
   role?: string | null;
+  /** On a fallback model's call (R11.G11): the model it replaced, and why. */
+  fallback_for?: string | null;
+  fallback_reason?: string | null;
   params: Record<string, unknown>;
   messages: PromptMessage[];
   tools: unknown[];
@@ -46,6 +49,8 @@ export function callFromRecord(r: PromptRecord): LlmCall {
     provider: r.provider,
     model: r.model,
     role: r.role ?? null,
+    fallback_for: r.fallback_for ?? null,
+    fallback_reason: r.fallback_reason ?? null,
     params: r.params ?? {},
     messages: r.request?.messages ?? [],
     tools: r.request?.tools ?? [],
@@ -112,6 +117,8 @@ export function viewFromEvents(t: TurnEvents): TurnView {
           provider: str(d.provider, "openrouter"),
           model: str(d.model, "unknown"),
           role: typeof d.role === "string" ? d.role : null,
+          fallback_for: typeof d.fallback_for === "string" ? d.fallback_for : null,
+          fallback_reason: typeof d.fallback_reason === "string" ? d.fallback_reason : null,
           params: (d.params as Record<string, unknown>) ?? {},
           messages: list<PromptMessage>(d.messages),
           tools: list<unknown>(d.tools),

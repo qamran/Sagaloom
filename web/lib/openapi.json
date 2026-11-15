@@ -618,6 +618,31 @@
         "title": "Fact",
         "type": "object"
       },
+      "FallbackChoice": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "model"
+        ],
+        "title": "FallbackChoice",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -843,6 +868,28 @@
       },
       "PromptRecord": {
         "properties": {
+          "fallback_for": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback For"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1530,6 +1577,65 @@
           }
         },
         "summary": "Put Models"
+      }
+    },
+    "/api/settings/models/fallback": {
+      "put": {
+        "description": "Choose a role's fallback model (R11.G11), or none.",
+        "operationId": "put_fallback_api_settings_models_fallback_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-sagaloom-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sagaloom-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FallbackChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Fallback Api Settings Models Fallback Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Fallback"
       }
     },
     "/api/studio": {

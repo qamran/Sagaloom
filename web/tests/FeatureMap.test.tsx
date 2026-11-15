@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { FeatureMap } from "@/components/FeatureMap";
 import { UsagePanel, usageLabel } from "@/components/UsagePanel";
 import { ProvidersPanel, ratingStars } from "@/components/ProvidersPanel";
-import { putModel } from "@/lib/api";
+import { putFallback, putModel } from "@/lib/api";
 import type { FeatureCardData, ModelsPayload, ProviderStatus } from "@/lib/types";
 
-vi.mock("@/lib/api", () => ({ putModel: vi.fn() }));
+vi.mock("@/lib/api", () => ({ putModel: vi.fn(), putFallback: vi.fn() }));
 
 const cards: FeatureCardData[] = [
   { id: "agentic_rag", title: "Agentic RAG", brief_ref: "Hard 1", req_ids: ["R7", "R11.1"], status: "live",
@@ -164,3 +164,39 @@ describe("ProvidersPanel ratings", () => {
   });
 });
 
+
+describe("ProvidersPanel fallback models", () => {
+  const withFallbacks: ModelsPayload = {
+    ...models,
+    fallbacks: { agent: "openai/gpt-6.1-terra", judge: null, extractor: "openai/gpt-6.1-terra", guard: "openai/gpt-6-luna" },
+  };
+
+  it("shows each role's fallback with its price and rating, and None", () => {
+    render(<ProvidersPanel providers={providers} models={withFallbacks} />);
+    const agent = screen.getByRole("combobox", { name: "Fallback model for the chat agent" });
+    expect(agent).toHaveValue("openai/gpt-6.1-terra");
+    expect(within(agent).getByRole("option", { name: "None: fail and say why" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Fallback model for the contradiction judge" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Fallback model for the input guard and router" })).toBeInTheDocument();
+    expect(screen.getAllByText("1.50 · 9.00").length).toBeGreaterThanOrEqual(2);
+    // The guard's fallback is its own model: it can never help.
+    expect(screen.getByText(/Same as the role.s model, so it never helps/)).toBeInTheDocument();
+  });
+
+  it("saves a fallback, and None as null", async () => {
+    vi.mocked(putFallback).mockResolvedValue({ ...withFallbacks, fallbacks: { ...withFallbacks.fallbacks!, judge: "openai/gpt-6-luna" } });
+    render(<ProvidersPanel providers={providers} models={withFallbacks} />);
+    const judge = screen.getByRole("combobox", { name: "Fallback model for the contradiction judge" });
+    await userEvent.selectOptions(judge, "openai/gpt-6-luna");
+    expect(putFallback).toHaveBeenCalledWith("judge", "openai/gpt-6-luna");
+    expect(judge).toHaveValue("openai/gpt-6-luna");
+    vi.mocked(putFallback).mockResolvedValue({ ...withFallbacks, fallbacks: { ...withFallbacks.fallbacks!, agent: null } });
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Fallback model for the chat agent" }), "");
+    expect(putFallback).toHaveBeenLastCalledWith("agent", null);
+  });
+
+  it("is read-only for a non-admin", () => {
+    render(<ProvidersPanel providers={providers} models={withFallbacks} readOnly />);
+    expect(screen.getByRole("combobox", { name: "Fallback model for the chat agent" })).toBeDisabled();
+  });
+});

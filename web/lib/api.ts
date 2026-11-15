@@ -175,6 +175,8 @@ export const putMe = (lastWorldId: string | null) =>
 export const getModels = () => request<ModelsPayload>("/settings/models");
 export const putModel = (role: ModelRole, model: string) =>
   request<ModelsPayload>("/settings/models", { method: "PUT", body: JSON.stringify({ role, model }) });
+export const putFallback = (role: ModelRole, model: string | null) =>
+  request<ModelsPayload>("/settings/models/fallback", { method: "PUT", body: JSON.stringify({ role, model }) });
 export const getLlmLog = (threadId: string) =>
   request<PromptRecord[]>(`/threads/${encodeURIComponent(threadId)}/llm-log`);
 export const getSettings = () => request<SettingsPayload>("/settings");

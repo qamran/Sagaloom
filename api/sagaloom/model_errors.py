@@ -1,6 +1,7 @@
 """What went wrong with a model call, in words a user can act on.
 
-Every model call goes through OpenRouter, pinned to one provider with no fallbacks. When a call
+Every model call goes through OpenRouter, pinned to one provider with OpenRouter's fallbacks
+off (a role's named fallback model is a separate, visible step: `sagaloom.fallback`). When a call
 fails, the step that made it (guard, router, chat agent, contradiction judge, fact extractor)
 used to say only "unavailable, try again", which is wrong advice when the model was removed, the
 key may not use it, or the account is out of credit. `describe` names the step, the model, the
@@ -36,6 +37,9 @@ CHOOSE_ANOTHER: dict[str, str] = {
 _GONE_WORDS = ("not a valid model", "no endpoints", "model not found", "does not exist", "is not available",
                "no allowed providers", "deprecated")
 DETAIL_CHARS = 160
+# Set by `sagaloom.fallback.FallbackModel` on the primary's error when the fallback failed too:
+# (fallback model id, its failure line).
+FALLBACK_FAILURE = "sagaloom_fallback_failure"
 
 
 class ModelFailure(BaseModel):
@@ -144,6 +148,9 @@ def describe(exc: BaseException, role: Role, consequence: str, model: str | None
         "network": f"Sagaloom could not reach OpenRouter, {consequence}. Check the internet connection, then try again.",
         "down": f"{who}'s provider had an error, {consequence}. Try again in a moment.",
     }[failure.kind]
+    tried = getattr(original, FALLBACK_FAILURE, None)
+    if tried:
+        text += f" The fallback model ({tried[0]}) failed too: {tried[1]}."
     return text, failure.retryable
 
 

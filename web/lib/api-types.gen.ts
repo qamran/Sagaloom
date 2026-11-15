@@ -120,6 +120,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/models/fallback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Fallback
+         * @description Choose a role's fallback model (R11.G11), or none.
+         */
+        put: operations["put_fallback_api_settings_models_fallback_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/studio": {
         parameters: {
             query?: never;
@@ -616,6 +636,13 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** FallbackChoice */
+        FallbackChoice: {
+            /** Model */
+            model: string | null;
+            /** Role */
+            role: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -698,6 +725,10 @@ export interface components {
         };
         /** PromptRecord */
         PromptRecord: {
+            /** Fallback For */
+            fallback_for?: string | null;
+            /** Fallback Reason */
+            fallback_reason?: string | null;
             /** Id */
             id: string;
             /** Model */
@@ -1062,6 +1093,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ModelChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_fallback_api_settings_models_fallback_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-sagaloom-secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FallbackChoice"];
             };
         };
         responses: {

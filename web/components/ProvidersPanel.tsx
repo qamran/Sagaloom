@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AdminOnlyNote } from "@/components/AdminOnlyNote";
-import { putModel } from "@/lib/api";
+import { putFallback, putModel } from "@/lib/api";
 import type { AllowedModel, ModelRating, ModelRole, ModelsPayload, ProviderStatus } from "@/lib/types";
 
 const ROLES: { role: ModelRole; label: string; aria: string }[] = [
@@ -10,6 +10,15 @@ const ROLES: { role: ModelRole; label: string; aria: string }[] = [
   { role: "judge", label: "Contradiction judge", aria: "Model for the contradiction judge" },
   { role: "extractor", label: "Fact extractor", aria: "Model for the fact extractor" },
 ];
+
+/** Every role that can have a fallback (R11.G11). The router follows the input guard's. */
+const FALLBACK_ROLES: { role: ModelRole; label: string }[] = [
+  { role: "agent", label: "Chat agent" },
+  { role: "judge", label: "Contradiction judge" },
+  { role: "extractor", label: "Fact extractor" },
+  { role: "guard", label: "Input guard and router" },
+];
+const NO_FALLBACK = "";
 
 const GEMINI_OPTION_ID = "gemini-3.5-flash-lite";
 const GEMINI_OPTION_LABEL = "gemini-3.5-flash-lite (Gemini, demo only)";
@@ -57,8 +66,9 @@ export function ProvidersPanel({
   readOnly?: boolean;
 }) {
   const [mapping, setMapping] = useState(models.mapping);
+  const [fallbacks, setFallbacks] = useState(models.fallbacks);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState<ModelRole | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
   const price = (id: string) => models.allowed.find((m) => m.id === id);
   const openrouter = providers.find((p) => p.name === "OpenRouter");
   const gemini = providers.find((p) => p.name === "Gemini");
@@ -72,6 +82,19 @@ export function ProvidersPanel({
       setMapping(next.mapping);
     } catch {
       setError("That model was not saved. Pick one from the list and try again.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function changeFallback(role: ModelRole, model: string) {
+    setError(null);
+    setSaving(`fallback-${role}`);
+    try {
+      const next = await putFallback(role, model === NO_FALLBACK ? null : model);
+      setFallbacks(next.fallbacks);
+    } catch {
+      setError("That fallback was not saved. Pick one from the list and try again.");
     } finally {
       setSaving(null);
     }
@@ -142,6 +165,56 @@ export function ProvidersPanel({
           </>
         )}
       </div>
+      {fallbacks && (
+        <>
+          <h3 className="m-0 mt-1 text-[15px] font-semibold">Fallback models</h3>
+          <p className="m-0 text-xs text-muted-foreground">
+            If a role&rsquo;s model is withdrawn from OpenRouter, refused for this key, or its provider is failing, the
+            same request goes once to its fallback. The chat shows a note under that turn, and Under the hood keeps
+            both calls. Out of credit, a bad key, rate limits and timeouts never switch models: the fallback would fail
+            the same way.
+          </p>
+          <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,0.7fr)_minmax(0,0.7fr)] overflow-hidden rounded-lg border border-border text-[13px]">
+            <div className={HEAD}>Role</div>
+            <div className={HEAD}>Fallback</div>
+            <div className={HEAD}>$ / 1M in · out</div>
+            <div className={HEAD}>Rating</div>
+            {FALLBACK_ROLES.map(({ role, label }) => {
+              const chosen = fallbacks[role] ?? NO_FALLBACK;
+              const p = chosen ? price(chosen) : undefined;
+              const same = chosen !== NO_FALLBACK && chosen === mapping[role];
+              return (
+                <div key={role} className="contents">
+                  <div className={CELL}>{label}</div>
+                  <div className="border-t border-border px-2.5 py-1">
+                    <select
+                      aria-label={`Fallback model for the ${label.toLowerCase()}`}
+                      value={chosen}
+                      disabled={readOnly || saving === `fallback-${role}`}
+                      onChange={(e) => void changeFallback(role, e.target.value)}
+                      className="min-h-9 w-full rounded-md border border-border-strong bg-background px-1.5 py-1 font-mono text-xs text-foreground"
+                    >
+                      <option value={NO_FALLBACK}>None: fail and say why</option>
+                      {models.allowed.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {optionText(m)}
+                        </option>
+                      ))}
+                    </select>
+                    {same && (
+                      <span className="mt-1 block text-[11px] text-conflict">
+                        Same as the role&rsquo;s model, so it never helps. Pick another.
+                      </span>
+                    )}
+                  </div>
+                  <div className={CELL}>{p ? `${fmt(p.price_in)} · ${fmt(p.price_out)}` : "–"}</div>
+                  <div className={CELL}>{p ? ratingText(p.rating) : "–"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
       {readOnly && <AdminOnlyNote />}
       {error && (
         <p role="alert" className="m-0 text-xs text-conflict">

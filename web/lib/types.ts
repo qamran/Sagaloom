@@ -145,11 +145,25 @@ export interface RoleUsage {
   cost_usd: number;
 }
 
-/** What one turn cost, in total and by role (M4). */
+/** A call in a turn that went to a role's fallback model (R11.G11). */
+export interface FallbackUse {
+  role: string | null;
+  /** The fallback model that was called. */
+  model: string;
+  /** The role's own model, which failed. */
+  replaced: string;
+  /** That model's failure, e.g. "gone 404: …". */
+  reason: string;
+  /** Whether the fallback answered. */
+  ok: boolean;
+}
+
+/** What one turn cost, in total and by role (M4), and the calls that went to a fallback model. */
 export interface TurnUsage {
   turn_id: string;
   usage: { prompt_tokens: number; completion_tokens: number; cost_usd: number };
   by_role: RoleUsage[];
+  fallbacks?: FallbackUse[];
 }
 
 export interface PendingInterrupt {
@@ -275,6 +289,8 @@ export interface RatingsSource {
 
 export interface ModelsPayload {
   mapping: Record<ModelRole, string>;
+  /** Each role's fallback model (R11.G11); null for none. Older API versions omit it. */
+  fallbacks?: Record<ModelRole, string | null>;
   allowed: AllowedModel[];
   ratings_source?: RatingsSource;
 }
@@ -342,6 +358,8 @@ export interface GuardLogRow {
   reason: string;
   /** The author's message that was checked, shortened (older API versions omit it). */
   message?: string;
+  /** Set when a fallback model gave this verdict: the guard model it replaced. */
+  fallback_for?: string | null;
 }
 
 /** GET /api/threads/{id}/runs/last: the nodes the newest run went through. */

@@ -10,9 +10,10 @@ User accounts (Medium 4) were built in M5 and pass every check:
 - a real Google sign-up through Clerk. It created the admin account, and that account took over the existing Velmar;
 - the Playwright exit demo ([`web/e2e/exit-demo.spec.ts`](../web/e2e/exit-demo.spec.ts)), which signs in as a Clerk test user and walks the whole product with real model calls: passed on 2026-11-13 in 6.2 minutes.
 
-On 2026-11-15 two more checks were made:
+On 2026-11-15 these were added and checked:
 - **Hard 2:** LangSmith tracing was switched on with a real (EU-region) account; one chat turn with an approval arrived as two runs under one thread.
 - **Setup:** the README's setup guide was followed step by step on a fresh clone in an empty folder. It worked; four out-of-date lines were fixed (commit `01ed5c77`).
+- **Model fallback:** each role now has a named fallback model, checked with fake errors in tests, against the real OpenRouter, end to end in the app, and with the quality evals (see Req 4).
 
 All file links below are relative to this document. Links into `internal docs/` work only in a local checkout, because that folder is not committed.
 
@@ -91,7 +92,7 @@ Every item from the brief, in brief order, with the brief's own wording ([`135.m
 | **Medium 4.** Add user authentication and personalisation. | Done | Clerk sign-in, own worlds per account, monthly AI budget, public home page. Tests, evals, a real Google sign-up and the Playwright exit demo (2026-11-13) passed |
 | **Medium 5.** Implement a feedback loop where users can rate the responses, and use this feedback to improve the agent's performance. | Missing | No rating buttons |
 | **Medium 6.** Implement 2 extra function tools (5 in total). Have a UI for the user to either enable or disable these function tools. Develop a plugin system that allows users to add or remove functionalities from the chatbot dynamically. | Done | 7 tools, 4 switchable in Studio → Tools |
-| **Medium 7.** Implement multi-model support (OpenAI, Anthropic, etc.). | Done | OpenAI / Anthropic / Google models via OpenRouter, per role |
+| **Medium 7.** Implement multi-model support (OpenAI, Anthropic, etc.). | Done | OpenAI / Anthropic / Google models via OpenRouter, per role, each with a named fallback model from another provider |
 | **Medium 8.** Add at least one security guard to your app to prevent misuse. Design for usability — keep the developer settings (where you can select the model and system prompts) separate from the user experience, as your user may not be that familiar with LLMs. | Done | Input guard node, untrusted-data wrapping, rate limits; Studio page |
 | **Hard 1.** Agentic RAG: Think of a way to add RAG functionality to the LangChain/LangGraph application and implement it. | Done | Agent decides when to call `search_canon` over Chroma |
 | **Hard 2.** Add one of these LLM observability tools: LangSmith, Langfuse, or others. | Done | Env-var tracing + in-app "Under the hood" prompt log. Verified 2026-11-15 with a real (EU-region) LangSmith account: one chat turn with an approval arrived as two runs under one thread |
@@ -158,6 +159,7 @@ All five are met. Each block below says what was built, where it lives, and how 
   - a Chroma vector store;
   - OpenRouter for the models.
 - **Errors fail closed.** If the guard errors, the message is blocked. If the contradiction judge errors, the card says "check could not run", never "no conflicts".
+- **Model availability (since 2026-11-15).** A failed model call says which step, which model, why, and what to do. Each role also has a named fallback model (default `anthropic/claude-haiku-5.5`: another provider, the same price). It is tried once, only when the model is withdrawn, blocked or its provider is failing, and the turn says so. Measured with the same evals: the judge and router pass on it; as chat agent it keeps every safety eval but proposes a stated fact in only 6 of 10 runs. Details: [`2026-11-13-1524-model-failures.md`](2026-11-13-1524-model-failures.md#the-fallback-model).
 - **Request safety:** a 1 MB body cap, per-client rate limits, 409 when two turns race, and version checks before a write.
 - **Since M5:** every request carries a Clerk token, which the API verifies itself. Any id belonging to another account answers 404.
 - **Where:**
@@ -324,6 +326,7 @@ These features are not asked for by any brief item or criterion. They come from 
 | Entity chips and `@` mentions | Entry names in replies become coloured chips; `@` in the composer suggests entries | Chat |
 | Provenance and trust | Entries record their source (chat, reference, paste, fan wiki); imported or referenced text is marked untrusted forever | Entry pages and approval card source lines ([`api/sagaloom/provenance.py`](../api/sagaloom/provenance.py)) |
 | Durable approvals | A pending card survives a page refresh and an API restart | Refresh while a card is pending |
+| Fallback model per role | When a role's model is withdrawn, blocked or its provider fails, the same request goes once to a named fallback (another provider, priced and rated in Studio); the turn shows a note naming both models. Measured with the evals | Studio → Models and providers → Fallback models ([`api/sagaloom/fallback.py`](../api/sagaloom/fallback.py)) |
 | Public home page | Signed-out visitors see what Sagaloom does and a read-only preview of a real approval card, with no sign-up needed | http://localhost:3000 while signed out ([`web/components/home/`](../web/components/home/)) |
 
 ## How it fits together

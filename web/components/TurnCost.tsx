@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { stepsFromRoles } from "@/lib/steps";
+import { stepName, stepOf, stepsFromRoles } from "@/lib/steps";
 import type { TurnUsage } from "@/lib/types";
 
 const n = (v: number) => v.toLocaleString("en-US");
@@ -18,9 +18,25 @@ export function TurnCost({ turn }: { turn: TurnUsage }) {
   if (steps.length === 0) return null;
   const tokens = turn.usage.prompt_tokens + turn.usage.completion_tokens;
   const spent = steps.reduce((sum, s) => sum + s.cost_usd, 0);
+  // One note per step and model pair: a retried call can fall back more than once.
+  const fallbacks = [...new Map((turn.fallbacks ?? []).map((f) => [`${f.role}|${f.replaced}|${f.model}|${f.ok}`, f])).values()];
 
   return (
     <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+      {fallbacks.map((f) => (
+        <p key={`${f.role}|${f.replaced}|${f.model}|${f.ok}`} role="note" className="m-0 pl-0.5 text-event">
+          {stepName(stepOf(f.role))}: {f.replaced} failed ({f.reason}),{" "}
+          {f.ok ? (
+            <>
+              so the fallback model <span className="font-mono">{f.model}</span> answered.
+            </>
+          ) : (
+            <>
+              and the fallback model <span className="font-mono">{f.model}</span> failed too.
+            </>
+          )}
+        </p>
+      ))}
       <button
         type="button"
         aria-expanded={open}

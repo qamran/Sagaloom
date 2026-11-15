@@ -20,6 +20,7 @@ from stubs import StubLLM  # noqa: F401  (the one structured-output stub, as `fa
 from stubs import TOKEN_A, TOKEN_B, USER_A, USER_B, FakeDirectory, FakeVerifier, bearer  # noqa: F401
 from sagaloom.check.contradiction import JudgeOutput
 from sagaloom.config import Settings
+from sagaloom.fallback import FallbackModel
 from sagaloom.graph.build import build_graph
 from sagaloom.guard import GuardVerdict
 from sagaloom.importing.extract import ExtractionOutput
@@ -37,6 +38,8 @@ KEY = "sk-or-TEST-KEY-999"
 HEADERS = {"X-Sagaloom-Secret": SECRET}  # the shared secret only
 W = "w1"
 ADMIN_A = f"{USER_A}@example.test"  # `ADMIN_EMAIL` that makes the default user the admin
+FALLBACK_PRIMARY = "openai/gpt-x"  # the agent's model in `make_env(agent_fallback=...)`
+FALLBACK_MODEL = "anthropic/claude-fb"  # and its fallback
 
 
 class ScriptedChat(BaseChatModel):
@@ -214,7 +217,7 @@ class Env:
 def make_env(store, tmp_path, aclose_later):
     def build(
         script=(), judge_reply=None, usage=True, real_judge=False, real_extractor=False, guard_reply=None,
-        guard=None, router=None, extraction=None, wiki=None, admin=False,
+        guard=None, router=None, extraction=None, wiki=None, admin=False, agent_fallback=None,
     ) -> Env:
         # No `ADMIN_EMAIL`: the default users are not the admin, so its "inherit ownerless
         # worlds" cannot hide a missing owner check. `admin=True` makes `user_a` the admin
@@ -235,6 +238,11 @@ def make_env(store, tmp_path, aclose_later):
             "guard": guard or StubLLM(guard_reply or GuardVerdict(verdict="safe", reason="ok")),
             "router": router or StubLLM(RouteDecision(mode="edit")),
         }
+        if agent_fallback is not None:  # the agent's model `FALLBACK_PRIMARY` with a scripted fallback
+            roles["agent"] = FallbackModel(
+                agent, ScriptedChat(script=iter(agent_fallback), usage=usage),
+                primary_id=FALLBACK_PRIMARY, fallback_id=FALLBACK_MODEL,
+            )
         memory = InMemoryStore()  # one Store shared by the graph and the memory routes
         memory_locks = KeyedLocks()  # and one per-world lock, as `_open_runtime` wires them
         graph = build_graph(

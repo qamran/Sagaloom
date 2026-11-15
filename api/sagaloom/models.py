@@ -231,12 +231,24 @@ class RoleUsage(BaseModel):
     cost_usd: float
 
 
+class FallbackUse(BaseModel):
+    """A call in a turn that went to a role's fallback model (R11.G11)."""
+
+    role: str | None
+    model: str  # the fallback model that was called
+    replaced: str  # the role's own model, which failed
+    reason: str  # that model's failure line, e.g. "gone 404: ..."
+    ok: bool  # whether the fallback answered
+
+
 class TurnUsage(BaseModel):
-    """A turn's usage (the PromptLog records sharing its `run_id`), total and by role."""
+    """A turn's usage (the PromptLog records sharing its `run_id`), total and by role, and the
+    calls that went to a fallback model."""
 
     turn_id: str
     usage: Usage
     by_role: list[RoleUsage]
+    fallbacks: list[FallbackUse] = []
 
 
 # Long-term author preferences (R10.2, spec §3.5). Here rather than in `sagaloom.memory` so the

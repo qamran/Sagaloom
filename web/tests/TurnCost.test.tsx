@@ -78,3 +78,21 @@ describe("TurnCost", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("TurnCost fallback notes", () => {
+  it("says which model failed and which fallback answered", () => {
+    const f = { role: "agent", model: "anthropic/claude-haiku-5.5", replaced: "openai/gpt-6-luna", reason: "gone 404: No endpoints found", ok: true };
+    render(<TurnCost turn={{ ...turn, fallbacks: [f, f] }} />);
+    const [note] = screen.getAllByRole("note");
+    expect(note).toHaveTextContent(
+      "Chat: openai/gpt-6-luna failed (gone 404: No endpoints found), so the fallback model anthropic/claude-haiku-5.5 answered.",
+    );
+    expect(screen.getAllByRole("note")).toHaveLength(1); // the same pair twice is one note
+  });
+
+  it("says when the fallback failed too", () => {
+    const f = { role: "judge", model: "anthropic/claude-haiku-5.5", replaced: "openai/gpt-6-luna", reason: "down 502", ok: false };
+    render(<TurnCost turn={{ ...turn, fallbacks: [f] }} />);
+    expect(screen.getByRole("note")).toHaveTextContent("Check: openai/gpt-6-luna failed (down 502), and the fallback model anthropic/claude-haiku-5.5 failed too.");
+  });
+});

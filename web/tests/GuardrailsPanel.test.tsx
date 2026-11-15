@@ -114,6 +114,19 @@ describe("GuardrailsPanel", () => {
     expect(badge.className).not.toContain("undefined");
     expect(badge.className).toContain("text-failed");
   });
+
+  it("says when the fallback model gave the verdict", async () => {
+    vi.mocked(getGuardLog).mockResolvedValue([
+      { thread_id: "t_fb", started_at: "2026-01-01T00:00:03", model: "anthropic/claude-haiku-5.5", verdict: "safe",
+        reason: "fine", message: "Hi there", fallback_for: "openai/gpt-6-luna" },
+    ]);
+    setup();
+    const row = (await screen.findByText("Hi there")).closest("li") as HTMLElement;
+    expect(within(row).getByText("Allowed")).toBeInTheDocument();
+    expect(
+      within(row).getByText("Checked by the fallback model anthropic/claude-haiku-5.5: openai/gpt-6-luna was unavailable."),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("GuardrailsPanel read-only", () => {

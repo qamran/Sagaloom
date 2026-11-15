@@ -19,6 +19,7 @@ from sagaloom.auth import ClerkDirectory, ClerkVerifier, ProfileDirectory, Token
 from sagaloom.config import Settings, load_env_files
 from sagaloom.llm import install_warning_filters
 from sagaloom.locks import KeyedLocks
+from sagaloom.fallback import FallbackModel
 from sagaloom.model_settings import ModelSettings, validate_role_models
 from sagaloom.promptlog import PromptLog
 from sagaloom.settings_store import DevSettingsStore
@@ -87,11 +88,10 @@ def make_model_for(settings: Settings, model_settings: ModelSettings, factory=No
             return make_chat_model(settings, model=model, provider=providers.get(model))
 
     built: dict[tuple[str, str], Any] = {}
+    paired: dict[tuple[str, str, str], FallbackModel] = {}
 
-    def model_for(role: str):
-        # The router uses the guard's current model but keeps its own role (and cache entry), so
-        # its prompt records say `router` (spec 3.4).
-        key = (role, model_settings.get_model_settings()[_ALIAS.get(role, role)])
+    def build(role: str, model: str):
+        key = (role, model)
         if key not in built:
             m = factory(*key)
             try:  # the prompt log reads the role from the model's metadata
@@ -100,6 +100,20 @@ def make_model_for(settings: Settings, model_settings: ModelSettings, factory=No
                 pass
             built[key] = m
         return built[key]
+
+    def model_for(role: str):
+        # The router uses the guard's current model and fallback but keeps its own role (and
+        # cache entry), so its prompt records say `router` (spec 3.4).
+        chosen = _ALIAS.get(role, role)
+        primary = model_settings.get_model_settings()[chosen]
+        fallback = model_settings.get_fallbacks().get(chosen)
+        if not fallback or fallback == primary:
+            return build(role, primary)
+        # A named fallback for a withdrawn, blocked or failing model (R11.G11, sagaloom.fallback).
+        key = (role, primary, fallback)
+        if key not in paired:
+            paired[key] = FallbackModel(build(role, primary), build(role, fallback), primary_id=primary, fallback_id=fallback)
+        return paired[key]
 
     return model_for
 

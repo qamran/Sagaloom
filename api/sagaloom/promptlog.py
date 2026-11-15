@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from sagaloom.config import Settings
 from sagaloom.model_errors import failure_line
-from sagaloom.models import RoleUsage, TurnUsage, Usage
+from sagaloom.models import FallbackUse, RoleUsage, TurnUsage, Usage
 from sagaloom.usage import extract_usage
 
 # R20.1: these keys are never recorded, wherever they appear.
@@ -50,6 +50,9 @@ class PromptRecord(BaseModel):
     provider: str
     model: str
     role: str | None = None
+    # Set on a fallback model's call (R11.G11): the model it replaced and that model's failure.
+    fallback_for: str | None = None
+    fallback_reason: str | None = None
     params: dict = Field(default_factory=dict)
     request: dict  # {messages: [{role, content, name?, tool_calls?}], tools: [schema]}
     # {content, tool_calls, prompt_tokens, completion_tokens, cost_usd, latency_ms}
@@ -251,10 +254,16 @@ class PromptLog:
                 (thread_id,),
             ).fetchall()
         turns: dict[str, dict[str | None, dict]] = {}
+        fallbacks: dict[str, list[FallbackUse]] = {}
         totals: dict[str, Usage] = {}  # records are inserted at request start, so rowid order is `started_at` order: sums match `usage()`
         for (raw,) in rows:
             rec = PromptRecord.model_validate_json(raw)
             p, c, usd = _amounts(rec.response)
+            if rec.fallback_for:
+                fallbacks.setdefault(rec.run_id, []).append(
+                    FallbackUse(role=rec.role, model=rec.model, replaced=rec.fallback_for,
+                                reason=rec.fallback_reason or "", ok=bool(rec.response) and not rec.response.get("error"))
+                )
             a = turns.setdefault(rec.run_id, {}).setdefault(
                 rec.role,
                 {"role": rec.role, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
@@ -272,6 +281,7 @@ class PromptLog:
                 turn_id=run_id,
                 usage=totals[run_id],
                 by_role=[RoleUsage(**a) for a in roles.values()],
+                fallbacks=fallbacks.get(run_id, []),
             )
             for run_id, roles in turns.items()
         ]
@@ -413,6 +423,8 @@ class PromptLogHandler(AsyncCallbackHandler):
             provider=provider,
             model=model,
             role=(metadata or {}).get("role"),
+            fallback_for=(metadata or {}).get("fallback_for"),
+            fallback_reason=(metadata or {}).get("fallback_reason"),
             params=self._clean(params),
             request=request,
             started_at=self.clock().astimezone(UTC).isoformat(),  # UTC: `month_spend` compares text
@@ -421,7 +433,8 @@ class PromptLogHandler(AsyncCallbackHandler):
         self.log.add(rec, user_id=self.user_id)
         self.emit(
             "llm_request",
-            {"id": rec.id, "provider": provider, "model": model, "role": rec.role, "params": rec.params, **request},
+            {"id": rec.id, "provider": provider, "model": model, "role": rec.role, "params": rec.params, **request,
+             **({"fallback_for": rec.fallback_for, "fallback_reason": rec.fallback_reason} if rec.fallback_for else {})},
         )
 
     async def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:

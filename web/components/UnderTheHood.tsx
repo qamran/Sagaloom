@@ -189,6 +189,14 @@ function CallCard({
         <span className="text-muted-foreground">{index + 1}</span>
         <span className="font-semibold">{role}</span>
         <span className="font-mono">{call.model}</span>
+        {call.fallback_for && (
+          <span
+            title={call.fallback_reason ? `${call.fallback_for}: ${call.fallback_reason}` : undefined}
+            className="rounded-full border border-event px-2 py-px text-[11px] text-event"
+          >
+            Fallback for {call.fallback_for}
+          </span>
+        )}
         <span className="ml-auto text-muted-foreground">
           {r
             ? `${n(r.prompt_tokens)} → ${n(r.completion_tokens)} tok · ${usd(r.cost_usd)} · ${secs(r.latency_ms)}`

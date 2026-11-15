@@ -572,6 +572,11 @@ class ModelChoice(BaseModel):
     model: str
 
 
+class FallbackChoice(BaseModel):
+    role: str
+    model: str | None  # None: no fallback for this role
+
+
 def _models_payload(request: Request) -> dict:
     """The role mapping and the allowlist; each model carries its public benchmark rating (None
     when the leaderboard has no score for it), and `ratings_source` says where they come from."""
@@ -580,6 +585,7 @@ def _models_payload(request: Request) -> dict:
     scores = ratings.get("ratings", {})
     return {
         "mapping": d.model_settings.get_model_settings(),
+        "fallbacks": d.model_settings.get_fallbacks(),
         "allowed": [{**m.model_dump(), "rating": scores.get(m.id)} for m in d.settings.allowed_models],
         "ratings_source": {k: ratings.get(k) for k in ("source", "url", "retrieved", "note")},
     }
@@ -594,6 +600,16 @@ def get_models(request: Request) -> dict:
 def put_models(body: ModelChoice, request: Request) -> dict:
     try:
         _deps(request).model_settings.set_model(body.role, body.model)  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _models_payload(request)
+
+
+@router.put("/settings/models/fallback", dependencies=[Depends(require_admin)])
+def put_fallback(body: FallbackChoice, request: Request) -> dict:
+    """Choose a role's fallback model (R11.G11), or none."""
+    try:
+        _deps(request).model_settings.set_fallback(body.role, body.model)  # type: ignore[arg-type]
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _models_payload(request)
@@ -649,7 +665,13 @@ def guard_log(
     rows = []
     user_id = _scope_user(request, scope)
     thread_ids = _world_threads(request, scope, world_id)
-    for rec in _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100)), user_id, thread_ids):
+    records = _deps(request).promptlog.list_by_role("guard", max(1, min(limit, 100)), user_id, thread_ids)
+    # A failed call that its fallback model then answered did not block anything (R11.G11): the
+    # fallback's own row carries the verdict.
+    replaced = {(r.run_id, r.fallback_for) for r in records if r.fallback_for}
+    for rec in records:
+        if (rec.run_id, rec.model) in replaced and (rec.response is None or rec.response.get("error")):
+            continue
         if rec.response is None or rec.response.get("error"):  # the call raised: the message was blocked
             verdict, reason = "error", (rec.response or {}).get("error", "")
         else:  # a response that does not parse is "unknown"
@@ -660,6 +682,7 @@ def guard_log(
                 "thread_id": rec.thread_id,
                 "started_at": rec.started_at,
                 "model": rec.model,
+                "fallback_for": rec.fallback_for,
                 "verdict": verdict,
                 "reason": reason,
                 "message": _checked_message(rec.request),

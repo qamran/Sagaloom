@@ -133,6 +133,11 @@ export function GuardrailsPanel({
                   <div className="flex min-w-0 flex-[1_1_240px] flex-col gap-0.5">
                     <span className="text-[13px] text-foreground">{r.message || "(message not recorded)"}</span>
                     {r.reason && <span className="text-xs text-muted-foreground">{r.reason}</span>}
+                    {r.fallback_for && (
+                      <span className="text-xs text-event">
+                        Checked by the fallback model {r.model}: {r.fallback_for} was unavailable.
+                      </span>
+                    )}
                   </div>
                   <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
                     {ago(r.started_at)}

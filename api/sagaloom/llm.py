@@ -7,6 +7,7 @@ import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from sagaloom.config import GEMINI_MODEL, Settings
+from sagaloom.fallback import PARTIAL_OUTPUT
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
@@ -111,13 +112,18 @@ class OpenRouterChat(ChatOpenAI):
             raise
 
     async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator:
+        sent = False  # whether any text went out: then a fallback model must not replay the reply
         try:
             async for chunk in super()._astream(*args, **kwargs):
+                sent = sent or bool(getattr(chunk, "text", ""))
                 yield chunk
         except openai.APIError as exc:
             # Only the bare class: its subclasses are real HTTP status and connection errors.
             if type(exc) is openai.APIError and (err := _in_band_error({"error": exc.body})):
-                raise _provider_error(err, exc.request.url) from exc
+                translated = _provider_error(err, exc.request.url)
+                setattr(translated, PARTIAL_OUTPUT, sent)
+                raise translated from exc
+            setattr(exc, PARTIAL_OUTPUT, sent)
             raise
 
 

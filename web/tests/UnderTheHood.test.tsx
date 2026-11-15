@@ -129,6 +129,13 @@ describe("UnderTheHood", () => {
     expect(screen.getByText("Agent")).toBeInTheDocument();
   });
 
+  it("marks a fallback model's call with the model it replaced", () => {
+    const fb = { ...turn, calls: [{ ...turn.calls[0], fallback_for: "openai/gpt-x", fallback_reason: "gone 404: No endpoints" }] };
+    render(<UnderTheHood turn={fb} onClose={() => {}} />);
+    const tag = screen.getByText("Fallback for openai/gpt-x");
+    expect(tag).toHaveAttribute("title", "openai/gpt-x: gone 404: No endpoints");
+  });
+
   describe("step groups", () => {
     const mk = (id: string, role: string, cost: number, p = 1000, c = 100) => ({
       ...turn.calls[0],
