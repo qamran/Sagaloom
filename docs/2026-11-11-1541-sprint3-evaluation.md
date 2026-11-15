@@ -1,6 +1,6 @@
 # Sagaloom — Sprint 3 project evaluation
 
-As of 2026-11-13, updated after M5 (accounts) and the M6 polish. Evaluated against the Sprint 3 brief ([`135.md`](../135.md)).
+As of 2026-11-15, updated after M5 (accounts), the M6 polish, a real LangSmith trace (Hard 2) and a fresh-clone test of the README setup guide. Evaluated against the Sprint 3 brief ([`135.md`](../135.md)).
 
 Sagaloom meets all five core requirements of the Sprint 3 brief. It also completes 14 of the 18 optional tasks (7 medium, 3 hard), well past the bonus target of 2 medium + 1 hard. Two more are partly done (Easy 2, Hard 4). Two are missing: response ratings (Medium 5) and a Ragas/DeepEval report (Hard 3).
 
@@ -9,6 +9,10 @@ User accounts (Medium 4) were built in M5 and pass every check:
 - all 16 quality evals with real model calls (2026-11-11);
 - a real Google sign-up through Clerk. It created the admin account, and that account took over the existing Velmar;
 - the Playwright exit demo ([`web/e2e/exit-demo.spec.ts`](../web/e2e/exit-demo.spec.ts)), which signs in as a Clerk test user and walks the whole product with real model calls: passed on 2026-11-13 in 6.2 minutes.
+
+On 2026-11-15 two more checks were made:
+- **Hard 2:** LangSmith tracing was switched on with a real (EU-region) account; one chat turn with an approval arrived as two runs under one thread.
+- **Setup:** the README's setup guide was followed step by step on a fresh clone in an empty folder. It worked; four out-of-date lines were fixed (commit `01ed5c77`).
 
 All file links below are relative to this document. Links into `internal docs/` work only in a local checkout, because that folder is not committed.
 
@@ -40,26 +44,28 @@ All file links below are relative to this document. Links into `internal docs/` 
 
 ## How to run it
 
-You need Python 3.12 with `uv`, Node.js with `pnpm`, and an OpenRouter API key.
+The [README's Setup section](../README.md#setup) is the full guide, in nine steps with a troubleshooting table, tested on a fresh clone on 2026-11-15. In short: you need Python 3.12 with `uv`, Node.js with `pnpm`, an OpenRouter API key and a Clerk application.
 
 1. **Install.** Run `cd api && uv sync`, then `pnpm install` in the repo root and in `web/`.
 2. **Create the env files.** Run `cd api && uv run python scripts/init_secret.py` ([`api/scripts/init_secret.py`](../api/scripts/init_secret.py)), then add `OPENROUTER_API_KEY=<key>` to `api/.env`.
 3. **Set up Clerk for sign-in.** Create a Clerk application.
    - In `web/.env.local`, put its publishable and secret keys: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`.
    - In `api/.env` or the root `.env` (the API reads both), put `CLERK_ISSUER`, `CLERK_SECRET_KEY` and `ADMIN_EMAIL`. `ADMIN_EMAIL` is your email; that account becomes the admin.
-   - The [README](../README.md) section "Accounts (Clerk)" has the details.
+   - The [README](../README.md#6-set-up-sign-in-clerk), Setup step 6, has the details.
 4. **Start both servers** from the repo root with `pnpm dev`. The API runs on port 8000 and the web app on http://localhost:3000.
-5. **Open** http://localhost:3000 (not `127.0.0.1`) to reach the public home page. Sign up or sign in with email or Google. Your account's first request copies the demo world **Velmar** for you, which takes a few seconds.
+5. **Open** http://localhost:3000 (not `127.0.0.1`) to reach the public home page. Sign up or sign in with email or Google. Your account's first request copies the demo world **Velmar** for you, which takes a few seconds, and you land on **Home**, your dashboard.
 
-**Where to click first.** The app has five pages in the header:
+**Where to click first.** The header has six tabs plus **Developer studio**:
 
 | Page | What it is for |
 | --- | --- |
+| Home | Your dashboard: Get started, My worlds, Needs your decision, Canon health and Recent chats |
 | Canon | Browse, read and export the world's entries |
 | Chat | Talk to the agent; approval cards appear here |
 | Review | Every pending proposal across conversations, decided in one batch |
 | Import | Turn pasted notes, a file, or fan-wiki pages into proposals |
-| Studio | Developer view: feature map, graph, tools, models, memory, guardrails, cost, settings |
+| Compare | How Sagaloom compares with Realmweaver, LitMemo, StoryGuard and LoreKeeper |
+| Developer studio | Developer view: feature map, graph, tools, models, memory, guardrails, cost, settings |
 
 A reviewer should start at **Studio → Feature map**. It has one card per brief requirement and bonus task, each with a live status and a **Try it** link that fills the Chat box with a demo prompt.
 
