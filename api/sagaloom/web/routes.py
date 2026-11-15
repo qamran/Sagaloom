@@ -1,6 +1,7 @@
 """JSON + SSE endpoints (R19.1). Everything here is mounted behind the shared-secret check."""
 
 import asyncio
+import re
 import uuid
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
@@ -661,9 +662,29 @@ def guard_log(
                 "model": rec.model,
                 "verdict": verdict,
                 "reason": reason,
+                "message": _checked_message(rec.request),
             }
         )
     return rows
+
+
+_UNTRUSTED = re.compile(r"<untrusted_data[^>]*>\s*(.*?)\s*</untrusted_data>", re.DOTALL)
+CHECKED_CHARS = 160
+
+
+def _checked_message(request: dict) -> str:
+    """The author's message a guard call classified, as one shortened line: the last user turn of
+    the record, without its `<untrusted_data>` wrapper (Studio → Guardrails shows it)."""
+    for m in reversed(request.get("messages") or []):
+        if isinstance(m, dict) and m.get("role") == "user":
+            content = m.get("content")
+            text = content if isinstance(content, str) else " ".join(
+                p.get("text", "") for p in content or [] if isinstance(p, dict)
+            )
+            inner = _UNTRUSTED.search(text)
+            text = " ".join((inner.group(1) if inner else text).replace("&lt;/", "</").split())
+            return text if len(text) <= CHECKED_CHARS else text[:CHECKED_CHARS].rstrip() + "…"
+    return ""
 
 
 def _mermaid(graph: Any) -> str:

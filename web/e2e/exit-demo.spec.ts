@@ -43,7 +43,7 @@ const TEST_USER = testUser();
 
 test("M1 exit demo", async ({ page }) => {
   test.skip(!TEST_USER, NO_TEST_USER);
-  const { email, password } = TEST_USER!;
+  const { email } = TEST_USER!;
 
   // 0. M5: signed out, `/` is the public home page. Then sign in as the test user; Clerk lands on `/`,
   // which sends a signed-in author to their Home dashboard. The preview is not checked: Next may serve a
@@ -53,7 +53,9 @@ test("M1 exit demo", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("you decide, it checks");
   await expect(page.getByRole("link", { name: "Sign up free" }).first()).toBeVisible();
-  await clerk.signIn({ page, signInParams: { strategy: "password", identifier: email, password } });
+  // A one-time sign-in ticket made with CLERK_SECRET_KEY: the password strategy left the page signed out
+  // (2026-11-13), since the dev instance may require a second, emailed check on a new device.
+  await clerk.signIn({ page, emailAddress: email });
   await page.goto("/");
   // The only proof the sign-in worked (the helper does not check), so it fails fast rather than in 180 s.
   await expect(page).toHaveURL(/\/home/, { timeout: 30_000 });
@@ -195,10 +197,14 @@ test("M1 exit demo", async ({ page }) => {
   // 10. Studio -> Guardrails lists both verdicts.
   await page.goto("/studio");
   const guardrails = page.getByRole("region", { name: "Guardrails" });
-  await expect(guardrails.getByText(/^(injection|unsafe)$/).first()).toBeVisible();
-  // The safe verdict belongs to this chat thread, not to any earlier row.
+  await expect(guardrails.getByText(/^Blocked: (injection|real-world harm)$/).first()).toBeVisible();
+  // The allowed verdict belongs to this chat thread (its row's Open chat link), not to any earlier row.
   await expect(
-    guardrails.getByRole("listitem").filter({ hasText: threadId }).getByText("safe", { exact: true }).first(),
+    guardrails
+      .getByRole("listitem")
+      .filter({ has: page.locator(`a[href="/chat/${encodeURIComponent(threadId)}"]`) })
+      .getByText("Allowed", { exact: true })
+      .first(),
   ).toBeVisible();
   await expect(guardSwitch).toHaveAttribute("aria-checked", "true");
   await expect(securityCard.getByText("Live", { exact: true })).toBeVisible();

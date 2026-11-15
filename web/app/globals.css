@@ -127,10 +127,22 @@
     @apply font-sans;
     color-scheme: dark;
   }
-  /* In-page links (#usage and the like) land below the sticky header, not behind it. */
+  /* Tailwind's base gives buttons the arrow cursor; a clickable button shows the hand, as links
+     do, and a disabled one says it can't be used. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  /* In-page links (#usage and the like) land below the sticky header, not behind it. The header
+     sets --header-h once it has measured itself; until then (a page opened at /studio#tools jumps
+     before that) the one-row height is used. */
   @media (width >= 48rem) {
     html {
-      scroll-padding-top: var(--header-h, 0px);
+      scroll-padding-top: calc(var(--header-h, 3.75rem) + 0.5rem);
     }
   }
   body {

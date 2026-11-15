@@ -1,15 +1,14 @@
 # Sagaloom — Sprint 3 project evaluation
 
-As of 2026-11-12, updated after M5 (accounts). Evaluated against the Sprint 3 brief ([`135.md`](../135.md)).
+As of 2026-11-13, updated after M5 (accounts) and the M6 polish. Evaluated against the Sprint 3 brief ([`135.md`](../135.md)).
 
 Sagaloom meets all five core requirements of the Sprint 3 brief. It also completes 14 of the 18 optional tasks (7 medium, 3 hard), well past the bonus target of 2 medium + 1 hard. Two more are partly done (Easy 2, Hard 4). Two are missing: response ratings (Medium 5) and a Ragas/DeepEval report (Hard 3).
 
-User accounts (Medium 4) were built in M5 and pass every check so far:
-- the full test suites: 1046 API tests and 643 web tests;
-- all 16 quality evals with real model calls;
-- a real Google sign-up through Clerk. It created the admin account, and that account took over the existing Velmar.
-
-Only the Playwright demo run is still pending, so Medium 4 is marked "Built (verification pending)" until that run passes.
+User accounts (Medium 4) were built in M5 and pass every check:
+- the full test suites (1085 API tests and 705 web tests on 2026-11-13);
+- all 16 quality evals with real model calls (2026-11-11);
+- a real Google sign-up through Clerk. It created the admin account, and that account took over the existing Velmar;
+- the Playwright exit demo ([`web/e2e/exit-demo.spec.ts`](../web/e2e/exit-demo.spec.ts)), which signs in as a Clerk test user and walks the whole product with real model calls: passed on 2026-11-13 in 6.2 minutes.
 
 All file links below are relative to this document. Links into `internal docs/` work only in a local checkout, because that folder is not committed.
 
@@ -83,13 +82,13 @@ Every item from the brief, in brief order, with the brief's own wording ([`135.m
 | **Medium 1.** Calculate and display token usage and costs. | Done | Per turn, per step, per session and overall |
 | **Medium 2.** Implement long-term or short-term memory in LangChain/LangGraph. | Done | SQLite checkpointer + LangGraph Store of author preferences |
 | **Medium 3.** Implement one more function tool that would call an external API. | Done | `real_world_reference` (Wikipedia) and `import_wiki` (MediaWiki API) |
-| **Medium 4.** Add user authentication and personalisation. | Built (verification pending) | Clerk sign-in, own worlds per account, monthly AI budget, public home page. Tests, evals and a real Google sign-up passed; the Playwright demo run is pending |
+| **Medium 4.** Add user authentication and personalisation. | Done | Clerk sign-in, own worlds per account, monthly AI budget, public home page. Tests, evals, a real Google sign-up and the Playwright exit demo (2026-11-13) passed |
 | **Medium 5.** Implement a feedback loop where users can rate the responses, and use this feedback to improve the agent's performance. | Missing | No rating buttons |
 | **Medium 6.** Implement 2 extra function tools (5 in total). Have a UI for the user to either enable or disable these function tools. Develop a plugin system that allows users to add or remove functionalities from the chatbot dynamically. | Done | 7 tools, 4 switchable in Studio → Tools |
 | **Medium 7.** Implement multi-model support (OpenAI, Anthropic, etc.). | Done | OpenAI / Anthropic / Google models via OpenRouter, per role |
 | **Medium 8.** Add at least one security guard to your app to prevent misuse. Design for usability — keep the developer settings (where you can select the model and system prompts) separate from the user experience, as your user may not be that familiar with LLMs. | Done | Input guard node, untrusted-data wrapping, rate limits; Studio page |
 | **Hard 1.** Agentic RAG: Think of a way to add RAG functionality to the LangChain/LangGraph application and implement it. | Done | Agent decides when to call `search_canon` over Chroma |
-| **Hard 2.** Add one of these LLM observability tools: LangSmith, Langfuse, or others. | Done | Env-var tracing + in-app "Under the hood" prompt log |
+| **Hard 2.** Add one of these LLM observability tools: LangSmith, Langfuse, or others. | Done | Env-var tracing + in-app "Under the hood" prompt log. Verified 2026-11-15 with a real (EU-region) LangSmith account: one chat turn with an approval arrived as two runs under one thread |
 | **Hard 3.** Provide an AI evaluation report that proves the quality of your application using Ragas or DeepEval. | Missing | Deliberately skipped; custom pytest evals instead |
 | **Hard 4.** Create an agent that can learn from user feedback. This agent should be able to adjust its capabilities based on the feedback to improve future performance. | Partial | Learns stated author preferences; no learning from ratings |
 | **Hard 5.** Implement an agent that can integrate with external data sources to enrich its knowledge. This could involve fetching additional data from APIs or websites. | Done | Wikipedia reference + fan-wiki import with licences |
@@ -212,7 +211,7 @@ All five are met. Each block below says what was built, where it lives, and how 
 | Task | What was built | Where in code | How to test |
 | --- | --- | --- | --- |
 | H1 — Agentic RAG | Entries and their embeddings live in Chroma. The agent decides when and what to search, can search twice, and must cite IDs or say "not in canon". The contradiction check also retrieves the 8 most related entries | [`api/sagaloom/store/canon.py`](../api/sagaloom/store/canon.py), [`tools/canon_tools.py`](../api/sagaloom/tools/canon_tools.py), [`check/contradiction.py`](../api/sagaloom/check/contradiction.py), [`graph/prompts.py`](../api/sagaloom/graph/prompts.py) | Ask "How many moons does Velmar have?" → Under the hood shows the `search_canon` call and the cited ID. Eval: [`test_answer_eval.py`](../api/tests/eval/test_answer_eval.py) |
-| H2 — Observability | LangSmith tracing through env vars, with runs grouped by thread. In the app, **Under the hood** shows every prompt sent, the tool calls, the graph path with timings, and tokens and cost | [`api/sagaloom/config.py`](../api/sagaloom/config.py), [`graph/build.py`](../api/sagaloom/graph/build.py); [`promptlog.py`](../api/sagaloom/promptlog.py); [`web/components/UnderTheHood.tsx`](../web/components/UnderTheHood.tsx) | Set `LANGSMITH_TRACING=true` and a key in `api/.env`: the Feature map card turns **Live** and runs appear in LangSmith. Without a key, open Under the hood on any turn |
+| H2 — Observability | LangSmith tracing through env vars, with runs grouped by thread. In the app, **Under the hood** shows every prompt sent, the tool calls, the graph path with timings, and tokens and cost | [`api/sagaloom/config.py`](../api/sagaloom/config.py), [`graph/build.py`](../api/sagaloom/graph/build.py); [`promptlog.py`](../api/sagaloom/promptlog.py); [`web/components/UnderTheHood.tsx`](../web/components/UnderTheHood.tsx) | Set `LANGSMITH_TRACING=true` and a key in `api/.env`: the Feature map card turns **Live** and runs appear in LangSmith. EU-region accounts also need `LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com`. Without a key, open Under the hood on any turn |
 | H5 — External data | Wikipedia lookups marked as untrusted reference. Fan-wiki import (up to 10 pages) records each wiki's licence, warns about non-commercial (NC) licences, and adds `ATTRIBUTION.md` to exports | [`api/sagaloom/importing/wiki.py`](../api/sagaloom/importing/wiki.py), [`licence.py`](../api/sagaloom/licence.py), [`provenance.py`](../api/sagaloom/provenance.py), [`export.py`](../api/sagaloom/export.py); [`web/app/import/page.tsx`](../web/app/import/page.tsx) | Create a new world, then Import → Fan wiki: paste `https://en.wikipedia.org/wiki/Rivendell` → a card with Source and licence lines |
 
 ### Automated proof of the agent's quality

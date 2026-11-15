@@ -340,6 +340,8 @@ export interface GuardLogRow {
   /** `error`: the guard call itself failed (the message was blocked); `unknown`: a reply that did not parse. */
   verdict: "safe" | "unsafe" | "injection" | "unknown" | "error";
   reason: string;
+  /** The author's message that was checked, shortened (older API versions omit it). */
+  message?: string;
 }
 
 /** GET /api/threads/{id}/runs/last: the nodes the newest run went through. */

@@ -40,7 +40,10 @@ Playwright process's environment, so the values loaded from `web/.env.local` (`C
 reach the API as real env and win over `api/.env` and the root `.env`: keep them the same.
 
 Step 0 checks the public home page signed out (the hero line and a **Sign up free** link; not the preview, which
-Next may serve from its cache), signs in with `setupClerkTestingToken` and `clerk.signIn` (password strategy), opens
+Next may serve from its cache), signs in with `setupClerkTestingToken` and `clerk.signIn({ emailAddress })`, a one-time sign-in ticket that the helper
+makes with `CLERK_SECRET_KEY` (the password strategy left the page signed out on 2026-11-13, most likely because the
+dev instance asks a new device for a second, emailed check; the password is still required, so the account can be
+used by hand), opens
 `/` and waits for the redirect to `/canon`. The API starts on an empty data folder and seeds no world, so the test
 user's own Velmar copy gets the id `velmar`, which step 35 checks in the World picker.
 

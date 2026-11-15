@@ -18,41 +18,76 @@ A chatbot answers from whatever it remembers, and it will cheerfully invent lore
 
 ## Setup
 
-Requirements: Python 3.12 with [uv](https://docs.astral.sh/uv/), Node.js with [pnpm](https://pnpm.io/), and an [OpenRouter](https://openrouter.ai/) API key.
+This section takes you from a fresh clone to a running app in about 20 minutes. You need two accounts, OpenRouter for the models and Clerk for sign-in, plus LangSmith if you want tracing. The app itself runs on your machine.
+
+### 1. Install the tools
+
+| Tool | Version | Check with | Get it |
+|---|---|---|---|
+| Git | any recent | `git --version` | <https://git-scm.com/> |
+| Python | 3.12 (3.13 is refused) | `python --version` | uv installs it for you in step 3 if missing |
+| uv | any recent | `uv --version` | <https://docs.astral.sh/uv/getting-started/installation/> |
+| Node.js | 20 or newer (built on 24) | `node -v` | <https://nodejs.org/> |
+| pnpm | 12 (the web app pins `pnpm@12.8.1`) | `pnpm -v` | `corepack enable` (ships with Node), or <https://pnpm.io/installation> |
+
+Windows, macOS and Linux all work. The commands below are written one per line so they run the same in bash, zsh and PowerShell.
+
+### 2. Get the code
 
 ```bash
-# 1. Dependencies
-cd api && uv sync && cd ..
-pnpm install                      # root: the one-command dev script
-cd web && pnpm install && cd ..   # the Next.js app
-
-# 2. Env files (both are git-ignored; .env.example in each folder lists every variable)
-cd api && uv run python scripts/init_secret.py && cd ..
+git clone https://github.com/qamran/Sagaloom.git
+cd Sagaloom
 ```
 
-`init_secret.py` creates `api/.env` and `web/.env.local` with the same random `API_SHARED_SECRET` (it keeps files that already exist and never prints the secret). Then put your key in `api/.env`:
+The same code is in the course submission repo, `https://github.com/TuringCollegeSubmissions/qshahz-AE.AFA.updated0209.3.6.git`; if you clone that one, `cd` into its folder instead. Every command below starts from this folder, the repo root.
 
+### 3. Install the dependencies
+
+```bash
+cd api
+uv sync                  # creates api/.venv with Python 3.12 and the API's packages
+cd ..
+pnpm install             # repo root: concurrently, which runs the API and web together
+cd web
+pnpm install             # the Next.js app
+cd ..
 ```
-OPENROUTER_API_KEY=<your key>
+
+### 4. Create the env files
+
+```bash
+cd api
+uv run python scripts/init_secret.py
+cd ..
 ```
 
-(or in a project-root `.env`; `api/.env` wins if both set it). `web/.env.local` holds `API_SHARED_SECRET`, optionally `API_URL` (default `http://localhost:8000`), and the two Clerk keys below. The only `NEXT_PUBLIC_` value is Clerk's publishable key, which is meant for the browser; no secret uses that prefix. The browser talks to a Next.js proxy route (`/api/proxy`) that adds the shared secret on the server.
+This creates `api/.env` and `web/.env.local` (both git-ignored), each holding the same random `API_SHARED_SECRET`. The web server uses it to call the API, so the two must match. The script never prints the secret and keeps files that already exist, so run it **before** copying anything from the `.env.example` files. Those examples (`api/.env.example`, `web/.env.example`) list every variable with a comment. You add lines to the two real files in the next steps.
 
-Then set up sign-in (next section). `init_secret.py` keeps env files that already exist, so add the Clerk lines by hand.
+### 5. Get an OpenRouter key
 
-### Accounts (Clerk)
+1. Sign up at <https://openrouter.ai/>, add a few dollars of credit (**Credits**), and create a key under **Keys**.
+2. Add it to `api/.env`:
 
-Sign-in is [Clerk](https://clerk.com/)'s: Clerk holds the accounts, passwords and Google logins, and sends the confirmation and password-reset emails. Sagaloom stores no password.
+   ```
+   OPENROUTER_API_KEY=sk-or-v1-...
+   ```
 
-1. Create a Clerk application. Turn on **email address with password** (with email verification by code) and **Google**, and ask for **first and last name** (the header shows the name; without one it shows the part of the email before the `@`).
-2. Put its keys in `web/.env.local`:
+All four model roles default to `openai/gpt-6-luna`, at about $0.10 per million input tokens. A chat turn costs well under one cent, and copying Velmar into a new account costs a fraction of a cent in embeddings. The models you can pick in Studio are listed in `api/sagaloom/allowed_models.json`. If your key's account cannot reach one of them, Studio and Chat say so (see [docs/2026-11-13-1524-model-failures.md](docs/2026-11-13-1524-model-failures.md)).
+
+### 6. Set up sign-in (Clerk)
+
+Sign-in is handled by [Clerk](https://clerk.com/). Clerk holds the accounts, passwords and Google logins, and sends the confirmation and password-reset emails. Sagaloom stores no password. Clerk's free plan is enough.
+
+1. Create an application in the Clerk dashboard. Turn on **email address with password** (with email verification by code) and **Google**, and ask for **first and last name**. The header shows the name; without one it shows the part of the email before the `@`.
+2. On the application's **API keys** page, copy the **publishable key**, the **secret key** and the **Frontend API URL** (it looks like `https://<your-app>.clerk.accounts.dev`).
+3. Add to `web/.env.local`:
 
    ```
    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
    CLERK_SECRET_KEY=sk_test_...
    ```
 
-3. Put these in `api/.env` (or the project-root `.env`):
+4. Add to `api/.env`, with **your own email** as `ADMIN_EMAIL`:
 
    ```
    CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
@@ -60,34 +95,114 @@ Sign-in is [Clerk](https://clerk.com/)'s: Clerk holds the accounts, passwords an
    ADMIN_EMAIL=you@example.com
    ```
 
-   `CLERK_ISSUER` is your Clerk instance's Frontend API URL, the issuer of its session tokens: the API checks every token against the keys at `<CLERK_ISSUER>/.well-known/jwks.json` (a trailing slash is fine). `CLERK_SECRET_KEY` is the same secret key as the web's; the API uses it to read a new user's email and name from Clerk. `ADMIN_EMAIL` names the admin (below).
+What each one does:
+- **`CLERK_ISSUER`** is the issuer of Clerk's session tokens. The API checks every token against the keys at `<CLERK_ISSUER>/.well-known/jwks.json` (a trailing slash is fine).
+- **`CLERK_SECRET_KEY`** is the same secret key as the web's. The API uses it to read a new user's email and name.
+- **`ADMIN_EMAIL`** makes you the admin once you sign up with that email (see [The admin](#the-admin)).
 
-What happens when one is missing: without `CLERK_ISSUER` the API logs an error at start, answers 503 to every signed-in request, and the Feature map's **User accounts** card shows **Off**. Without `CLERK_SECRET_KEY` it logs an error and a new user gets 503 (an account it already knows keeps working). Without `ADMIN_EMAIL` it logs a warning, and there is no admin.
+Your two files should now hold:
 
-**The admin.** The admin is the account whose primary email, verified by Clerk, equals `ADMIN_EMAIL` (case and surrounding spaces ignored). Any verified holder of that email is admin; sign-up order never counts. Only the admin can change developer settings (Studio is read-only for everyone else) and has no AI budget. On the admin's first signed-in request it inherits every world that has no owner, which means all data from before accounts existed, with its costs. Nothing is assigned at API start.
+| `api/.env` | `web/.env.local` |
+|---|---|
+| `API_SHARED_SECRET` (from step 4) | `API_SHARED_SECRET` (the same value) |
+| `OPENROUTER_API_KEY` | `API_URL=http://localhost:8000` |
+| `CLERK_ISSUER` | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` |
+| `CLERK_SECRET_KEY` | `CLERK_SECRET_KEY` |
+| `ADMIN_EMAIL` | |
 
-**Open the app at its configured address.** The web origin is `WEB_ORIGIN` in `api/.env` (default `http://localhost:3000`). Clerk stamps each session token with the page's origin, and the API refuses a token from another origin, so opening <http://127.0.0.1:3000> instead of <http://localhost:3000> fails. The app then shows "You're signed in, but the API rejected the session. Check that you opened the app at its configured address, then sign in again." instead of looping back to sign-in.
+`OPENROUTER_API_KEY` and the three Clerk variables of `api/.env` may live in a project-root `.env` instead; `api/.env` wins if both set one. The only `NEXT_PUBLIC_` value is Clerk's publishable key, which is meant for the browser. No secret uses that prefix, and the browser reaches the API only through a Next.js proxy route (`/api/proxy`) that adds the shared secret on the server.
+
+### 7. (Optional) Turn on LangSmith tracing
+
+See [LangSmith tracing](#langsmith-tracing-optional) below. You can skip it for a first run: the app's own **Under the hood** drawer shows every prompt without it.
+
+### 8. Start the app
 
 ```bash
-# 3. Run both processes from the repo root
 pnpm dev
 ```
 
-This starts the API on <http://localhost:8000> (`uvicorn sagaloom.web.app:app`) and the web app on <http://localhost:3000>. Open <http://localhost:3000>: signed out you get the public home page; **Sign up free** creates an account. Each account's first signed-in request copies the demo world, **Velmar**, into a world it owns (19 entries, one of them secret, so the Canon list shows 18 until you choose **Show secrets**). That makes embedding calls, so the first page takes a few seconds before you land on **Canon**. If the copy fails (for example the embeddings call), the page says "Setting up your account, or the account service is unavailable — try again." and the next request tries again. Every account's Velmar has the same entry ids (`ent_0007`, `ent_0012`, …), so the walkthroughs below work for everyone. The first Velmar gets the world id `velmar`, later ones `velmar-` and 4 random letters or digits.
+This starts the API on <http://localhost:8000> (`uvicorn sagaloom.web.app:app`) and the web app on <http://localhost:3000>. The first start takes a minute while Next.js compiles. Stop it with Ctrl+C.
 
-If your `api/data/` was created before a seed entry was added (for example `ent_0019`, The Choir Ledger), stop the API and run `cd api && uv run python scripts/seed_missing.py`. It adds only the seed entries Velmar is missing (none matches their title or an alias, and no entry of the same type sits at their id), under a fresh id if the seed id is taken, and never overwrites an existing entry. It tops up only the world with id `velmar`, not the other accounts' copies.
+To run the two separately, use two terminals:
+- API: `cd api`, then `uv run uvicorn sagaloom.web.app:app --reload --port 8000`
+- web: `cd web`, then `pnpm dev`
 
-**Upgrading a data folder from before accounts.** Set `ADMIN_EMAIL` and start the API: at start it re-keys the stored entries to per-world ids, keeping their embeddings. Then sign in as the admin: the existing worlds, threads and costs become the admin's, and no extra Velmar is made because the admin already owns `velmar`. Until then those worlds are hidden from everyone.
+### 9. Sign up and check it works
 
-**A user whose Clerk account changed.** Ownership is keyed on the Clerk user id (it starts with `user_`), not the email. If an account is deleted at Clerk and made again, the new account can't see the old worlds. Stop the API, find both ids in the Clerk dashboard and run `cd api && uv run python scripts/reassign_owner.py <old_clerk_id> <new_clerk_id>`. It moves the old id's worlds and its prompt records (so its costs follow); the new account keeps the Velmar it got at sign-in. Add `--dry-run` first to see what would move. It refuses a folder without `worlds.json`, and exits with a warning when the old id owns nothing there.
+1. Open <http://localhost:3000>. Use `localhost`, not `127.0.0.1` (see [Troubleshooting](#troubleshooting)).
+2. Signed out, you see the public home page. Click **Sign up free** and sign up with the email you put in `ADMIN_EMAIL`. Confirm it with the code Clerk emails you.
+3. Wait a few seconds for **Canon**. Your first signed-in request copies the demo world, **Velmar**, into a world you own. It has 19 entries, one of them secret, so the Canon list shows 18 until you choose **Show secrets**. The copy makes embedding calls, which is why the first page is slow. If it fails, the page says "Setting up your account, or the account service is unavailable — try again." and the next request tries again.
+4. Open **Chat** and ask "How many moons does Velmar have?". The answer cites `ent_0007` and `ent_0012`.
+5. Open **Studio**. The **Feature map** shows each feature as **Live**, **Configured** or **Off**, and **User accounts** should be **Live**. The controls should be editable. If they are greyed out with "Only the admin can change developer settings.", your sign-up email does not match `ADMIN_EMAIL`.
 
-To run them separately: `cd api && uv run uvicorn sagaloom.web.app:app --reload --port 8000` and `cd web && pnpm dev`.
+From here, the [Walkthroughs](#walkthroughs) show every feature. Every account's Velmar has the same entry ids, so they work for any account.
 
-Everything is stored under `api/data/` (git-ignored; the path is relative to where the API starts): Chroma for entries, SQLite for threads, checkpoints, prompts and users (each account's Clerk id, email, name and last world), plus JSON for worlds (with their owner) and model settings. Set `DATA_DIR` to use another folder.
+### Troubleshooting
 
-**The home page preview.** The signed-out home page shows a recorded Velmar example from `api/sagaloom/public/preview.json`, served by `GET /api/public/preview` (shared secret required, no user, GET only, no model call). Regenerate it after the seed or the graph changes: `cd api && uv run python scripts/make_preview_fixture.py`. It runs the real graph once on a throwaway copy of Velmar (a real model call, a few cents) and refuses to write a file that holds a secret entry or fact. The API reads the file once, so restart it; the web server keeps the preview for up to an hour, so also delete `web/.next/cache` to see the new one at once.
+| What you see | Why | Fix |
+|---|---|---|
+| `uv sync` says no Python satisfies `>=3.12,<3.13` | Only another Python version is installed | `uv python install 3.12`, then `uv sync` again |
+| The API log says `Sagaloom API is misconfigured; set in api/.env or the environment: OPENROUTER_API_KEY` (or `API_SHARED_SECRET`) | A required variable is missing | Add it (steps 4 and 5) and restart |
+| The API log says `Sagaloom API is misconfigured: ...` and names a model | `CHAT_MODEL` (or another role) is set to a model that is not in `api/sagaloom/allowed_models.json` | Remove the line or pick an allowlisted model |
+| "You're signed in, but the API rejected the session. Check that you opened the app at its configured address, then sign in again." | You opened `127.0.0.1:3000`. Clerk stamps each token with the page's origin, and the API accepts only `WEB_ORIGIN` (default `http://localhost:3000`) | Open <http://localhost:3000> |
+| Every signed-in page fails, and the API log has an error about `CLERK_ISSUER` | `CLERK_ISSUER` is missing from `api/.env`. The API answers 503, and the Feature map's **User accounts** card shows **Off** | Add it and restart |
+| A new account gets 503, but an existing one works | `CLERK_SECRET_KEY` is missing from `api/.env` | Add it and restart |
+| Studio is read-only for you | Your verified email differs from `ADMIN_EMAIL` (case and spaces are ignored) | Fix `ADMIN_EMAIL` and restart |
+| Every call fails with 401 or 500 | `API_SHARED_SECRET` differs between the two files | Copy the value from `api/.env` to `web/.env.local` |
+| Chat says the model is unavailable, out of credit, or the key was refused | An OpenRouter key or credit problem. The message names the cause | See [docs/2026-11-13-1524-model-failures.md](docs/2026-11-13-1524-model-failures.md) |
+| The API log repeats `Failed to POST https://api.smith.langchain.com/runs/multipart ... 403 Forbidden` | Your LangSmith account is in the EU region | Add `LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com` (see below) |
+| Port 3000 or 8000 is already in use | An earlier `pnpm dev` is still running | Stop it, or end the process on that port |
 
-`TRUSTED_PROXIES` (a JSON list in `api/.env`, empty by default) names the socket addresses whose `X-Forwarded-For` header the rate limiter believes; see Limits. Leave it empty when the API is reached only through the local Next server. The Next server sends no `X-Forwarded-For` unless `TRUST_FORWARDED_FOR=true` is set in the web server's env (`web/.env.local` locally), which is only for a deployment whose edge sets that header.
+Changed an env file? Restart `pnpm dev`: both servers read their env files only when they start.
+
+### Setup reference
+
+#### The admin
+
+The admin is the account whose primary email, verified by Clerk, equals `ADMIN_EMAIL` (case and surrounding spaces are ignored). Any verified holder of that email is admin; sign-up order never counts. Only the admin:
+- can change developer settings (Studio is read-only for everyone else);
+- has no AI budget.
+
+On the admin's first signed-in request, it inherits every world that has no owner, which means all data from before accounts existed, with its costs. Nothing is assigned at API start. Without `ADMIN_EMAIL` the API logs a warning, and there is no admin.
+
+#### Open the app at its configured address
+
+The web origin is `WEB_ORIGIN` in `api/.env` (default `http://localhost:3000`). Clerk stamps each session token with the page's origin, and the API refuses a token from another origin. So opening <http://127.0.0.1:3000> instead of <http://localhost:3000> fails with the message in Troubleshooting instead of looping back to sign-in.
+
+#### Where data lives
+
+Everything is stored under `api/data/` (git-ignored; the path is relative to where the API starts):
+- Chroma for entries;
+- SQLite for threads, checkpoints, prompts and users (each account's Clerk id, email, name and last world);
+- JSON for worlds (with their owner) and model settings.
+
+Set `DATA_DIR` to use another folder. A fresh clone has no `api/data/`; the API creates it. The first Velmar gets the world id `velmar`; later ones get `velmar-` plus 4 random letters or digits.
+
+#### Maintenance scripts
+
+- **Missing seed entries.** Use this if your `api/data/` was created before a seed entry was added (for example `ent_0019`, The Choir Ledger). Stop the API and run `cd api && uv run python scripts/seed_missing.py`.
+  - It adds only the seed entries Velmar is missing: those with no entry matching their title or an alias, and no entry of the same type at their id.
+  - It uses a fresh id if the seed id is taken, and never overwrites an existing entry.
+  - It tops up only the world with id `velmar`, not the other accounts' copies.
+- **Upgrading a data folder from before accounts.**
+  1. Set `ADMIN_EMAIL` and start the API. At start it re-keys the stored entries to per-world ids, keeping their embeddings.
+  2. Sign in as the admin. The existing worlds, threads and costs become the admin's. No extra Velmar is made, because the admin already owns `velmar`.
+
+  Until you sign in, those worlds are hidden from everyone.
+- **A user whose Clerk account changed.** Ownership is keyed on the Clerk user id (it starts with `user_`), not the email. If an account is deleted at Clerk and made again, the new account can't see the old worlds. To move them:
+  1. Stop the API, and find both ids in the Clerk dashboard.
+  2. Run `cd api && uv run python scripts/reassign_owner.py <old_clerk_id> <new_clerk_id>`. Add `--dry-run` first to see what would move.
+
+  It moves the old id's worlds and its prompt records, so its costs follow. The new account keeps the Velmar it got at sign-in. The script refuses a folder without `worlds.json`, and exits with a warning when the old id owns nothing there.
+- **The home page preview.** The signed-out home page shows a recorded Velmar example from `api/sagaloom/public/preview.json`. `GET /api/public/preview` serves it: shared secret required, no user, GET only, no model call. Regenerate it after the seed or the graph changes with `cd api && uv run python scripts/make_preview_fixture.py`.
+  - It runs the real graph once on a throwaway copy of Velmar (a real model call, a few cents).
+  - It refuses to write a file that holds a secret entry or fact.
+  - Afterwards, restart the API, because it reads the file only once. The web server keeps the preview for up to an hour, so also delete `web/.next/cache` to see the new one at once.
+
+#### Behind a proxy
+
+`TRUSTED_PROXIES` (a JSON list in `api/.env`, empty by default) names the socket addresses whose `X-Forwarded-For` header the rate limiter believes; see Limits. Leave it empty when the API is reached only through the local Next server. The Next server sends no `X-Forwarded-For` unless `TRUST_FORWARDED_FOR=true` is set in the web server's env (`web/.env.local` locally). That setting is only for a deployment whose edge sets that header.
 
 ### Models
 
@@ -101,15 +216,31 @@ The `router` picks the mode of each turn (see walkthrough 12). It has no model s
 
 ### LangSmith tracing (optional)
 
-Add these to `api/.env` (the API exports its env files to the process environment at startup, so the LangSmith tracer sees them; a variable already set in the shell wins):
+Sagaloom sends every graph run to [LangSmith](https://smith.langchain.com/) when these variables are set. Without them nothing is sent and the app runs normally.
 
-```bash
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=<your key>
-LANGSMITH_PROJECT=sagaloom
-```
+1. Sign up at <https://smith.langchain.com/> (the free Developer plan is enough). Note the address you land on: `eu.smith.langchain.com` means your account is in the **EU region**.
+2. Go to **Settings -> API Keys -> Create API Key**, choose **Personal Access Token**, and copy the key. It starts with `lsv2_` and is shown only once.
+3. Add these lines to `api/.env`. The API exports its env files to the process environment at startup, so the LangSmith tracer sees them; a variable already set in the shell wins.
 
-Runs are grouped by `thread_id`. The Studio Feature map shows the LangSmith card as **Live** only when tracing is on and a key is set.
+   ```bash
+   LANGSMITH_TRACING=true
+   LANGSMITH_API_KEY=lsv2_...
+   LANGSMITH_PROJECT=sagaloom
+   # EU-region accounts only. Without it the key is refused with 403 Forbidden:
+   LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com
+   ```
+
+4. Restart `pnpm dev`. Studio's Feature map now shows the **LangSmith tracing** card as **Live**. The card checks only that tracing is on and a key is set, not that the key works.
+5. Check that runs arrive:
+   1. In Chat, start a new chat, send "Mira Vale is the lamplighter of Lantern Quay." and **Approve** the card.
+   2. In LangSmith, open **Tracing Projects -> sagaloom**. There are two `LangGraph` runs:
+      - the first holds guard, router, agent, `search_canon`, `create_or_update_entry`, check and approval_gate, with each OpenRouter call and its tokens and cost;
+      - the second, after the approval, holds approval_gate, commit and the agent's reply.
+   3. Open the **Threads** tab. Both runs appear under one thread, because every run carries `thread_id` and `world_id` metadata. An approval pause ends a run, so one turn can't be a single trace.
+
+   If no runs appear, look in the API's log for `Failed to POST ... runs/multipart`. A 403 there means a wrong key or a missing EU endpoint.
+
+The run's **Output** pane shows the whole conversation so far (the graph's state), not just the last turn. The **Input** pane shows the message that started the run. To turn tracing off, set `LANGSMITH_TRACING=false` and restart. While it is on, traces of every account's runs go to LangSmith (see Your data).
 
 ## How Sagaloom compares
 
@@ -180,7 +311,7 @@ Open **Chat** and try these on the Velmar world.
 
 ## Reviewer's tour
 
-0. Sign up, or sign in as the admin (see Accounts under Setup). A new account starts with its own Velmar.
+0. Sign up, or sign in as the admin (see [Setup](#setup), step 9). A new account starts with its own Velmar.
 1. Open <http://localhost:3000/studio>.
 2. Read the **Feature map**: one card per brief requirement and bonus task, each with a **Live**, **Configured** or **Off** status worked out from the running config. Follow a card's **Try it** link into Chat (it fills the composer; you press send).
 3. In Chat, use **Under the hood** on any turn. It shows the graph path with timings, each tool call, and **every prompt sent to OpenRouter**, grouped by step with a subtotal for each (messages by role, tool schemas, response, tokens, cost, model and provider). Retrieved canon appears inside its `<untrusted_data>` wrapper. API keys are never recorded.
@@ -196,6 +327,7 @@ Open **Chat** and try these on the Velmar world.
 | Medium 6: tools and plugins | **Live (Wave 3, M3 Wave 3):** seven tools (`search_canon`, `create_or_update_entry`, `check_contradiction`, `real_world_reference`, `export_world`, `remember_preference`, `import_wiki`), with a Studio switch for each optional tool | Studio -> Tools |
 | Medium 7: multi-model | **Live (Wave 3):** Per-role model switching across OpenRouter vendors; Gemini direct is configured for show only (never selectable or called), its client path tested with fakes. | Studio -> Providers |
 | Medium 8: security | **Live (Wave 1):** input guard, untrusted-data wrapping, body cap, rate limit | Studio -> Guardrails |
+| Hard 2: observability | **Live (M1; checked with a real LangSmith account on 2026-11-15):** LangSmith tracing through env vars. Every run is tagged with `thread_id` and `world_id`, so a turn and its run after the approval show as one thread. Also the in-app **Under the hood** prompt log | LangSmith, Chat -> Under the hood, Studio Feature map |
 | Hard 5: external data | **Live (Wave 2, M3 Wave 3):** Wikipedia reference lookups with provenance and untrusted marking; fan-wiki import from Wikipedia and Fandom with the wiki's own licence on every entry, NC warnings and `ATTRIBUTION.md` in exports | Chat, Import, Studio Feature map |
 
 ### Developer settings

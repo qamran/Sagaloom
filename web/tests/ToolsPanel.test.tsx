@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolsPanel } from "@/components/ToolsPanel";
+import { TOOL_TESTS } from "@/lib/toolTests";
 import { getTools, putSettings } from "@/lib/api";
 import type { SettingsPayload, ToolInfo } from "@/lib/types";
 
@@ -42,12 +43,15 @@ describe("ToolsPanel", () => {
     }
   });
 
-  it("shows core tools as an always-on disabled switch", async () => {
+  it("shows core tools as plain Always on text, not a switch", async () => {
     setup();
-    const sw = await screen.findByRole("switch", { name: /search_canon/ });
-    expect(sw).toBeDisabled();
-    expect(sw).toBeChecked();
-    expect(within(sw).getByText("Always on")).toBeInTheDocument();
+    const card = (await screen.findByText("search_canon")).closest("li") as HTMLElement;
+    expect(within(card).queryByRole("switch")).toBeNull();
+    const label = within(card).getByText("Always on");
+    expect(label.closest("button")).toBeNull();
+    expect(label).toHaveAttribute("title", expect.stringContaining("cannot be turned off"));
+    // A switchable tool does have a switch.
+    expect(screen.getByRole("switch", { name: "export_world" })).toBeChecked();
   });
 
   it("sends the other enabled optional tools when one is turned off", async () => {
@@ -112,5 +116,44 @@ describe("ToolsPanel read-only", () => {
     );
     expect(await screen.findByRole("switch", { name: "export_world" })).toBeDisabled();
     expect(screen.getByText("Only the admin can change developer settings.")).toBeInTheDocument();
+  });
+});
+
+describe("ToolsPanel cards", () => {
+  it("gives each tool a one-line summary, a Try it message with a Chat link, and what to expect", async () => {
+    setup();
+    const card = (await screen.findByText("search_canon")).closest("li") as HTMLElement;
+    expect(within(card).getByText(TOOL_TESTS.search_canon.summary)).toBeInTheDocument();
+    expect(within(card).getByText("How many moons does Velmar have?")).toBeInTheDocument();
+    expect(within(card).getByText(/cites entry ids/)).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: /Open in Chat/ })).toHaveAttribute(
+      "href",
+      "/chat?prompt=How%20many%20moons%20does%20Velmar%20have%3F",
+    );
+  });
+
+  it("folds the agent's long instructions under What the agent is told", async () => {
+    setup();
+    const card = (await screen.findByText("export_world")).closest("li") as HTMLElement;
+    const told = within(card).getByText("What the agent is told").closest("details") as HTMLDetailsElement;
+    expect(told.open).toBe(false);
+    expect(within(told).getByText("Export the world.")).toBeInTheDocument();
+  });
+
+  it("covers every tool the agent has", () => {
+    for (const name of [
+      "search_canon", "create_or_update_entry", "check_contradiction", "export_world",
+      "real_world_reference", "remember_preference", "import_wiki",
+    ]) {
+      expect(TOOL_TESTS[name]?.summary, name).toBeTruthy();
+      expect(TOOL_TESTS[name]?.prompt, name).toBeTruthy();
+      expect(TOOL_TESTS[name]?.expect, name).toBeTruthy();
+    }
+  });
+
+  it("says in one line how to test a tool and its switch", async () => {
+    setup();
+    expect(await screen.findByText(/send it again to test the switch/)).toBeInTheDocument();
+    expect(screen.getByText(/sample world Velmar/)).toBeInTheDocument();
   });
 });
