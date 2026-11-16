@@ -425,3 +425,94 @@ def test_month_spend_window(tmp_path):
     free.response = {"prompt_tokens": 1, "completion_tokens": 1}
     log.add(free, user_id="user_a")
     assert log.month_spend("user_a", now) == pytest.approx(0.75)
+
+
+# ---- Jev decision calls (R6.6): recorded from a custom event as an unpriced call ----
+
+
+class _FakeJev:
+    model = "jev-latest"
+
+    def __init__(self, result):
+        self.result = result
+
+    async def ainvoke(self, input, config=None):
+        if isinstance(self.result, BaseException):
+            raise self.result
+        return self.result
+
+
+def _jev_answer(choice="query", confidence=0.94):
+    from langchain_typesafe import ClassifierResponse
+    from langchain_typesafe.types import ChoiceAnswer, Usage
+
+    return ClassifierResponse(
+        model="typesafe/jev-1.14-20261014",
+        answers={"mode": ChoiceAnswer(type="choice", choice=choice,
+                                      probabilities={choice: 0.9}, confidence=confidence)},
+        usage=Usage(input_tokens=120, output_tokens=3),
+    )
+
+
+async def _classify_in_run(handler, classifier, text):
+    from langchain_core.runnables import RunnableConfig, RunnableLambda
+
+    from sagaloom.decision import classify_mode
+
+    async def route(text: str, config: RunnableConfig):
+        return await classify_mode(classifier, text, config=config)
+
+    return await RunnableLambda(route).ainvoke(text, {"callbacks": [handler]})
+
+
+async def test_decision_event_recorded_and_emitted(tmp_path):
+    log, handler, events = make_handler(tmp_path)
+    decision = await _classify_in_run(handler, _FakeJev(_jev_answer()), f"Who rules Ister? {KEY}")
+    assert decision.mode == "query"
+    [rec] = log.list("t1")
+    assert rec.role == "router"
+    assert rec.run_id == handler.turn_id
+    assert rec.model == "typesafe/jev-1.14-20261014"
+    assert rec.params["engine"] == "jev"
+    assert rec.response["cost_usd"] is None
+    assert rec.response["priced"] is False
+    assert rec.response["prompt_tokens"] == 120
+    assert rec.response["completion_tokens"] == 3
+    assert json.loads(rec.response["content"]) == {"mode": "query", "confidence": 0.94, "engine": "jev"}
+    assert set(rec.request["question"]["criteria"]) == {"brainstorm", "query", "edit"}
+    assert KEY not in rec.model_dump_json()
+    assert [n for n, _ in events] == ["llm_request", "llm_response"]
+    assert events[0][1]["id"] == events[1][1]["id"] == rec.id
+    assert events[0][1]["role"] == "router"
+    assert events[1][1]["priced"] is False
+    # An unpriced call counts its tokens and no cost.
+    assert log.usage(thread_id="t1").cost_usd == 0.0
+
+
+async def test_decision_failure_recorded_with_error(tmp_path):
+    log, handler, events = make_handler(tmp_path)
+    with pytest.raises(TimeoutError):
+        await _classify_in_run(handler, _FakeJev(TimeoutError("slow")), "x")
+    [rec] = log.list("t1")
+    assert rec.model == "jev-latest"
+    assert "TimeoutError" in rec.response["error"]
+    assert rec.response["prompt_tokens"] == 0
+    assert rec.response["completion_tokens"] == 0
+    assert rec.response["priced"] is False
+    assert [n for n, _ in events] == ["llm_request", "llm_response"]
+
+
+async def test_decision_unknown_label_recorded_with_error(tmp_path):
+    from sagaloom.decision import DecisionFailed
+
+    log, handler, _ = make_handler(tmp_path)
+    with pytest.raises(DecisionFailed):
+        await _classify_in_run(handler, _FakeJev(_jev_answer("other")), "x")
+    [rec] = log.list("t1")
+    assert "DecisionFailed" in rec.response["error"]
+
+
+async def test_other_custom_events_ignored(tmp_path):
+    log, handler, events = make_handler(tmp_path)
+    await handler.on_custom_event("something_else", {"id": "x"}, run_id=uuid.uuid4())
+    assert log.list("t1") == [] and events == []

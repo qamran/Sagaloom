@@ -21,6 +21,7 @@ from langchain_core.outputs import LLMResult
 from pydantic import BaseModel, Field
 
 from sagaloom.config import Settings
+from sagaloom.decision import DECISION_EVENT
 from sagaloom.model_errors import failure_line
 from sagaloom.models import FallbackUse, RoleUsage, TurnUsage, Usage
 from sagaloom.usage import extract_usage
@@ -491,3 +492,29 @@ class PromptLogHandler(AsyncCallbackHandler):
         }
         self.log.complete(rid, out)
         self.emit("llm_response", {"id": rid, **out})
+
+    async def on_custom_event(self, name: str, data: Any, *, run_id: UUID, **kwargs: Any) -> None:
+        """A Jev decision call (R6.6, `sagaloom.decision`): it is not a chat model, so it arrives
+        whole as a custom event and is recorded and emitted like a chat-model call."""
+        if name != DECISION_EVENT or not isinstance(data, dict):
+            return
+        rec = PromptRecord(
+            id=str(data["id"]),
+            thread_id=self.thread_id,
+            run_id=self.turn_id,
+            provider=self._clean(data.get("provider") or "openrouter"),
+            model=self._clean(data.get("model") or "unknown"),
+            role=self._clean(data.get("role")),
+            params=self._clean(data.get("params") or {}),
+            request=self._clean(data.get("request") or {}),
+            started_at=self.clock().astimezone(UTC).isoformat(),
+        )
+        response = self._clean(data.get("response") or {})
+        self.log.add(rec, user_id=self.user_id)
+        self.log.complete(rec.id, response)
+        self.emit(
+            "llm_request",
+            {"id": rec.id, "provider": rec.provider, "model": rec.model, "role": rec.role,
+             "params": rec.params, **rec.request},
+        )
+        self.emit("llm_response", {"id": rec.id, **response})
