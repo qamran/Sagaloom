@@ -229,6 +229,7 @@ class RoleUsage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     cost_usd: float
+    unpriced_calls: int = 0  # calls that ran but have no price (a decision model)
 
 
 class FallbackUse(BaseModel):

@@ -143,6 +143,7 @@ export interface RoleUsage {
   prompt_tokens: number;
   completion_tokens: number;
   cost_usd: number;
+  unpriced_calls?: number;
 }
 
 /** A call in a turn that went to a role's fallback model (R11.G11). */

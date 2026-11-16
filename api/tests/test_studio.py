@@ -282,3 +282,15 @@ def test_accounts_card_is_live_with_clerk_issuer(tmp_path):
     assert (off.status, on.status) == ("off", "live")
     assert (on.title, on.brief_ref, on.try_href) == ("User accounts", "Medium 4", "/canon")
     assert on.detail == off.detail == "Sign-in by Clerk; every author sees only their own worlds."
+
+
+def test_router_card_names_engine(tmp_path):
+    from sagaloom.settings_store import DevSettingsPatch, DevSettingsStore
+
+    store = DevSettingsStore(tmp_path / "dev_settings.json")
+    deps = AppDeps(dev_settings=store)
+    router = card(build_feature_map(make_settings(tmp_path), deps), "router")
+    assert "Engine: LLM" in router.detail and router.status == "live"
+    store.update(DevSettingsPatch(router_engine="jev"))
+    router = card(build_feature_map(make_settings(tmp_path), deps), "router")
+    assert "Engine: Jev decision model (jev-latest)" in router.detail and router.status == "live"

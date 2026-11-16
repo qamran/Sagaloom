@@ -89,6 +89,17 @@ def build_feature_map(
             guard_on = deps.dev_settings.get().guard_enabled
         except Exception:
             pass
+    router_engine = "llm"
+    if getattr(deps, "dev_settings", None) is not None:
+        try:
+            router_engine = deps.dev_settings.get().router_engine
+        except Exception:
+            pass
+    engine_note = (
+        f" Engine: Jev decision model ({settings.router_decision_model})."
+        if router_engine == "jev"
+        else " Engine: LLM (the input guard's model)."
+    )
     project = os.environ.get("LANGSMITH_PROJECT")
     ls_live = langsmith_live()
     gemini_set = gemini_key_set(settings)
@@ -127,7 +138,8 @@ def build_feature_map(
             req_ids=["R6.5"],
             status="live",
             detail="A router node after the guard picks brainstorm, query or edit for each message, "
-            "and the agent gets a short section for that mode. The mode shows on your message.",
+            "and the agent gets a short section for that mode. The mode shows on your message."
+            + engine_note,
             try_href=prompt_href("Give me three ideas for a festival in Velmar."),
         ),
         FeatureCard(

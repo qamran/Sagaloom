@@ -516,3 +516,30 @@ async def test_other_custom_events_ignored(tmp_path):
     log, handler, events = make_handler(tmp_path)
     await handler.on_custom_event("something_else", {"id": "x"}, run_id=uuid.uuid4())
     assert log.list("t1") == [] and events == []
+
+
+def _jev_response(**kw):
+    return {"content": "query", "cost_usd": None, "priced": False, "prompt_tokens": 12,
+            "completion_tokens": 3, **kw}
+
+
+def test_unpriced_calls_counted(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_rec("a", "router", "2026-01-01T00:00:01",
+                 {"content": "edit", "cost_usd": 0.001, "prompt_tokens": 10, "completion_tokens": 2}))
+    log.add(_rec("b", "router", "2026-01-01T00:00:02", _jev_response()))
+    [turn] = log.usage_by_turn("t1")
+    [router] = turn.by_role
+    assert router.calls == 2 and router.unpriced_calls == 1
+    assert router.cost_usd == pytest.approx(0.001)
+    [row] = log.usage_by_model()
+    assert row["unpriced_calls"] == 1 and row["calls"] == 2
+
+
+def test_failed_jev_call_not_counted_unpriced(tmp_path):
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    log.add(_rec("a", "router", "2026-01-01T00:00:01",
+                 _jev_response(error="timeout", prompt_tokens=0, completion_tokens=0)))
+    [turn] = log.usage_by_turn("t1")
+    assert turn.by_role[0].unpriced_calls == 0
+    assert log.usage_by_model()[0]["unpriced_calls"] == 0

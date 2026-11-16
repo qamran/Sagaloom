@@ -71,6 +71,13 @@ def _amounts(response: dict | None) -> tuple[int, int, float]:
     )
 
 
+def _is_unpriced(response: dict | None) -> bool:
+    """A call that ran (it used tokens) but is marked not priced, like a Jev decision."""
+    r = response or {}
+    p, c, _ = _amounts(r)
+    return r.get("priced") is False and p + c > 0
+
+
 class PromptLog:
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -267,9 +274,10 @@ class PromptLog:
                 )
             a = turns.setdefault(rec.run_id, {}).setdefault(
                 rec.role,
-                {"role": rec.role, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+                {"role": rec.role, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0, "unpriced_calls": 0},
             )
             a["calls"] += 1
+            a["unpriced_calls"] += _is_unpriced(rec.response)
             a["prompt_tokens"] += p
             a["completion_tokens"] += c
             a["cost_usd"] += usd
@@ -302,9 +310,10 @@ class PromptLog:
             r = rec.response or {}
             a = agg.setdefault(
                 (rec.role, rec.model),
-                {"role": rec.role, "model": rec.model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+                {"role": rec.role, "model": rec.model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0, "unpriced_calls": 0},
             )
             a["calls"] += 1
+            a["unpriced_calls"] += _is_unpriced(rec.response)
             a["prompt_tokens"] += int(r.get("prompt_tokens") or 0)
             a["completion_tokens"] += int(r.get("completion_tokens") or 0)
             a["cost_usd"] += float(r.get("cost_usd") or 0.0)
