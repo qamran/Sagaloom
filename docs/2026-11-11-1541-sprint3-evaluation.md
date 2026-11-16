@@ -1,6 +1,6 @@
 # Sagaloom — Sprint 3 project evaluation
 
-As of 2026-11-15, updated after M5 (accounts), the M6 polish, a real LangSmith trace (Hard 2) and a fresh-clone test of the README setup guide. Evaluated against the Sprint 3 brief ([`135.md`](../135.md)).
+As of 2026-11-16, updated after the switchable router engine (R6.6), M5 (accounts), the M6 polish, a real LangSmith trace (Hard 2) and a fresh-clone test of the README setup guide. Evaluated against the Sprint 3 brief ([`135.md`](../135.md)).
 
 Sagaloom meets all five core requirements of the Sprint 3 brief. It also completes 14 of the 18 optional tasks (7 medium, 3 hard), well past the bonus target of 2 medium + 1 hard. Two more are partly done (Easy 2, Hard 4). Two are missing: response ratings (Medium 5) and a Ragas/DeepEval report (Hard 3).
 
@@ -244,6 +244,8 @@ The latest full run (2026-11-11, on the M5 code at commit 316c5b6) passed all 16
 | Input guard | 5/5 attacks blocked, 0/11 false blocks, 0 errors | all 5 blocked, at most 1 false block |
 | Contradiction checks and shared-loop tests | passed | — |
 
+On 2026-11-16 the router eval was run once for each engine, with real calls through OpenRouter: the LLM router (`openai/gpt-6-luna`) scored 15/15 at an average of 1994 ms per message, and the Jev decision model (`jev-latest`, reported by the service as `typesafe/jev-1.14-20261014`) scored 15/15 at an average of 297 ms, both against a bar of 13. Jev's confidence was 0.89 to 1.00 on every message. Jev is not priced, so no cost is given for it. The other evals were not re-run that day.
+
 "Says 'not in canon'" passes with no margin to spare, as in earlier runs. The README's "Tests" section explains each eval.
 
 ## Evaluation criteria
@@ -322,6 +324,7 @@ These features are not asked for by any brief item or criterion. They come from 
 | Multiple worlds | Each world has its own canon, threads and memory, and belongs to one account | Header world picker → **+ New world** |
 | Markdown export | A zip of one Markdown file per entry (Obsidian-ready), with an option to leave out secrets and an `ATTRIBUTION.md` for wiki sources | Canon → **Download as Markdown** ([`api/sagaloom/export.py`](../api/sagaloom/export.py)) |
 | Router modes | Each turn is classed as brainstorm, query or edit, and the agent's prompt is tuned to it | The Course chip under each message; Studio → Agent graph ([`api/sagaloom/router.py`](../api/sagaloom/router.py)) |
+| Router engine switch | An admin can switch the router between the LLM and TypeSafe's Jev decision model (R6.6, from the Sprint 1 review's advice to use a decision model for decision-only steps). Jev is not priced; if it fails, the LLM router decides and the turn says so | Studio → Agent graph → Router engine; the chip reads `Router · query · Jev 94%` ([`api/sagaloom/decision.py`](../api/sagaloom/decision.py)) |
 | Live agent graph | The compiled LangGraph is drawn, with the last run's path highlighted | Studio → Agent graph |
 | Entity chips and `@` mentions | Entry names in replies become coloured chips; `@` in the composer suggests entries | Chat |
 | Provenance and trust | Entries record their source (chat, reference, paste, fan wiki); imported or referenced text is marked untrusted forever | Entry pages and approval card source lines ([`api/sagaloom/provenance.py`](../api/sagaloom/provenance.py)) |

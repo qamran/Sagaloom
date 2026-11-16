@@ -170,6 +170,7 @@ This feature is delivered by the **`import_wiki` tool**. Its full requirements a
 | R6.3 | Session starters such as "World foundation" and "Character deep dive" | Could | Competitor | Realmweaver | — |
 | R6.4 | Turn the user's answers into proposed entries, which then go through R4 and R5 | Could | Competitor + Course | Realmweaver | — |
 | R6.5 | A router node sends each message to brainstorm, query or edit mode. Without it, the agent handles every message in one general mode | Should | Course (agent architecture) | — | On a labelled set of 15 messages, the router picks the right mode for at least 13 |
+| R6.6 | An admin can switch the router between the LLM and a decision model (Jev); the default is the LLM | Should | Course (Sprint 1 review feedback) | — | Jev picks the right mode for at least 13 of the 15 labelled messages; a Jev failure falls back to the LLM router visibly |
 
 ---
 
