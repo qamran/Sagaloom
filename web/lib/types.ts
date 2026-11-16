@@ -327,6 +327,7 @@ export interface DevSettings {
   agent_max_tokens: number | null;
   agent_system_prompt: string | null;
   guard_enabled: boolean;
+  router_engine: "llm" | "jev";
   /** null means every tool; the core tools are on whatever this lists. */
   enabled_tools: string[] | null;
   /** US$ per account per calendar month; the admin has no limit. */

@@ -120,3 +120,22 @@ def test_unknown_tools_warning_logged_once(tmp_path, caplog):
         store.get()
         store.get()
     assert caplog.text.count("unknown tools") == 2
+
+
+def test_router_engine_defaults_to_llm():
+    assert DevSettings().router_engine == "llm"
+
+
+def test_router_engine_round_trips(tmp_path):
+    store = DevSettingsStore(tmp_path / "settings.json")
+    store.update(DevSettingsPatch(router_engine="jev"))
+    assert store.get().router_engine == "jev"
+
+
+@pytest.mark.parametrize("value", ["JEV", True, None])
+def test_bad_router_engine_in_file_reads_as_llm(tmp_path, value):
+    import json
+
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"router_engine": value}), encoding="utf-8")
+    assert DevSettingsStore(path).get().router_engine == "llm"

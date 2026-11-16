@@ -146,6 +146,21 @@
             "default": false,
             "title": "Reset System Prompt",
             "type": "boolean"
+          },
+          "router_engine": {
+            "anyOf": [
+              {
+                "enum": [
+                  "llm",
+                  "jev"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Router Engine"
           }
         },
         "title": "DevSettingsPatch",

@@ -460,6 +460,8 @@ export interface components {
              * @default false
              */
             reset_system_prompt?: boolean;
+            /** Router Engine */
+            router_engine?: ("llm" | "jev") | null;
         };
         /** Entry */
         Entry: {

@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const payload: SettingsPayload = {
-  settings: { agent_temperature: 0.2, agent_max_tokens: 1000, agent_system_prompt: null, guard_enabled: true, enabled_tools: null, monthly_budget_usd: 1 },
+  settings: { agent_temperature: 0.2, agent_max_tokens: 1000, agent_system_prompt: null, guard_enabled: true, router_engine: "llm", enabled_tools: null, monthly_budget_usd: 1 },
   defaults: { agent_system_prompt: "You are the Sagaloom agent." },
   guard_policy: "policy text",
 };

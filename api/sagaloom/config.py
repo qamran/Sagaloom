@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     judge_model: str = "openai/gpt-6-luna"
     extractor_model: str = "openai/gpt-6-luna"
     guard_model: str = "openai/gpt-6-luna"
+    # The Jev decision model that routes a turn when router_engine is "jev" (R6.6).
+    router_decision_model: str = "jev-latest"
     # Every role's named fallback (R11.G11): used only when the role's model is gone, blocked or
     # down. Another provider than the default models', at the same price. Empty: no fallback.
     fallback_model: str = "anthropic/claude-haiku-5.5"

@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -27,6 +28,8 @@ class DevSettings(BaseModel):
     agent_max_tokens: int | None = Field(default=None, ge=256, le=16000)
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool = True
+    # Who routes a turn to a mode: the LLM (default) or the Jev decision model (R6.6).
+    router_engine: Literal["llm", "jev"] = "llm"
     # None means every tool. Core tools are always on, whatever this lists (R11.G3).
     enabled_tools: list[str] | None = None
     # Each non-admin account's AI spend per calendar month (UTC), in US$ (M5 spec §5.5a).
@@ -48,6 +51,7 @@ class DevSettingsPatch(BaseModel):
     agent_max_tokens: int | None = Field(default=None, ge=256, le=16000)
     agent_system_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
     guard_enabled: bool | None = None
+    router_engine: Literal["llm", "jev"] | None = None
     enabled_tools: list[str] | None = None
     monthly_budget_usd: float | None = Field(default=None, ge=0, le=1000)
     reset_system_prompt: bool = False
@@ -56,7 +60,7 @@ class DevSettingsPatch(BaseModel):
 
     @model_validator(mode="after")
     def _no_null_for_required(self):
-        for name in ("agent_temperature", "guard_enabled", "monthly_budget_usd"):
+        for name in ("agent_temperature", "guard_enabled", "router_engine", "monthly_budget_usd"):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null")
         return self
