@@ -8,6 +8,7 @@ import { FeatureMap } from "@/components/FeatureMap";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
+import { RouterEnginePanel } from "@/components/RouterEnginePanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ToolsPanel } from "@/components/ToolsPanel";
 import { UsagePanel } from "@/components/UsagePanel";
@@ -97,6 +98,7 @@ function Studio() {
                 the chosen thread&apos;s last run are highlighted.
               </p>
               <AgentGraph mermaid={studio.data.mermaid} />
+              {dev.data && <RouterEnginePanel payload={dev.data} readOnly={readOnly} />}
             </section>
             {models.data ? (
               <ProvidersPanel providers={studio.data.providers} models={models.data} readOnly={readOnly} />

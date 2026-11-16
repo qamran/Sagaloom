@@ -27,6 +27,7 @@ const { panel } = vi.hoisted(() => ({
 vi.mock("@/components/ProvidersPanel", () => ({ ProvidersPanel: panel("providers") }));
 vi.mock("@/components/SettingsPanel", () => ({ SettingsPanel: panel("settings") }));
 vi.mock("@/components/GuardrailsPanel", () => ({ GuardrailsPanel: panel("guardrails") }));
+vi.mock("@/components/RouterEnginePanel", () => ({ RouterEnginePanel: panel("router-engine") }));
 vi.mock("@/components/ToolsPanel", () => ({ ToolsPanel: panel("tools") }));
 vi.mock("@/components/MemoryPanel", () => ({ MemoryPanel: () => null }));
 vi.mock("@/components/AgentGraph", () => ({ AgentGraph: () => null }));
@@ -58,7 +59,7 @@ describe("Studio for a non-admin and the admin", () => {
     vi.mocked(getMe).mockResolvedValue(me(false));
     setup();
 
-    for (const name of ["providers", "settings", "guardrails", "tools"]) {
+    for (const name of ["providers", "settings", "guardrails", "tools", "router-engine"]) {
       expect(await screen.findByTestId(name)).toHaveTextContent("read-only");
     }
     // Only the world selected in the header.
@@ -74,7 +75,7 @@ describe("Studio for a non-admin and the admin", () => {
 
     expect(await screen.findByRole("switch", { name: "All users" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("settings")).toHaveTextContent("editable"));
-    for (const name of ["providers", "guardrails", "tools"]) {
+    for (const name of ["providers", "guardrails", "tools", "router-engine"]) {
       expect(screen.getByTestId(name)).toHaveTextContent("editable");
     }
   });
