@@ -11,6 +11,7 @@ commit -> (chat) agent | (import, refused proposal pending) check | (import) END
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -58,10 +59,12 @@ def build_graph(
     wiki: WikiClient | None = None,
     memory_store: BaseStore | None = None,
     memory_locks: KeyedLocks | None = None,
+    router_classifier: Any | None = None,
 ) -> CompiledStateGraph:
     """`memory_store` holds the author preferences (R10.2); the app passes its AsyncSqliteStore,
     tests an InMemoryStore (the default). `memory_locks` is the per-world lock the app's memory
-    routes share; a new one by default."""
+    routes share; a new one by default. `router_classifier` is the Jev classifier the router
+    uses when `router_engine` is "jev" (R6.6); without one the LLM router always decides."""
     if memory_store is None:
         memory_store = InMemoryStore()
     if memory_locks is None:
@@ -71,7 +74,7 @@ def build_graph(
     )
     g = StateGraph(SagaState)
     g.add_node("guard", make_guard_node(model_for, dev))
-    g.add_node("router", make_router_node(model_for))
+    g.add_node("router", make_router_node(model_for, dev, router_classifier))
     g.add_node("agent", make_agent_node(model_for, tools, dev, memory_store))
     g.add_node("tools", make_tools_node(tools, dev))
     g.add_node("remember", make_remember_node(memory_store, memory_locks))

@@ -69,17 +69,18 @@ async def ask_structured(
     *,
     what: str,
     retry_transient: bool,
+    config: Any = None,
 ) -> T:
     """Up to MAX_ATTEMPTS calls for a valid `schema` reply.
 
     Raises InvalidReply (chained to the last cause) after the last invalid reply. With
     `retry_transient`, a TRANSIENT_API_ERRORS exception is retried and re-raised after the last
-    attempt. Any other exception propagates at once."""
+    attempt. Any other exception propagates at once. `config` goes to every attempt's call."""
     structured = model.with_structured_output(schema)
     last: BaseException | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            out = await structured.ainvoke(messages)
+            out = await structured.ainvoke(messages, config)
             if isinstance(out, dict):
                 out = schema.model_validate(out)
             if isinstance(out, schema):

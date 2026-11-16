@@ -766,12 +766,29 @@ async def test_mode_on_user_message(make_env):
     await env.send(tid, "How many moons?")
     body = (await env.client.get(f"/api/threads/{tid}")).json()
     assert without_turn_id(body["messages"][0]) == {
-        "role": "user", "content": "How many moons?", "mode": "query"
+        "role": "user", "content": "How many moons?", "mode": "query", "router_engine": "llm"
     }
     assert "mode" not in body["messages"][1]
     assert message_dict(HumanMessage(content="hi")) == {"role": "user", "content": "hi"}
     noted = HumanMessage(name="review", content="r", additional_kwargs={"mode": "edit"})
     assert "mode" not in message_dict(noted)  # only the author's own messages carry a mode
+
+
+def test_thread_payload_carries_router_engine():
+    from sagaloom.web.routes import message_dict
+
+    jev = HumanMessage(
+        content="How many moons?",
+        additional_kwargs={"mode": "query", "router_engine": "jev", "router_confidence": 0.94},
+    )
+    assert message_dict(jev) == {
+        "role": "user", "content": "How many moons?", "mode": "query",
+        "router_engine": "jev", "router_confidence": 0.94,
+    }
+    llm = HumanMessage(content="x", additional_kwargs={"mode": "edit", "router_engine": "llm"})
+    assert message_dict(llm) == {"role": "user", "content": "x", "mode": "edit", "router_engine": "llm"}
+    noted = HumanMessage(name="review", content="r", additional_kwargs={"router_engine": "jev", "router_confidence": 0.5})
+    assert message_dict(noted) == {"role": "review", "content": "r", "name": "review"}
 
 
 async def test_runs_last_edge_cases(make_env):

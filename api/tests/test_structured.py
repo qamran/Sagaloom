@@ -24,12 +24,14 @@ class Seq:
     def __init__(self, *replies):
         self.replies = list(replies)
         self.calls = 0
+        self.configs: list = []
 
     def with_structured_output(self, schema, **kwargs):
         return self
 
     async def ainvoke(self, messages, config=None):
         self.calls += 1
+        self.configs.append(config)
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -101,3 +103,13 @@ async def test_dict_reply_is_validated():
     with pytest.raises(InvalidReply):
         await ask(bad)
     assert bad.calls == 2
+
+
+async def test_config_reaches_the_model():
+    cfg = {"metadata": {"fallback_for": "jev-latest"}}
+    m = Seq(None, Out(n=2))
+    assert (await ask(m, config=cfg)).n == 2
+    assert m.configs == [cfg, cfg]  # every attempt
+    plain = Seq(Out(n=1))
+    await ask(plain)
+    assert plain.configs == [None]

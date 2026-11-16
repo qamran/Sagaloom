@@ -80,6 +80,7 @@ class StubLLM:
         self.reply = reply
         self.calls = 0
         self.prompts: list = []
+        self.configs: list = []
 
     def with_structured_output(self, schema, **kwargs):
         return self
@@ -87,6 +88,7 @@ class StubLLM:
     async def ainvoke(self, messages, config=None):
         self.calls += 1
         self.prompts.append(messages)
+        self.configs.append(config)
         reply = self.reply(messages) if callable(self.reply) else self.reply
         if isinstance(reply, Exception):
             raise reply
@@ -2159,3 +2161,164 @@ async def test_blocked_message_never_reaches_router(store):
 async def test_router_with_no_author_run_returns_nothing():
     node = make_router_node(lambda role: scripted_router())
     assert await node({"messages": [AIMessage(content="hi")], "world_id": W}) == {}
+
+
+# ---------- router engine: Jev (R6.6) ----------
+
+
+def jev_answer(choice: str, confidence: float):
+    from langchain_typesafe import ClassifierResponse
+    from langchain_typesafe.types import ChoiceAnswer, Usage
+
+    probs = {m: (confidence if m == choice else (1 - confidence) / 2) for m in ("brainstorm", "query", "edit")}
+    return ClassifierResponse(
+        model="typesafe/jev-1.14-20261014",
+        answers={"mode": ChoiceAnswer(type="choice", choice=choice, probabilities=probs, confidence=confidence)},
+        usage=Usage(input_tokens=120, output_tokens=3),
+    )
+
+
+class FakeClassifier:
+    """The Jev classifier: answers with a scripted response, or raises a scripted exception."""
+
+    model = "jev-latest"
+
+    def __init__(self, result):
+        self.result = result
+        self.calls = 0
+        self.configs: list = []
+
+    async def ainvoke(self, input, config=None):
+        self.calls += 1
+        self.configs.append(config)
+        if isinstance(self.result, BaseException):
+            raise self.result
+        return self.result
+
+
+def jev_on() -> DevSettings:
+    return DevSettings(router_engine="jev")
+
+
+async def test_jev_engine_sets_mode_and_stamps_confidence(store):
+    llm_router = scripted_router("query")
+    jev = FakeClassifier(jev_answer("edit", 0.97))
+    graph, agent, _ = make(
+        store, [AIMessage(content="ok")], router=llm_router, dev=jev_on, router_classifier=jev
+    )
+    cfg = run_config("t-jev", W)
+    assert await run(graph, start("Ostra is a port."), cfg) == ["guard", "router", "agent"]
+    values = (await graph.aget_state(cfg)).values
+    assert values["mode"] == "edit"
+    [msg] = author_messages(values)
+    assert msg.additional_kwargs["mode"] == "edit"
+    assert msg.additional_kwargs["router_engine"] == "jev"
+    assert msg.additional_kwargs["router_confidence"] == 0.97
+    assert jev.calls == 1 and llm_router.calls == 0
+    assert system_text(agent).endswith("\n\n" + MODE_SECTIONS["edit"])
+
+
+async def test_jev_failure_falls_back_to_llm_with_note(store, caplog):
+    llm_router = scripted_router("query")
+    graph, *_ = make(
+        store, [AIMessage(content="ok")], router=llm_router, dev=jev_on,
+        router_classifier=FakeClassifier(TimeoutError("jev hung")),
+    )
+    cfg = run_config("t-jevfail", W)
+    await run(graph, start("How many moons?"), cfg)
+    values = (await graph.aget_state(cfg)).values
+    assert values["mode"] == "query"
+    [msg] = author_messages(values)
+    assert msg.additional_kwargs["router_engine"] == "llm"
+    assert "router_confidence" not in msg.additional_kwargs
+    [llm_cfg] = llm_router.configs
+    meta = llm_cfg["metadata"]
+    assert meta["fallback_for"] == "jev-latest"
+    assert "TimeoutError" in meta["fallback_reason"]
+    assert meta["thread_id"] == "t-jevfail"  # the run's own metadata is kept
+    assert llm_cfg.get("callbacks") is not None  # so the LLM's call is still recorded
+    assert "Jev router failed" in caplog.text
+
+
+async def test_jev_package_timeout_falls_back_with_a_key_free_reason(store):
+    from langchain_typesafe.client import TypeSafeAPITimeoutError
+
+    llm_router = scripted_router("brainstorm")
+    graph, *_ = make(
+        store, [AIMessage(content="ok")], router=llm_router, dev=jev_on,
+        router_classifier=FakeClassifier(TypeSafeAPITimeoutError(10.0)),
+    )
+    cfg = run_config("t-jevto", W)
+    await run(graph, start("Ideas for a festival?"), cfg)
+    assert (await graph.aget_state(cfg)).values["mode"] == "brainstorm"
+    reason = llm_router.configs[0]["metadata"]["fallback_reason"]
+    assert reason == "TypeSafeAPITimeoutError: Request timed out (timeout=10.0)."
+
+
+def test_jev_api_error_reason_is_key_free():
+    import httpx2
+    from langchain_typesafe.client import TypeSafeAuthenticationError
+
+    from sagaloom.model_errors import failure_line
+
+    key = "sk-or-SECRET-KEY-123"
+    exc = TypeSafeAuthenticationError(
+        401, {"error": {"message": f"bad key {key}"}}, httpx2.Headers({"authorization": f"Bearer {key}"}),
+        endpoint="POST https://openrouter.ai/api/v1/systemone",
+    )
+    line = failure_line(exc)
+    assert line == "TypeSafeAuthenticationError: POST https://openrouter.ai/api/v1/systemone: 401 Unauthorized"
+    assert key not in line
+
+
+async def test_jev_and_llm_both_fail_runs_without_mode(store, caplog):
+    graph, agent, _ = make(
+        store, [AIMessage(content="Three moons.")], router=StubLLM(RuntimeError("router down")),
+        dev=jev_on, router_classifier=FakeClassifier(RuntimeError("jev down")),
+    )
+    cfg = run_config("t-jevboth", W)
+    assert await run(graph, start("How many moons?"), cfg) == ["guard", "router", "agent"]
+    values = (await graph.aget_state(cfg)).values
+    assert values["mode"] is None
+    assert values["messages"][-1].content == "Three moons."
+    assert "router_engine" not in author_messages(values)[0].additional_kwargs
+    assert "router failed" in caplog.text
+
+
+async def test_llm_engine_is_default_and_unchanged(store):
+    llm_router = scripted_router("query")
+    jev = FakeClassifier(jev_answer("edit", 0.97))
+    graph, *_ = make(store, [AIMessage(content="ok")], router=llm_router, router_classifier=jev)
+    cfg = run_config("t-llmdef", W)
+    await run(graph, start("How many moons?"), cfg)
+    values = (await graph.aget_state(cfg)).values
+    assert values["mode"] == "query" and jev.calls == 0
+    kwargs = author_messages(values)[0].additional_kwargs
+    assert kwargs["router_engine"] == "llm" and "router_confidence" not in kwargs
+    assert llm_router.configs == [None]  # the LLM path is called as before
+
+
+async def test_jev_engine_without_a_classifier_uses_the_llm(store):
+    llm_router = scripted_router("query")
+    graph, *_ = make(store, [AIMessage(content="ok")], router=llm_router, dev=jev_on)
+    cfg = run_config("t-jevnone", W)
+    await run(graph, start("How many moons?"), cfg)
+    values = (await graph.aget_state(cfg)).values
+    assert values["mode"] == "query"
+    assert author_messages(values)[0].additional_kwargs["router_engine"] == "llm"
+    assert llm_router.configs == [None]  # no fallback note: nothing failed
+
+
+async def test_jev_call_is_recorded_in_the_prompt_log(store, tmp_path):
+    from sagaloom.promptlog import PromptLog, PromptLogHandler
+
+    jev = FakeClassifier(jev_answer("query", 0.94))
+    graph, *_ = make(store, [AIMessage(content="ok")], dev=jev_on, router_classifier=jev)
+    log = PromptLog(tmp_path / "prompts.sqlite")
+    handler = PromptLogHandler(log, "t-jevrec", lambda n, d: None, settings=S, secrets=[])
+    await run(graph, start("How many moons?"), {**run_config("t-jevrec", W), "callbacks": [handler]})
+    [rec] = [r for r in log.list("t-jevrec") if r.role == "router"]
+    assert rec.params["engine"] == "jev" and rec.model == "typesafe/jev-1.14-20261014"
+    # The node hands its own config on (the record above can also come from the context alone).
+    [jev_cfg] = jev.configs
+    assert jev_cfg["metadata"]["thread_id"] == "t-jevrec" and jev_cfg.get("callbacks") is not None

@@ -17,6 +17,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables.config import ensure_config
 from langchain_core.tools import BaseTool
 from langgraph.graph import END
 from langgraph.prebuilt import ToolNode
@@ -27,6 +28,7 @@ from pydantic import ValidationError
 import sagaloom.router as router_mod
 from sagaloom.check.contradiction import CHECK_FAILED_EXPLANATION, check_proposal
 from sagaloom.check.myth import apply_save_as_myth
+from sagaloom.decision import classify_mode
 from sagaloom.graph.prompts import SYSTEM
 from sagaloom.graph.state import Role, SagaState
 from sagaloom.guard import BLOCK_COPY, classify
@@ -210,25 +212,49 @@ def make_guard_node(model_for: ModelFor, dev: Callable[[], DevSettings] = DevSet
 # ---------- router ----------
 
 
-def make_router_node(model_for: ModelFor):
+def make_router_node(
+    model_for: ModelFor, dev: Callable[[], DevSettings] = DevSettings, classifier: Any | None = None
+):
     """Picks this turn's mode (R6.5). Never blocks the turn: on any error the mode is None and
     the agent runs with no mode section. The mode is also stamped on the author's message (same
-    id, so `add_messages` replaces it in place) for the chat's mode chip after a reload."""
+    id, so `add_messages` replaces it in place) for the chat's mode chip after a reload, with the
+    engine that decided it and, for Jev, its confidence.
 
-    async def router(state: SagaState) -> dict:
+    With `router_engine` "jev" and a `classifier`, Jev decides (R6.6). When Jev fails, the LLM
+    router decides instead, visibly: its call's metadata names the model it replaced and why
+    (`fallback_for`, `fallback_reason`, as `FallbackModel` does), and the stamp says "llm"."""
+
+    async def router(state: SagaState, config: RunnableConfig | None = None) -> dict:
         run = _unchecked_run(state.get("messages") or [])
         if not run:
             return {}
         text = "\n\n".join(message_text(m.content) for m in run)  # one call, as in the guard
-        try:
-            mode = (await router_mod.route(model_for("router"), text)).mode
-        except Exception as exc:
-            # The prompt record keeps the cause for Under the hood (promptlog.on_llm_error).
-            log.warning("router failed, running the turn without a mode: %s", failure_line(exc))
-            return {"mode": None}
+        stamp: dict[str, Any] | None = None
+        llm_config: RunnableConfig | None = None
+        if classifier is not None and dev().router_engine == "jev":
+            try:
+                jev = await classify_mode(classifier, text, config=config)  # records its own call
+                stamp = {"mode": jev.mode, "router_engine": "jev", "router_confidence": jev.confidence}
+            except Exception as exc:
+                reason = failure_line(exc)
+                log.warning("Jev router failed, the LLM router decides: %s", reason)
+                llm_config = ensure_config(config)
+                llm_config["metadata"] = {
+                    **(llm_config.get("metadata") or {}),
+                    "fallback_for": str(getattr(classifier, "model", None) or "jev"),
+                    "fallback_reason": reason,
+                }
+        if stamp is None:
+            try:
+                mode = (await router_mod.route(model_for("router"), text, config=llm_config)).mode
+            except Exception as exc:
+                # The prompt record keeps the cause for Under the hood (promptlog.on_llm_error).
+                log.warning("router failed, running the turn without a mode: %s", failure_line(exc))
+                return {"mode": None}
+            stamp = {"mode": mode, "router_engine": "llm"}
         last = run[-1]
-        stamped = last.model_copy(update={"additional_kwargs": {**last.additional_kwargs, "mode": mode}})
-        return {"mode": mode, "messages": [stamped]}
+        stamped = last.model_copy(update={"additional_kwargs": {**last.additional_kwargs, **stamp}})
+        return {"mode": stamp["mode"], "messages": [stamped]}
 
     return router
 

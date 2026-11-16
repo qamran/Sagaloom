@@ -93,7 +93,8 @@ def _deps(request: Request):
 
 
 def message_dict(m: BaseMessage) -> dict:
-    """{role, content, name?, tool_calls?, memory?, mode?, import?, turn_id?}; `review` is the
+    """{role, content, name?, tool_calls?, memory?, mode?, router_engine?, router_confidence?,
+    import?, turn_id?}; `review` is the
     author's decision note (R18.6), `memory` the `remember` node's note with one result per
     preference (R10.2), `guard` the input guard's notice in place of a blocked message (R13.1),
     and `import` the import endpoint's summary note that opens an import thread (R18.10).
@@ -111,6 +112,10 @@ def message_dict(m: BaseMessage) -> dict:
             out["import"] = m.additional_kwargs.get("import")
         if role == "user" and m.additional_kwargs.get("mode"):
             out["mode"] = m.additional_kwargs["mode"]  # the router's pick for this turn (R6.5)
+        if role == "user" and m.additional_kwargs.get("router_engine"):
+            out["router_engine"] = m.additional_kwargs["router_engine"]  # "llm" or "jev" (R6.6)
+        if role == "user" and m.additional_kwargs.get("router_confidence") is not None:
+            out["router_confidence"] = m.additional_kwargs["router_confidence"]  # Jev's only
     elif isinstance(m, AIMessage):
         # The input guard's notice for a blocked message (R13.1), like the `review` pattern.
         out = {"role": "guard" if m.name == "guard" else "assistant", **out}

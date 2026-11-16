@@ -59,6 +59,8 @@ class AppDeps:
     memory_locks: KeyedLocks = field(default_factory=KeyedLocks)
     # role -> chat model, the same factory the graph uses (the import extractor runs on it).
     model_for: Callable[[str], Any] | None = None
+    # The router's Jev classifier (R6.6), built once at startup; used when router_engine is "jev".
+    router_classifier: Any = None
     # Running turns, shielded from client disconnects; cancelled at shutdown.
     tasks: set[asyncio.Task] = field(default_factory=set)
     users: UserRegistry | None = None
@@ -158,6 +160,10 @@ async def _open_runtime(app: FastAPI):
                 )
                 await deps.memory.setup()
             deps.model_for = make_model_for(settings, deps.model_settings)
+            if deps.router_classifier is None:
+                from sagaloom.decision import make_router_classifier
+
+                deps.router_classifier = make_router_classifier(settings)
             deps.graph = build_graph(
                 store=deps.store,
                 model_for=deps.model_for,
@@ -166,6 +172,7 @@ async def _open_runtime(app: FastAPI):
                 wiki=deps.wiki,
                 memory_store=deps.memory,
                 memory_locks=deps.memory_locks,
+                router_classifier=deps.router_classifier,
             )
         if isinstance(deps.verifier, UnconfiguredVerifier):
             log.error("CLERK_ISSUER is not set: every sign-in will be rejected (set it in .env)")

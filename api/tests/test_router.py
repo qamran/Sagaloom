@@ -12,6 +12,7 @@ class Stub:
     def __init__(self, *replies):
         self.replies = list(replies)
         self.prompts: list = []
+        self.configs: list = []
         self.schema = None
 
     def with_structured_output(self, schema, **kwargs):
@@ -20,6 +21,7 @@ class Stub:
 
     async def ainvoke(self, messages, config=None):
         self.prompts.append(messages)
+        self.configs.append(config)
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -82,3 +84,13 @@ async def test_route_does_not_retry_a_400():
     with pytest.raises(openai.BadRequestError):
         await route(model, "x")
     assert len(model.prompts) == 1
+
+
+async def test_route_passes_config_to_the_model():
+    cfg = {"metadata": {"fallback_for": "jev-latest", "fallback_reason": "TimeoutError: "}}
+    model = Stub(RouteDecision(mode="query"))
+    assert (await route(model, "x", config=cfg)).mode == "query"
+    assert model.configs == [cfg]
+    plain = Stub(RouteDecision(mode="edit"))
+    await route(plain, "x")
+    assert plain.configs == [None]

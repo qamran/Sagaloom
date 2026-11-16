@@ -9,6 +9,7 @@ no mode section (unlike the guard, which fails closed).
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from sagaloom.graph.state import Mode
@@ -58,13 +59,14 @@ class RouteDecision(BaseModel):
     )
 
 
-async def route(model: BaseChatModel, text: str) -> RouteDecision:
+async def route(model: BaseChatModel, text: str, config: RunnableConfig | None = None) -> RouteDecision:
     """One classification: a second try after an invalid reply or a transient API error (see
-    `ask_structured`). Raises after the last attempt; the caller runs the turn without a mode."""
+    `ask_structured`). Raises after the last attempt; the caller runs the turn without a mode.
+    `config` is given when the LLM decides in place of Jev (its metadata names why)."""
     messages = [
         SystemMessage(content=ROUTER_PROMPT),
         HumanMessage(content=wrap_untrusted(text, "user_message")),
     ]
     return await ask_structured(
-        model, RouteDecision, messages, what="Router", retry_transient=True
+        model, RouteDecision, messages, what="Router", retry_transient=True, config=config
     )
