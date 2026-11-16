@@ -135,7 +135,7 @@ def build_feature_map(
             id="router",
             title="Router",
             brief_ref="Sprint topic",
-            req_ids=["R6.5"],
+            req_ids=["R6.5", "R6.6"],
             status="live",
             detail="A router node after the guard picks brainstorm, query or edit for each message, "
             "and the agent gets a short section for that mode. The mode shows on your message."

@@ -37,9 +37,11 @@ export function RouterEnginePanel({ payload, readOnly }: { payload: SettingsPayl
     <div className="flex flex-col gap-2">
       <fieldset
         role="radiogroup"
-        aria-label="Router engine"
         className="m-0 flex flex-wrap items-center gap-x-5 gap-y-2 border-0 p-0 text-[13px] text-foreground"
       >
+        <legend className="mb-1 p-0 text-[11px] font-medium uppercase tracking-[0.9px] text-muted-foreground">
+          Router engine
+        </legend>
         {OPTIONS.map((o) => (
           <label key={o.value} className="flex items-center gap-2">
             <input

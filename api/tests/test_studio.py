@@ -62,7 +62,7 @@ def test_feature_map_lists_all_brief_bonus_cards_with_req_ids(tmp_path, monkeypa
         "official_canon_licence",
     }
     router = card(cards, "router")
-    assert (router.brief_ref, router.req_ids, router.status) == ("Sprint topic", ["R6.5"], "live")
+    assert (router.brief_ref, router.req_ids, router.status) == ("Sprint topic", ["R6.5", "R6.6"], "live")
     assert router.try_href == "/chat?prompt=Give%20me%20three%20ideas%20for%20a%20festival%20in%20Velmar."
     assert card(cards, "tools").brief_ref == "Medium 6"
     assert card(cards, "tools").req_ids == ["R11.G1", "R11.G3"]

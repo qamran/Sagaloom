@@ -139,7 +139,7 @@ Ask about your world, state new facts, or brainstorm. The box says: "Ask about y
 
 ### Your message
 
-**Router · query** (the pill under your message) is the mode the **router** picked for that message. The router is a small, cheap AI call that reads only your message, before the assistant answers, and picks one of three modes:
+**Router · query** (the pill under your message) is the mode the **router** picked for that message. The router reads only your message, before the assistant answers, and picks one of three modes. By default it is a small, cheap AI call; the admin can switch it to the Jev decision model (see **Router engine** below).
 
 | Mode | When | Example | What the assistant is told |
 |---|---|---|---|
@@ -157,10 +157,12 @@ Why it is there:
 What it does *not* do:
 
 - **It steers, it does not fence.** All three modes go to the same assistant with the same tools; only a short instruction is added to its prompt (visible in Under the hood). A plain statement of lore still becomes a proposal in any mode.
-- **It never blocks you.** If the router call fails, the assistant answers without a mode.
+- **It never blocks you.** If the router call fails, the assistant answers without a mode (with the Jev engine, only when Jev and the LLM router both fail).
 - **It is not the contradiction check.** That runs later, on every proposal, whatever the mode.
 
-The mode is saved on your message, so the pill is still there after a reload. The router uses the same model as the input guard, and its cost appears as **Router** in the cost line. Where it is defined: `ROUTER_PROMPT` and `MODE_SECTIONS` in [api/sagaloom/router.py](../api/sagaloom/router.py); requirement R6.5 in [requirements.md](requirements.md); walkthrough 12 in the [README](../README.md).
+The mode is saved on your message, so the pill is still there after a reload. With the default LLM engine the router uses the same model as the input guard, and its cost appears as **Router** in the cost line. Where it is defined: `ROUTER_PROMPT` and `MODE_SECTIONS` in [api/sagaloom/router.py](../api/sagaloom/router.py); requirement R6.5 in [requirements.md](requirements.md); walkthrough 12 in the [README](../README.md).
+
+**Router engine.** The admin can switch the router's engine in Studio → Agent graph: **LLM (default)** or **Jev decision model**. The change applies from the next turn. Jev is TypeSafe's decision model, reached through OpenRouter (`jev-latest` by default, or `ROUTER_DECISION_MODEL` in `api/.env`). It answers one question, which mode the message needs, with a confidence and no text, and the pill shows that confidence: **Router · query · Jev 94%**. Each Jev call is cut off after 10 seconds. If Jev fails, the LLM router decides that turn and a note under the turn says so: "Router: jev-latest failed (…), so the fallback model … answered." If that fails too, the assistant answers without a mode. OpenRouter publishes no price for Jev, so its cost shows as "not priced" and counts as $0 in the totals and the monthly budget. Where it is defined: `classify_mode` in [api/sagaloom/decision.py](../api/sagaloom/decision.py); requirement R6.6 in [requirements.md](requirements.md).
 
 ### The assistant's answer
 
@@ -185,7 +187,7 @@ A citation may show square brackets around it, like `[ent_0007]`: the model wrot
 **5,475 tokens · $0.0005 · 3 steps ▸** sits under each answer:
 
 - **Tokens**: the amount of text sent to and from the AI models in that turn, all calls together.
-- **$**: what that turn cost.
+- **$**: what that turn cost. A Jev router call has no price: its step shows "not priced" (or "$0.0003 + not priced" when the step also has priced calls), and the line adds how many calls the total leaves out, e.g. "(excludes 1 unpriced call)".
 - **Steps**: how many kinds of AI call the turn used. Click ▸ for a bar and one row per step, with its calls, tokens in → out, and cost:
 
 | Step | What it is |
@@ -206,7 +208,7 @@ The **Under the hood** button opens a side panel for one turn (pick the turn in 
 
 - **Graph path**: the steps the turn went through, with timings, e.g. guard → router → agent → tools → agent. It is shown only for a turn run since the page was loaded; after a refresh it says so and links to the agent graph in Studio.
 - **Tool calls**: each tool the assistant called, with its input and result.
-- **Prompts sent to OpenRouter**: every prompt, grouped by step: the messages, the tool definitions, the response, tokens, cost, model and provider. Calls that saw secret facts are hidden unless Show secrets is on. API keys are never recorded.
+- **Prompts sent to OpenRouter**: every prompt, grouped by step: the messages, the tool definitions, the response, tokens, cost, model and provider. Calls that saw secret facts are hidden unless Show secrets is on. API keys are never recorded. A Jev router call is labelled **Router · Decision model (Jev)** and its cost reads "not priced"; the heading's total then says how many unpriced calls it leaves out.
 - **Copy turn as JSON** copies the whole record.
 
 ### Other things in Chat
@@ -303,11 +305,11 @@ For seeing how the app works inside. Controls only the admin can change say so. 
 | Section | What it shows |
 |---|---|
 | **Feature map** | One card per course feature, with its status and a **Try it →** link (**Planned** when not built yet). The violet course pills link here |
-| **Agent graph** | The assistant's graph as a diagram: each box is a step (guard, router, agent, tools, remember, check, approval gate, commit), each arrow a possible move. The **Thread** picker lists the selected world's chats and imports by title, kind and age (e.g. "How many moons does Velmar have? · chat · 21 min ago"), newest first; empty chats are left out. The steps that thread's last turn went through are highlighted and spelled out, e.g. "Last run: guard → router → agent". The diagram shows which steps ran, not whether they succeeded: a failed model call also ends at that step (Under the hood says "Call failed") |
+| **Agent graph** | The assistant's graph as a diagram: each box is a step (guard, router, agent, tools, remember, check, approval gate, commit), each arrow a possible move. Below it, **Router engine** picks what decides the router's mode: **LLM (default)** or **Jev decision model** (admin only; applies from the next turn; see [Chat → Your message](#your-message)). The **Thread** picker lists the selected world's chats and imports by title, kind and age (e.g. "How many moons does Velmar have? · chat · 21 min ago"), newest first; empty chats are left out. The steps that thread's last turn went through are highlighted and spelled out, e.g. "Last run: guard → router → agent". The diagram shows which steps ran, not whether they succeeded: a failed model call also ends at that step (Under the hood says "Call failed") |
 | **Tools** | The tools the assistant can call, and which are on (admin changes them). Each tool has a **Try it** box: a message to send in Chat, what you should see, and **Open in Chat**, which fills the Chat box with it. The examples use the sample world Velmar (`import_wiki` is best tried in a new world). To test a switch, turn a tool Off and send its message again: the agent no longer has it, and Under the hood no longer lists it |
 | **Guardrails** | The input guard's switch, what it blocks and allows in plain words, and two messages to try (**Should be blocked**, **Should be allowed**, each with **Open in Chat**). **Recent verdicts** lists the messages checked in the world selected in the header, newest first: the verdict in words (Allowed, Blocked: injection, Blocked: real-world harm, Blocked: check failed), the message itself, the guard's reason, how long ago, and **Open chat**. The guard's full instructions are folded under **What the guard is told**. The admin can switch Usage to **All users** (every user, every world) |
 | **Memory** | Preferences the assistant has remembered, which you can delete |
-| **Usage** | Your token and cost totals for the world selected in the header ("Showing House of Dragon only."), split by step. The Feature map's thread count and cost line follow the same world. Pick another world in the header to see its figures. The admin can switch to **All users** (every user, every world) |
+| **Usage** | Your token and cost totals for the world selected in the header ("Showing House of Dragon only."), split by step. A step whose calls have no price (the Jev router) shows "not priced" in place of a dollar figure. The Feature map's thread count and cost line follow the same world. Pick another world in the header to see its figures. The admin can switch to **All users** (every user, every world) |
 | **Models and providers** | The model used for each role, pinned to its provider. Only the admin can switch models. Each option in a model dropdown shows its price per 1M tokens in and out and its **rating**: stars and a score from the [Artificial Analysis Intelligence Index](https://artificialanalysis.ai/leaderboards/models) (higher is better; the top model scored about 65; 50+ is ★★★★★, then one star less per 10 points). The **Rating** column repeats it for the chosen model, with the reasoning effort it was measured at. "no rating" means the model is not on the current index (most older models). It is a general score, not a test of continuity checking. Scores were read on 13 Nov 2026 and live in `api/sagaloom/model_ratings.json`. Below it, **Fallback models** sets each role's fallback (or None), with the same price and rating; the input guard's also serves the router |
 | **Settings** | Developer settings such as the input guard and the monthly budget, 0 to 1000 US$ per account per month. Only the admin can change them |
 
@@ -336,7 +338,7 @@ Where you see it:
 - **Input guard:** as the guard's notice. The message was not acted on. The guard and the router share one model, set by `GUARD_MODEL` in `api/.env` (not in the Studio dropdown); the admin can also switch the guard off in Studio → Guardrails.
 - **Approval card:** in the check line. The check could not run, but you can still decide.
 - **Import:** as the import's error. Nothing was imported.
-- **Router:** the turn carries on without a mode.
+- **Router:** the turn carries on without a mode. With the Jev engine, a Jev failure (an error, a timeout, or an answer that is not a mode) means the LLM router decides, with the note "Router: jev-latest failed (…), so the fallback model … answered."; only when both fail does the turn carry on without a mode.
 - **Under the hood** and **Studio → Guardrails:** the failed call shows "Call failed:" with the cause and OpenRouter's own words (for example `gone 404: No endpoints found for …`). A failed call costs nothing.
 
 An error that is not about a model keeps the plain wording ("Something went wrong…").
@@ -348,6 +350,7 @@ Violet outlined pills such as **Router · query**, **Agentic RAG** and **Memory 
 | Pill | Where | Course concept |
 |---|---|---|
 | **Router · query / edit / brainstorm** | Under your message | A router node picks a mode before the agent runs |
+| **Router · query · Jev 94%** | Under your message, with the Jev router engine | The mode came from the Jev decision model, with its confidence |
 | **Agentic RAG** | Beside "Searched canon" | The agent decides when and what to retrieve from canon |
 | **Memory · checkpointer** | Top of a reopened chat | The conversation is saved per thread and restored |
 | **Memory · store** | Beside a remembered preference | Long-term memory across conversations |

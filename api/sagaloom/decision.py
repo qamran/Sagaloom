@@ -121,40 +121,42 @@ async def _record(
     config: RunnableConfig | None,
 ) -> None:
     """Sends the call to the prompt log. With no handler or no parent run (the eval, unit
-    tests) there is nowhere to send it: that is never an error."""
-    model = getattr(response, "model", None) or str(getattr(classifier, "model", None) or "unknown")
-    usage = getattr(response, "usage", None)
-    out: dict[str, Any] = {
-        "content": "",
-        "tool_calls": [],
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "cost_usd": None,
-        "priced": False,
-        "latency_ms": int((time.monotonic() - started) * 1000),
-    }
-    if decision is not None:
-        out["content"] = json.dumps(
-            {"mode": decision.mode, "confidence": decision.confidence, "engine": "jev"}
-        )
-        out["prompt_tokens"] = (usage.input_tokens or 0) if usage else 0
-        out["completion_tokens"] = (usage.output_tokens or 0) if usage else 0
-    if error is not None:
-        out["error"] = failure_line(error)
-    payload = {
-        "id": uuid.uuid4().hex,
-        "role": "router",
-        "provider": "openrouter",
-        "model": model,
-        "params": {"engine": "jev", "timeout": DECISION_TIMEOUT},
-        "request": {
-            "messages": [{"role": "user", "content": text}],
-            "tools": [],
-            "question": ROUTER_QUESTION.model_dump(mode="json"),
-        },
-        "response": out,
-    }
+    tests) there is nowhere to send it: that is never an error. Recording never raises: a payload
+    that cannot be built or sent is logged and dropped, so the decision or the original error
+    still reaches the caller."""
     try:
+        model = getattr(response, "model", None) or str(getattr(classifier, "model", None) or "unknown")
+        usage = getattr(response, "usage", None)
+        out: dict[str, Any] = {
+            "content": "",
+            "tool_calls": [],
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cost_usd": None,
+            "priced": False,
+            "latency_ms": int((time.monotonic() - started) * 1000),
+        }
+        if decision is not None:
+            out["content"] = json.dumps(
+                {"mode": decision.mode, "confidence": decision.confidence, "engine": "jev"}
+            )
+            out["prompt_tokens"] = (usage.input_tokens or 0) if usage else 0
+            out["completion_tokens"] = (usage.output_tokens or 0) if usage else 0
+        if error is not None:
+            out["error"] = failure_line(error)
+        payload = {
+            "id": uuid.uuid4().hex,
+            "role": "router",
+            "provider": "openrouter",
+            "model": model,
+            "params": {"engine": "jev", "timeout": DECISION_TIMEOUT},
+            "request": {
+                "messages": [{"role": "user", "content": text}],
+                "tools": [],
+                "question": ROUTER_QUESTION.model_dump(mode="json"),
+            },
+            "response": out,
+        }
         await adispatch_custom_event(DECISION_EVENT, payload, config=config)
     except Exception:
         logger.debug("Jev decision call not recorded", exc_info=True)

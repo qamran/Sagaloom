@@ -1,5 +1,7 @@
 """The Jev decision-model router classifier (R6.6). No network: a fake classifier answers."""
 
+from types import SimpleNamespace
+
 import pytest
 from langchain_typesafe import ClassifierResponse
 from langchain_typesafe.types import ChoiceAnswer, Usage
@@ -87,5 +89,25 @@ async def test_records_without_handler_do_not_raise():
 
 
 async def test_classifier_exception_propagates_without_handler():
+    with pytest.raises(TimeoutError):
+        await classify_mode(FakeClassifier(TimeoutError("slow")), "x")
+
+
+async def test_recording_error_never_replaces_the_decision():
+    # A usage of the wrong type makes building the log payload raise; the decision still returns.
+    odd = SimpleNamespace(
+        model="typesafe/jev-1.14-20261014",
+        choices={"mode": SimpleNamespace(choice="query", confidence=0.9)},
+        usage="not a usage",
+    )
+    decision = await classify_mode(FakeClassifier(odd), "x")
+    assert decision == JevDecision(mode="query", confidence=0.9, model="typesafe/jev-1.14-20261014")
+
+
+async def test_recording_error_never_replaces_the_original_error(monkeypatch):
+    def broken(_exc):
+        raise ValueError("payload")
+
+    monkeypatch.setattr("sagaloom.decision.failure_line", broken)
     with pytest.raises(TimeoutError):
         await classify_mode(FakeClassifier(TimeoutError("slow")), "x")

@@ -22,7 +22,8 @@ describe("UsagePanel", () => {
       { role: "agent", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 10, completion_tokens: 2, cost_usd: 0.01 },
     ];
     render(<UsagePanel usage={{ ...usage, by_model }} />);
-    expect(screen.getByText(/\$0\.0000 \+ not priced/)).toBeInTheDocument();
+    expect(screen.getByText("not priced")).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.0000/)).toBeNull();
     expect(screen.getAllByText(/not priced/)).toHaveLength(1);
   });
 

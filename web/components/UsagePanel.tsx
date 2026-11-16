@@ -1,5 +1,5 @@
 import { spendLine } from "@/lib/me";
-import { stepName, stepOf } from "@/lib/steps";
+import { stepCost, stepName, stepOf } from "@/lib/steps";
 import type { Me, StudioData } from "@/lib/types";
 import type { Scope } from "@/lib/api";
 
@@ -88,8 +88,7 @@ export function UsagePanel({
               <span className="text-muted-foreground">
                 {m.calls} {m.calls === 1 ? "call" : "calls"} · {n(m.prompt_tokens)} → {n(m.completion_tokens)} tok ·{" "}
                 <span className="text-foreground">
-                  ${m.cost_usd.toFixed(4)}
-                  {(m.unpriced_calls ?? 0) > 0 && " + not priced"}
+                  {stepCost({ cost_usd: m.cost_usd, unpriced_calls: m.unpriced_calls ?? 0 })}
                 </span>
               </span>
             </div>
