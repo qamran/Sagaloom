@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupCalls, stepOf, stepsFromRoles } from "@/lib/steps";
+import { excludesNote, groupCalls, stepCost, stepOf, stepsFromRoles } from "@/lib/steps";
 import type { LlmCall } from "@/lib/turns";
 import type { RoleUsage } from "@/lib/types";
 
@@ -64,5 +64,31 @@ describe("groupCalls", () => {
   it("keeps the cost of a role named like an Object.prototype member under Other", () => {
     const [g] = groupCalls([call("toString", 0.5)]);
     expect(g).toMatchObject({ key: "other", cost_usd: 0.5 });
+  });
+});
+
+describe("unpriced calls", () => {
+  const jev = (tokens: number): LlmCall => ({
+    id: `j${tokens}`, provider: "openrouter", model: "jev-latest", role: "router", params: { engine: "jev" }, messages: [], tools: [],
+    response: { content: "", tool_calls: [], prompt_tokens: tokens, completion_tokens: 0, cost_usd: null, priced: false, latency_ms: 1 },
+  });
+
+  it("groupCalls counts a Jev call that used tokens, not a failed one", () => {
+    const [g] = groupCalls([jev(0), call("router", 0.0003), jev(40)]);
+    expect(g).toMatchObject({ key: "router", calls: 3, unpriced_calls: 1, cost_usd: 0.0003 });
+  });
+
+  it("stepsFromRoles sums unpriced_calls", () => {
+    const [s] = stepsFromRoles([{ ...u("router", 1, 1, 1, 0), unpriced_calls: 1 }, u("router")]);
+    expect(s.unpriced_calls).toBe(1);
+  });
+
+  it("stepCost and excludesNote word the cost", () => {
+    expect(stepCost({ cost_usd: 0.0003, unpriced_calls: 0 })).toBe("$0.0003");
+    expect(stepCost({ cost_usd: 0, unpriced_calls: 1 })).toBe("not priced");
+    expect(stepCost({ cost_usd: 0.0003, unpriced_calls: 1 })).toBe("$0.0003 + not priced");
+    expect(excludesNote(0)).toBe("");
+    expect(excludesNote(1)).toBe(" (excludes 1 unpriced call)");
+    expect(excludesNote(2)).toBe(" (excludes 2 unpriced calls)");
   });
 });

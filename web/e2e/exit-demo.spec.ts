@@ -344,9 +344,10 @@ test("M1 exit demo", async ({ page }) => {
   await newThread();
   const legendThread = currentThread();
   await send(page, "Suggest a founding legend for Velmar.");
-  const modeChip = log(page).getByRole("link", { name: /^Course note: Router · (brainstorm|query|edit)$/ });
+  const chipName = /^Course note: Router · (brainstorm|query|edit)( · Jev \d+%)?$/;
+  const modeChip = log(page).getByRole("link", { name: chipName });
   await expect(modeChip).toBeVisible();
-  const mode = (await modeChip.getAttribute("aria-label"))!.replace("Course note: Router · ", "");
+  const mode = (await modeChip.getAttribute("aria-label"))!.match(chipName)![1];
   console.log(`demo step 19: the router chose mode "${mode}" for the legend request`);
   await settle(page);
   await rejectAll(page);

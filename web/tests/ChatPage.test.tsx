@@ -231,6 +231,12 @@ describe("/chat/[threadId]", () => {
     expect(screen.getByText("How many moons?")).toBeInTheDocument();
   });
 
+  it("chip shows Jev confidence after reload", async () => {
+    renderThread([{ role: "user", content: "How many moons?", mode: "query", router_engine: "jev", router_confidence: 0.94 }]);
+    const chip = await screen.findByRole("link", { name: "Course note: Router · query · Jev 94%" });
+    expect(chip).toHaveAttribute("href", "/studio?card=router#feature-map");
+  });
+
   it("undoes in the thread's own world, not the selected one", async () => {
     vi.mocked(forgetMemory).mockReset().mockResolvedValue({ preferences: {} } as never);
     vi.mocked(getThread).mockResolvedValue({

@@ -79,16 +79,39 @@ describe("turn views", () => {
   });
 });
 
+describe("Jev router calls", () => {
+  it("a live Jev response keeps priced:false", () => {
+    const v = viewFromEvents({
+      turn: 1,
+      kind: "message",
+      events: [
+        { event: "llm_request", data: { id: "j", role: "router", model: "jev-latest", params: { engine: "jev", timeout: 10 }, messages: [], tools: [] } },
+        { event: "llm_response", data: { id: "j", content: '{"mode":"query"}', tool_calls: [], prompt_tokens: 40, completion_tokens: 3, cost_usd: null, priced: false, latency_ms: 300 } },
+      ],
+    });
+    expect(v.calls[0].response).toMatchObject({ cost_usd: 0, priced: false });
+  });
+});
+
 describe("parseRouterMode", () => {
   const resp = (content: string, tool_calls: unknown[] = []) =>
     ({ content, tool_calls, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, latency_ms: 0 }) as never;
+  const llm = (mode: string) => ({ mode, engine: "llm", confidence: null });
 
   it("reads the mode from JSON content", () => {
-    expect(parseRouterMode(resp(JSON.stringify({ mode: "brainstorm" })))).toBe("brainstorm");
+    expect(parseRouterMode(resp(JSON.stringify({ mode: "brainstorm" })))).toEqual(llm("brainstorm"));
   });
 
   it("reads the mode from the first tool call's args", () => {
-    expect(parseRouterMode(resp("", [{ id: "1", name: "RouteDecision", args: { mode: "edit" } }]))).toBe("edit");
+    expect(parseRouterMode(resp("", [{ id: "1", name: "RouteDecision", args: { mode: "edit" } }]))).toEqual(llm("edit"));
+  });
+
+  it("reads a Jev decision's engine and confidence", () => {
+    expect(parseRouterMode(resp(JSON.stringify({ mode: "query", confidence: 0.94, engine: "jev" })))).toEqual({
+      mode: "query",
+      engine: "jev",
+      confidence: 0.94,
+    });
   });
 
   it("is null for garbage, an unknown mode or no response", () => {
@@ -99,8 +122,8 @@ describe("parseRouterMode", () => {
   });
 
   it("parseRouterMode reads a plain object and rejects junk", () => {
-    expect(parseRouterMode({ content: JSON.stringify({ mode: "query" }) })).toBe("query");
-    expect(parseRouterMode({ id: "r1", content: "", tool_calls: [{ args: { mode: "edit" } }] })).toBe("edit");
+    expect(parseRouterMode({ content: JSON.stringify({ mode: "query" }) })).toEqual(llm("query"));
+    expect(parseRouterMode({ id: "r1", content: "", tool_calls: [{ args: { mode: "edit" } }] })).toEqual(llm("edit"));
     expect(parseRouterMode(undefined)).toBeNull();
     expect(parseRouterMode("brainstorm")).toBeNull();
     expect(parseRouterMode(42)).toBeNull();

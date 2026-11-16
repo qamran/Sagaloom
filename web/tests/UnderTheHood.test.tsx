@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Response as ResponseTab, UnderTheHood } from "@/components/UnderTheHood";
 import { MASKED_LINE } from "@/lib/maskSecrets";
 import { SHOW_SECRETS_KEY } from "@/lib/secrets";
-import type { TurnView } from "@/lib/turns";
+import { buildTurnViews, type TurnView } from "@/lib/turns";
+import type { PromptRecord } from "@/lib/types";
 
 const WRAPPED = '<untrusted_data source="ent_0012">Ister, the red moon.</untrusted_data>';
 
@@ -438,5 +439,58 @@ describe("a failed call", () => {
     const res = screen.getByRole("region", { name: "Response" });
     expect(within(res).getByText("Call failed: gone 404: No endpoints found for openai/gpt-x.")).toBeInTheDocument();
     expect(within(res).queryByText("(no text)")).toBeNull();
+  });
+});
+
+describe("decision model call", () => {
+  const jevCall = {
+    id: "j1",
+    provider: "openrouter",
+    model: "jev-latest",
+    role: "router",
+    params: { engine: "jev", timeout: 10 },
+    messages: [{ role: "user", content: "How many moons?" }],
+    tools: [],
+    response: {
+      content: '{"mode":"query","confidence":0.94,"engine":"jev"}',
+      tool_calls: [],
+      prompt_tokens: 40,
+      completion_tokens: 3,
+      cost_usd: 0,
+      priced: false,
+      latency_ms: 300,
+    },
+  };
+
+  it("labels a Jev router call and says not priced instead of a dollar figure", () => {
+    render(<UnderTheHood turn={{ key: "live-1", label: "Turn 1", nodes: [], tools: [], calls: [jevCall] }} onClose={() => {}} />);
+    expect(screen.getByText("Router · Decision model (Jev)")).toBeInTheDocument();
+    const card = screen.getByRole("button", { name: /Router · Decision model \(Jev\)/ });
+    expect(card).toHaveTextContent("40 → 3 tok · not priced · 0.3s");
+    expect(card).not.toHaveTextContent("$");
+    expect(screen.getByRole("button", { name: /^Router/, expanded: true })).toHaveTextContent("not priced");
+    expect(screen.getByText(/Turn 1 · 1 model call/)).toHaveTextContent("$0.0000 (excludes 1 unpriced call)");
+  });
+
+  it("renders a reloaded Jev call with a null cost without throwing", () => {
+    const rec = {
+      id: "j1", thread_id: "t", run_id: "r1", provider: "openrouter", model: "jev-latest", role: "router",
+      params: { engine: "jev", timeout: 10 },
+      request: { messages: [{ role: "user", content: "How many moons?" }], tools: [] },
+      response: { ...jevCall.response, cost_usd: null },
+      started_at: "",
+    } as unknown as PromptRecord;
+    const [view] = buildTurnViews([], [rec]);
+    render(<UnderTheHood turn={view} onClose={() => {}} />);
+    expect(screen.getByText("Router · Decision model (Jev)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Router · Decision model \(Jev\)/ })).toHaveTextContent("not priced");
+  });
+
+  it("keeps an LLM router call's label and price", () => {
+    const llm = { ...jevCall, model: "openai/gpt-6-luna", params: {}, response: { ...jevCall.response, cost_usd: 0.0003, priced: undefined } };
+    render(<UnderTheHood turn={{ key: "live-1", label: "Turn 1", nodes: [], tools: [], calls: [llm] }} onClose={() => {}} />);
+    expect(screen.queryByText(/Decision model/)).toBeNull();
+    expect(screen.queryByText(/not priced/)).toBeNull();
+    expect(screen.getAllByText(/\$0\.0003/).length).toBeGreaterThan(0);
   });
 });

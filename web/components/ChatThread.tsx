@@ -13,6 +13,7 @@ import { getEntries, getLlmLog, getSettings } from "@/lib/api";
 import { overBudgetMessage, useMe } from "@/lib/me";
 import type { Named } from "@/lib/mentions";
 import { checkSummary } from "@/lib/review";
+import { routerChipLabel } from "@/lib/routerChip";
 import { useShowSecrets } from "@/lib/secrets";
 import { SHOWN_ROLES } from "@/lib/steps";
 import { buildTurnViews } from "@/lib/turns";
@@ -70,7 +71,7 @@ function Message({
         {m.content}
         {m.mode && (
           <div className="mt-1.5 flex justify-end">
-            <CourseChip card="router" label={`Router · ${m.mode}`} />
+            <CourseChip card="router" label={routerChipLabel(m.mode, m.router_engine, m.router_confidence)} />
           </div>
         )}
       </div>

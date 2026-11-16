@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ACCOUNT_UNAVAILABLE, getThread, handleAuthStatus, isAccountDown, PROXY_BASE, SESSION_REJECTED } from "./api";
 import { detailOf, readEvents } from "./readSse";
 import { markTour } from "./tour";
-import { parseRouterMode } from "./turns";
-import type { ChatMessage, Decision, ImportNote, Mode, PendingInterrupt, SseEvent, ThreadState, TurnUsage, Usage } from "./types";
+import { parseRouterMode, type RouterDecision } from "./turns";
+import type { ChatMessage, Decision, ImportNote, PendingInterrupt, SseEvent, ThreadState, TurnUsage, Usage } from "./types";
 
 export type StreamStatus = "idle" | "streaming" | "reconnecting" | "error";
 
@@ -110,10 +110,19 @@ function applyToMessages(msgs: ChatMessage[], ev: SseEvent, tokenRole: TokenRole
   }
 }
 
-/** Puts the router's mode on the author's latest message (the one this turn sent). */
-function withMode(msgs: ChatMessage[], mode: Mode): ChatMessage[] {
+/** Puts the router's decision on the author's latest message (the one this turn sent). All three
+ * fields are overwritten: on a Jev fallback turn the LLM's later decision replaces Jev's. */
+function withMode(msgs: ChatMessage[], decision: RouterDecision): ChatMessage[] {
   for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].role === "user") return [...msgs.slice(0, i), { ...msgs[i], mode }, ...msgs.slice(i + 1)];
+    if (msgs[i].role === "user") {
+      const stamped: ChatMessage = {
+        ...msgs[i],
+        mode: decision.mode,
+        router_engine: decision.engine,
+        router_confidence: decision.confidence ?? undefined,
+      };
+      return [...msgs.slice(0, i), stamped, ...msgs.slice(i + 1)];
+    }
   }
   return msgs;
 }
@@ -322,8 +331,8 @@ export function useAgentStream(threadId: string, opts: { autoSubmit?: boolean } 
               break;
             case "llm_response": {
               if (typeof ev.data.id === "string" && routerCalls.has(ev.data.id)) {
-                const mode = parseRouterMode(ev.data);
-                if (mode) setMessages((m) => withMode(m, mode));
+                const decision = parseRouterMode(ev.data);
+                if (decision) setMessages((m) => withMode(m, decision));
               }
               record(ev);
               break;

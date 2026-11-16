@@ -87,7 +87,10 @@ export function UsagePanel({
               <span className="font-mono">{usageLabel(m.role, m.model)}</span>
               <span className="text-muted-foreground">
                 {m.calls} {m.calls === 1 ? "call" : "calls"} · {n(m.prompt_tokens)} → {n(m.completion_tokens)} tok ·{" "}
-                <span className="text-foreground">${m.cost_usd.toFixed(4)}</span>
+                <span className="text-foreground">
+                  ${m.cost_usd.toFixed(4)}
+                  {(m.unpriced_calls ?? 0) > 0 && " + not priced"}
+                </span>
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-panel-3">

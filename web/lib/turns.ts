@@ -60,10 +60,18 @@ export function callFromRecord(r: PromptRecord): LlmCall {
 
 const MODES: readonly Mode[] = ["brainstorm", "query", "edit"];
 
-/** The mode in a router response (api/sagaloom/router.py RouteDecision): the content as JSON, else
- * the first tool call's args. Takes the raw `llm_response` payload and narrows it itself; anything
- * else (prose, an unknown mode, no response, not an object) is null. */
-export function parseRouterMode(data: unknown): Mode | null {
+/** A router's decision: the mode, which engine made it, and Jev's confidence (null for the LLM). */
+export interface RouterDecision {
+  mode: Mode;
+  engine: "llm" | "jev";
+  confidence: number | null;
+}
+
+/** The decision in a router response (api/sagaloom/router.py RouteDecision, or a Jev decision's
+ * `{"mode","confidence","engine":"jev"}`): the content as JSON, else the first tool call's args.
+ * Takes the raw `llm_response` payload and narrows it itself; anything else (prose, an unknown mode,
+ * no response, not an object) is null. The engine is "jev" only when the answer says so. */
+export function parseRouterMode(data: unknown): RouterDecision | null {
   if (!data || typeof data !== "object") return null;
   const { content, tool_calls } = data as { content?: unknown; tool_calls?: unknown };
   const candidates: unknown[] = [];
@@ -77,8 +85,11 @@ export function parseRouterMode(data: unknown): Mode | null {
   const first: unknown = Array.isArray(tool_calls) ? tool_calls[0] : undefined;
   if (first && typeof first === "object") candidates.push((first as { args?: unknown }).args);
   for (const c of candidates) {
-    const mode = c && typeof c === "object" ? (c as { mode?: unknown }).mode : undefined;
-    if (MODES.includes(mode as Mode)) return mode as Mode;
+    if (!c || typeof c !== "object") continue;
+    const { mode, engine, confidence } = c as { mode?: unknown; engine?: unknown; confidence?: unknown };
+    if (!MODES.includes(mode as Mode)) continue;
+    const jev = engine === "jev";
+    return { mode: mode as Mode, engine: jev ? "jev" : "llm", confidence: jev && typeof confidence === "number" ? confidence : null };
   }
   return null;
 }
@@ -137,6 +148,7 @@ export function viewFromEvents(t: TurnEvents): TurnView {
             completion_tokens: num(d.completion_tokens),
             cost_usd: num(d.cost_usd),
             latency_ms: num(d.latency_ms),
+            ...(d.priced === false ? { priced: false } : {}),
             ...(typeof d.error === "string" && d.error ? { error: d.error } : {}),
           };
         break;

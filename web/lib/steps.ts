@@ -42,18 +42,42 @@ export interface StepTotal {
   prompt_tokens: number;
   completion_tokens: number;
   cost_usd: number;
+  /** Calls that ran but have no price (a Jev decision); their cost is not in `cost_usd`. */
+  unpriced_calls: number;
+}
+
+const usd = (v: number) => `$${v.toFixed(4)}`;
+
+/** A step's cost as shown: the dollar figure, "not priced" when every call in it was unpriced, or
+ * the figure and "+ not priced" when some were (R6.6). */
+export function stepCost(s: Pick<StepTotal, "cost_usd" | "unpriced_calls">): string {
+  if (s.unpriced_calls === 0) return usd(s.cost_usd);
+  return s.cost_usd === 0 ? "not priced" : `${usd(s.cost_usd)} + not priced`;
+}
+
+/** The suffix a total carries when unpriced calls were left out of it; empty when there were none. */
+export function excludesNote(unpriced: number): string {
+  return unpriced > 0 ? ` (excludes ${unpriced} unpriced ${unpriced === 1 ? "call" : "calls"})` : "";
+}
+
+/** Whether a call ran but is not priced, as the API counts it (promptlog `_is_unpriced`): marked
+ * `priced: false` and used tokens. A failed Jev call (no tokens) is not counted. */
+export function isUnpriced(call: LlmCall): boolean {
+  const r = call.response;
+  return !!r && r.priced === false && r.prompt_tokens + r.completion_tokens > 0;
 }
 
 /** Roll per-role usage up to steps: merged, empty steps dropped, in STEPS order. */
 export function stepsFromRoles(byRole: RoleUsage[]): StepTotal[] {
   return STEPS.map((step) => {
-    const total: StepTotal = { ...step, calls: 0, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 };
+    const total: StepTotal = { ...step, calls: 0, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, unpriced_calls: 0 };
     for (const r of byRole) {
       if (stepOf(r.role) !== step.key) continue;
       total.calls += r.calls;
       total.prompt_tokens += r.prompt_tokens;
       total.completion_tokens += r.completion_tokens;
       total.cost_usd += r.cost_usd;
+      total.unpriced_calls += r.unpriced_calls ?? 0;
     }
     return total;
   }).filter((t) => t.calls > 0);
@@ -66,7 +90,7 @@ export interface CallGroup extends StepTotal {
 /** Group a turn's calls by step: in STEPS order, empty steps dropped; `index` is the call's place in the whole turn. */
 export function groupCalls(calls: LlmCall[]): CallGroup[] {
   return STEPS.map((step) => {
-    const group: CallGroup = { ...step, items: [], calls: 0, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0 };
+    const group: CallGroup = { ...step, items: [], calls: 0, prompt_tokens: 0, completion_tokens: 0, cost_usd: 0, unpriced_calls: 0 };
     calls.forEach((call, index) => {
       if (stepOf(call.role) !== step.key) return;
       group.items.push({ call, index });
@@ -74,6 +98,7 @@ export function groupCalls(calls: LlmCall[]): CallGroup[] {
       group.prompt_tokens += call.response?.prompt_tokens ?? 0;
       group.completion_tokens += call.response?.completion_tokens ?? 0;
       group.cost_usd += call.response?.cost_usd ?? 0;
+      group.unpriced_calls += isUnpriced(call) ? 1 : 0;
     });
     return group;
   }).filter((g) => g.calls > 0);

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { MASKED_LINE, UNTRUSTED, argsHoldSecret, maskPrompt, responseHoldsSecret } from "@/lib/maskSecrets";
 import { useShowSecrets } from "@/lib/secrets";
-import { groupCalls, type CallGroup } from "@/lib/steps";
+import { excludesNote, groupCalls, stepCost, type CallGroup } from "@/lib/steps";
 import type { LlmCall, NodeStep, TurnView } from "@/lib/turns";
 import type { PromptMessage } from "@/lib/types";
 
@@ -164,7 +164,8 @@ function CallCard({
   const [tab, setTab] = useState<"Request" | "Response" | "Raw JSON">("Request");
   const [copyError, setCopyError] = useState(false);
   const r = call.response;
-  const role = (call.role && ROLE_LABEL[call.role]) || (call.tools.length > 0 ? "Agent" : "Structured call");
+  const baseRole = (call.role && ROLE_LABEL[call.role]) || (call.tools.length > 0 ? "Agent" : "Structured call");
+  const role = call.params.engine === "jev" ? `${baseRole} · Decision model (Jev)` : baseRole;
   const params = Object.entries(call.params)
     .filter(([k]) => ["temperature", "max_tokens", "reasoning_effort"].includes(k))
     .map(([k, v]) => `${k} ${String(v)}`);
@@ -199,7 +200,7 @@ function CallCard({
         )}
         <span className="ml-auto text-muted-foreground">
           {r
-            ? `${n(r.prompt_tokens)} → ${n(r.completion_tokens)} tok · ${usd(r.cost_usd)} · ${secs(r.latency_ms)}`
+            ? `${n(r.prompt_tokens)} → ${n(r.completion_tokens)} tok · ${r.priced === false || r.cost_usd == null ? "not priced" : usd(r.cost_usd)} · ${secs(r.latency_ms)}`
             : "running…"}{" "}
           {open ? "▾" : "▸"}
         </span>
@@ -311,7 +312,7 @@ function StepGroup({
             {plural(group.calls, "call")} · {n(group.prompt_tokens)} → {n(group.completion_tokens)} tok
           </span>
           <span className="ml-auto text-foreground">
-            {usd(group.cost_usd)} <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+            {stepCost(group)} <span aria-hidden="true">{open ? "▾" : "▸"}</span>
           </span>
         </span>
         <span aria-hidden="true" className="flex h-1 overflow-hidden rounded-full bg-panel-3">
@@ -374,8 +375,8 @@ export function UnderTheHood({
       <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-[18px] py-3.5">
         <h2 className="m-0 font-heading text-xl font-semibold">Under the hood</h2>
         <span className="text-xs text-muted-foreground">
-          {turn.label} · {turn.calls.length} model {turn.calls.length === 1 ? "call" : "calls"} · {usd(totals.cost)} ·{" "}
-          {secs(totals.ms)}
+          {turn.label} · {turn.calls.length} model {turn.calls.length === 1 ? "call" : "calls"} · {usd(totals.cost)}
+          {excludesNote(groups.reduce((sum, g) => sum + g.unpriced_calls, 0))} · {secs(totals.ms)}
         </span>
         <button
           type="button"

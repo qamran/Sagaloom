@@ -129,6 +129,10 @@ export interface ChatMessage {
   memory?: MemoryResult[];
   /** On a "user" message: the mode the router picked for that turn. */
   mode?: Mode;
+  /** On a "user" message: what picked the mode, the LLM router or the Jev decision model (R6.6). */
+  router_engine?: "llm" | "jev";
+  /** On a "user" message routed by Jev: its confidence in the mode, 0 to 1. */
+  router_confidence?: number;
   /** On an "import" message: the import's source, first lines and left-out candidates. */
   import?: ImportNote;
   tool_calls?: { id: string | null; name: string; args: Record<string, unknown> }[];
@@ -255,6 +259,8 @@ export interface ModelUsage {
   prompt_tokens: number;
   completion_tokens: number;
   cost_usd: number;
+  /** Calls that ran but have no price (a decision model); their cost is not in `cost_usd`. */
+  unpriced_calls?: number;
 }
 
 export interface StudioData {
@@ -308,7 +314,10 @@ export interface LlmResponse {
   tool_calls: { id: string | null; name: string; args: Record<string, unknown> }[];
   prompt_tokens: number;
   completion_tokens: number;
-  cost_usd: number;
+  /** Null on a call that is not priced (a decision model's record, reloaded from the prompt log). */
+  cost_usd: number | null;
+  /** False on a call that is not priced, like a Jev decision; absent on a priced call. */
+  priced?: boolean;
   latency_ms: number;
   /** A failed call's cause (kind, status and OpenRouter's words); the call cost nothing. */
   error?: string;

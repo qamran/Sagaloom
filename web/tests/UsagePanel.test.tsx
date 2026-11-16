@@ -16,6 +16,16 @@ describe("UsagePanel", () => {
     expect(screen.queryByRole("switch", { name: "All users" })).toBeNull();
   });
 
+  it("usage row not priced", () => {
+    const by_model = [
+      { role: "router", model: "jev-latest", calls: 2, prompt_tokens: 80, completion_tokens: 6, cost_usd: 0, unpriced_calls: 2 },
+      { role: "agent", model: "openai/gpt-6-luna", calls: 1, prompt_tokens: 10, completion_tokens: 2, cost_usd: 0.01 },
+    ];
+    render(<UsagePanel usage={{ ...usage, by_model }} />);
+    expect(screen.getByText(/\$0\.0000 \+ not priced/)).toBeInTheDocument();
+    expect(screen.getAllByText(/not priced/)).toHaveLength(1);
+  });
+
   it("offers the admin an All users switch and the month's spend", async () => {
     const onScope = vi.fn();
     render(<UsagePanel usage={usage} me={me} scope="mine" onScope={onScope} />);

@@ -190,9 +190,49 @@ describe("useAgentStream", () => {
     });
     expect(result.current.messages).toEqual([
       { role: "user", content: "Earlier" },
-      { role: "user", content: "How many moons?", mode: "query" },
+      { role: "user", content: "How many moons?", mode: "query", router_engine: "llm" },
       { role: "assistant", content: "One moon." },
     ]);
+  });
+
+  it("stamps a live Jev decision's engine and confidence on the user message", async () => {
+    streamOnly(thread({ messages: [] }));
+    fetchMock.mockResolvedValue(
+      streamResponse([
+        sse("llm_request", { id: "j1", role: "router", model: "jev-latest", params: { engine: "jev" }, messages: [], tools: [] }),
+        sse("llm_response", { id: "j1", content: JSON.stringify({ mode: "query", confidence: 0.94, engine: "jev" }), tool_calls: [], cost_usd: null, priced: false }),
+        sse("done", {}),
+      ]),
+    );
+    const { result } = setup();
+    await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await result.current.send("How many moons?");
+    });
+    expect(result.current.messages).toEqual([
+      { role: "user", content: "How many moons?", mode: "query", router_engine: "jev", router_confidence: 0.94 },
+    ]);
+  });
+
+  it("an LLM fallback's decision replaces a live Jev stamp", async () => {
+    streamOnly(thread({ messages: [] }));
+    fetchMock.mockResolvedValue(
+      streamResponse([
+        sse("llm_request", { id: "j1", role: "router", model: "jev-latest", params: { engine: "jev" }, messages: [], tools: [] }),
+        sse("llm_response", { id: "j1", content: JSON.stringify({ mode: "edit", confidence: 0.94, engine: "jev" }), tool_calls: [], cost_usd: null, priced: false }),
+        sse("llm_request", { id: "r1", role: "router", model: "openai/gpt-6-luna", messages: [], tools: [] }),
+        sse("llm_response", { id: "r1", content: "", tool_calls: [{ id: "c", name: "RouteDecision", args: { mode: "query" } }] }),
+        sse("done", {}),
+      ]),
+    );
+    const { result } = setup();
+    await waitFor(() => expect(getThreadMock).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await result.current.send("How many moons?");
+    });
+    const [msg] = result.current.messages;
+    expect(msg).toEqual({ role: "user", content: "How many moons?", mode: "query", router_engine: "llm" });
+    expect(msg).not.toHaveProperty("router_confidence", 0.94);
   });
 
   it("marks tokens streamed inside the guard node as the guard's notice", async () => {

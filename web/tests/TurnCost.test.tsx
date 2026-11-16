@@ -79,6 +79,35 @@ describe("TurnCost", () => {
   });
 });
 
+describe("TurnCost unpriced calls", () => {
+  const jev = { ...turn, by_role: turn.by_role.map((r) => (r.role === "router" ? { ...r, cost_usd: 0, unpriced_calls: 1 } : r)) };
+
+  it("router step not priced", async () => {
+    render(<TurnCost turn={jev} />);
+    const button = screen.getByRole("button", { name: /\(excludes 1 unpriced call\)/ });
+    expect(button).toHaveTextContent("9,211 tokens · $0.0063 · 4 steps (excludes 1 unpriced call)");
+    await userEvent.click(button);
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    const router = rows.find((r) => r.textContent?.startsWith("Router"))!;
+    expect(router).toHaveTextContent("not priced");
+    expect(router).not.toHaveTextContent("$");
+    expect(rows.at(-1)).toHaveTextContent("(excludes 1 unpriced call)");
+  });
+
+  it("a step with priced and unpriced calls shows its figure and + not priced", async () => {
+    const mixed = { ...turn, by_role: turn.by_role.map((r) => (r.role === "router" ? { ...r, calls: 2, unpriced_calls: 1 } : r)) };
+    render(<TurnCost turn={mixed} />);
+    await userEvent.click(screen.getByRole("button", { name: /excludes 1 unpriced call/ }));
+    const router = within(screen.getByRole("table")).getAllByRole("row").find((r) => r.textContent?.startsWith("Router"))!;
+    expect(router).toHaveTextContent("$0.0003 + not priced");
+  });
+
+  it("says nothing about unpriced calls when there are none", () => {
+    render(<TurnCost turn={turn} />);
+    expect(screen.queryByText(/priced/)).toBeNull();
+  });
+});
+
 describe("TurnCost fallback notes", () => {
   it("says which model failed and which fallback answered", () => {
     const f = { role: "agent", model: "anthropic/claude-haiku-5.5", replaced: "openai/gpt-6-luna", reason: "gone 404: No endpoints found", ok: true };

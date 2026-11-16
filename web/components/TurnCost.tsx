@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { stepName, stepOf, stepsFromRoles } from "@/lib/steps";
+import { excludesNote, stepCost, stepName, stepOf, stepsFromRoles } from "@/lib/steps";
 import type { TurnUsage } from "@/lib/types";
 
 const n = (v: number) => v.toLocaleString("en-US");
@@ -18,6 +18,7 @@ export function TurnCost({ turn }: { turn: TurnUsage }) {
   if (steps.length === 0) return null;
   const tokens = turn.usage.prompt_tokens + turn.usage.completion_tokens;
   const spent = steps.reduce((sum, s) => sum + s.cost_usd, 0);
+  const excludes = excludesNote(steps.reduce((sum, s) => sum + s.unpriced_calls, 0));
   // One note per step and model pair: a retried call can fall back more than once.
   const fallbacks = [...new Map((turn.fallbacks ?? []).map((f) => [`${f.role}|${f.replaced}|${f.model}|${f.ok}`, f])).values()];
 
@@ -43,7 +44,8 @@ export function TurnCost({ turn }: { turn: TurnUsage }) {
         onClick={() => setOpen(!open)}
         className="self-start pl-0.5 text-left tabular-nums hover:text-foreground"
       >
-        {n(tokens)} tokens · {usd(turn.usage.cost_usd)} · {plural(steps.length, "step")}{" "}
+        {n(tokens)} tokens · {usd(turn.usage.cost_usd)} · {plural(steps.length, "step")}
+        {excludes}{" "}
         <span aria-hidden="true">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
@@ -69,7 +71,7 @@ export function TurnCost({ turn }: { turn: TurnUsage }) {
                   <td className="py-0.5 pr-3">
                     {n(s.prompt_tokens)} → {n(s.completion_tokens)}
                   </td>
-                  <td className="py-0.5 text-right text-foreground">{usd(s.cost_usd)}</td>
+                  <td className="py-0.5 text-right text-foreground">{stepCost(s)}</td>
                 </tr>
               ))}
             </tbody>
@@ -82,7 +84,10 @@ export function TurnCost({ turn }: { turn: TurnUsage }) {
                 <td className="pt-1.5 pr-3">
                   {n(turn.usage.prompt_tokens)} → {n(turn.usage.completion_tokens)}
                 </td>
-                <td className="pt-1.5 text-right font-semibold text-foreground">{usd(turn.usage.cost_usd)}</td>
+                <td className="pt-1.5 text-right font-semibold text-foreground">
+                  {usd(turn.usage.cost_usd)}
+                  {excludes}
+                </td>
               </tr>
             </tfoot>
           </table>
